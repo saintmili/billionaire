@@ -66,15 +66,17 @@ type Provider interface {
 }
 
 type FeedState struct {
-	Instrument    domain.Instrument `json:"instrument"`
-	Timeframe     domain.Timeframe  `json:"timeframe"`
-	Connected     bool              `json:"connected"`
-	LastEvent     time.Time         `json:"last_event"`
-	LastClosed    time.Time         `json:"last_closed_end"`
-	LastDelivered time.Time         `json:"delivered_through"`
-	PendingClosed *domain.Candle    `json:"pending_closed_event,omitempty"`
-	Gaps          int               `json:"gap_count"`
-	Reason        string            `json:"reason"`
+	Instrument         domain.Instrument `json:"instrument"`
+	Timeframe          domain.Timeframe  `json:"timeframe"`
+	Connected          bool              `json:"connected"`
+	LastEvent          time.Time         `json:"last_event"`
+	LastClosed         time.Time         `json:"last_closed_end"`
+	LastDelivered      time.Time         `json:"delivered_through"`
+	AvailabilityClock  time.Time         `json:"availability_clock"`
+	PendingClosed      *domain.Candle    `json:"pending_closed_event,omitempty"`
+	PendingAvailableAt time.Time         `json:"pending_available_at,omitzero"`
+	Gaps               int               `json:"gap_count"`
+	Reason             string            `json:"reason"`
 }
 
 func (s FeedState) AllowsEntries(now time.Time, staleAfter time.Duration) bool {

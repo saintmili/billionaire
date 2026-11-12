@@ -1,0 +1,13 @@
+schema_version: 1
+id: bullish-engulfing
+name: Bullish body engulfing
+implementation: engulfing
+primary_timeframe: 1m
+timeframes: [1m]
+markets: [spot, linear]
+direction: long
+evaluation: on_candle_close
+emission: once_per_candle
+parameters:
+  stop_offset: "0.1"
+  reward_risk: "2"

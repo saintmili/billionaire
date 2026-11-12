@@ -130,6 +130,7 @@ func (s *Synchronizer) Backfill(ctx context.Context, q Query, refresh bool) (Syn
 }
 
 type Event struct {
+	AvailableAt   time.Time      `json:"available_at"`
 	Kind          string         `json:"kind"`
 	Candle        *domain.Candle `json:"candle,omitempty"`
 	Feed          FeedState      `json:"feed"`
@@ -147,10 +148,29 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 	if err != nil {
 		return err
 	}
+	availability := func(c *domain.Candle) time.Time {
+		at := s.opts.Now().UTC()
+		if c != nil && c.ObservedAt.After(at) {
+			at = c.ObservedAt
+		}
+		if state.AvailabilityClock.After(at) {
+			at = state.AvailabilityClock
+		}
+		return at
+	}
 	publish := func(c *domain.Candle, kind string) error {
+		available := availability(c)
+		if c != nil && c.Closed && state.PendingClosed != nil && EventID(*state.PendingClosed) == EventID(*c) && !state.PendingAvailableAt.IsZero() {
+			available = state.PendingAvailableAt
+		}
+		if c != nil {
+			state.AvailabilityClock = available
+		}
+
 		if c != nil && c.Closed && (state.PendingClosed == nil || EventID(*state.PendingClosed) != EventID(*c)) {
 			copy := *c
 			state.PendingClosed = &copy
+			state.PendingAvailableAt = available
 			if err := s.repository.SaveFeedState(ctx, state); err != nil {
 				return err
 			}
@@ -160,7 +180,7 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 				return err
 			}
 		}
-		if err := consume(Event{Kind: kind, Candle: c, Feed: state, AllowsEntries: state.AllowsEntries(s.opts.Now(), s.opts.StaleAfter)}); err != nil {
+		if err := consume(Event{Kind: kind, Candle: c, Feed: state, AvailableAt: available, AllowsEntries: state.AllowsEntries(s.opts.Now(), s.opts.StaleAfter)}); err != nil {
 			return err
 		}
 		// Closed-event acknowledgment follows successful synchronous consumption.
@@ -171,6 +191,7 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 			}
 			if c.Closed {
 				state.PendingClosed = nil
+				state.PendingAvailableAt = time.Time{}
 			}
 			return s.repository.SaveFeedState(ctx, state)
 		}
@@ -186,6 +207,12 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 		bars, err := s.repository.Candles(ctx, recovery)
 		if err != nil {
 			return err
+		}
+		// All fetched pages are available before chronological recovery starts.
+		for _, c := range bars {
+			if c.ObservedAt.After(state.AvailabilityClock) {
+				state.AvailabilityClock = c.ObservedAt
+			}
 		}
 		next := from
 		for _, c := range bars {
@@ -336,10 +363,13 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 					}
 					duplicate := seen[c.OpenTime.UnixMilli()] == EventID(c)
 					if c.Closed {
-						changed, pending, err := s.repository.SaveCandleEvent(ctx, c, state)
+						prepared := state
+						prepared.PendingAvailableAt = availability(&c)
+						changed, pending, err := s.repository.SaveCandleEvent(ctx, c, prepared)
 						if pending {
 							copy := c
 							state.PendingClosed = &copy
+							state.PendingAvailableAt = prepared.PendingAvailableAt
 						}
 						if err != nil {
 							return err

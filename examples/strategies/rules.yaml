@@ -1,0 +1,23 @@
+schema_version: 1
+id: close-crosses-sma
+name: Close crossing SMA with completed higher filter
+implementation: rules
+primary_timeframe: 1m
+timeframes: [1m, 4h]
+markets: [spot, linear]
+direction: long
+evaluation: on_update
+emission: while_true
+signal_cooldown: 0s
+entry:
+  all:
+    - op: crosses_above
+      left: {field: close}
+      right: {field: sma, period: 20}
+    - op: gt
+      left: {field: close, timeframe: 4h}
+      right: {field: sma, timeframe: 4h, period: 10}
+exit:
+  op: lt
+  left: {field: close}
+  right: {field: sma, period: 20}

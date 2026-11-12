@@ -1,0 +1,14 @@
+schema_version: 1
+id: breakout-20-short
+name: Twenty candle short breakout
+implementation: breakout
+primary_timeframe: 1m
+timeframes: [1m]
+markets: [linear]
+direction: short
+evaluation: on_candle_close
+emission: on_transition
+parameters:
+  lookback: "20"
+  stop_offset: "0.1"
+  reward_risk: "2"

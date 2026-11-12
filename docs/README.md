@@ -16,6 +16,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 - [M0 report](m0-report.md): bootstrap, provider evidence, commands and remaining gates.
 - [M1 report](m1-report.md): CLI/configuration, PostgreSQL migrations, verification and limitations.
 - [M2 report](m2-report.md): public market data, offline fixtures, candle persistence, synchronization and freshness.
+- [M3 report](m3-report.md): immutable strategies, rules, snapshots, emission policies and signal persistence.
 - [Architecture decisions](adr/): accepted PostgreSQL, execution/journal separation and candle/replay decisions.
 - [Milestone checklist](milestone-checklist.md): sequenced follow-up work and acceptance gates.
 - GitHub Issues: implementation tickets and dependency links, prepared through `/to-tickets` after M0 findings are available.

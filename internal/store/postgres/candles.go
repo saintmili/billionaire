@@ -133,6 +133,12 @@ func (s *Store) SaveCandleEvent(ctx context.Context, c domain.Candle, state mark
 	pending = changed > 0 || c.EndTime.After(state.LastDelivered)
 	if pending {
 		state.PendingClosed = &c
+		if state.PendingAvailableAt.IsZero() {
+			state.PendingAvailableAt = c.ObservedAt
+		}
+		if state.PendingAvailableAt.Before(c.ObservedAt) {
+			return 0, pending, errors.New("pending availability precedes observation")
+		}
 		payload, err := marshalFeedState(state)
 		if err != nil {
 			return 0, pending, err

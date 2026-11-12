@@ -1,6 +1,6 @@
 # Millionaire roadmap
 
-**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending because access is geographically blocked here. M3 has not started. See [M0 evidence and limitations](m0-report.md) the [M1 report](m1-report.md), and [M2 evidence/limitations](m2-report.md).
+**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending because access is geographically blocked here. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. See [M0 evidence and limitations](m0-report.md) the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
 
 Read [the specification](spec.md) for requirements and [technical design](design.md) for the proposed baseline. Track implementation tickets and their dependencies in GitHub Issues using [the tracker conventions](agents/issue-tracker.md).
 
@@ -11,7 +11,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M0 — Repository reconnaissance and technical design | Complete — [evidence](m0-report.md), [StopLore map](stoplore-integration.md) |
 | M1 — Project scaffolding and durable storage | Complete — [evidence](m1-report.md) |
 | M2 — Market data and historical synchronization | Implemented; offline checks pass; [live-host gate pending](m2-report.md) |
-| M3 — Strategy runtime and reference strategies | Not started |
+| M3 — Strategy runtime and reference strategies | Offline complete; independent review pending |
 | M4 — Paper accounts, orders, risk, and position lifecycle | Not started |
 | M5 — First-class backtesting and analytics | Not started |
 | M6 — Notifications and process operation | Not started |
@@ -36,6 +36,15 @@ Treat [the specification](spec.md) as the governing product contract and [techni
 - No credentials in logs, fixtures or source code.
 - Dependencies introduced only with justification.
 - A short milestone report: changed packages, commands run, outcomes, unresolved issues.
+
+## Sequencing exception: offline M3 work
+
+On 2026-11-12, the user requested the next implementation milestone after M2's
+live-host limitation was reported. Proceed with M3 strategy work using verified
+M2 fixture/protocol and PostgreSQL boundaries. This work does not depend on a live
+Bybit connection. M2's actual-host REST/stream validation remains pending and must
+pass before forward monitoring is enabled; this exception does not waive it or
+mark M2 fully accepted. Stop at the M3 boundary.
 
 ## Implementation milestones
 

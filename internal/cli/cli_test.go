@@ -200,3 +200,124 @@ func TestMarketBackfillWatchAndStatusUseOfflineFixture(t *testing.T) {
 		t.Fatalf("fixture completion claimed live health: %s", &out)
 	}
 }
+
+func TestStrategyCLIRegistersEnablesEvaluatesAndInspectsSignals(t *testing.T) {
+	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+	path := filepath.Join(t.TempDir(), "millionaire.yaml")
+	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, logs bytes.Buffer
+	invoke := func(args ...string) error {
+		out.Reset()
+		logs.Reset()
+		return cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+	}
+	if err := invoke("init"); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("strategy", "validate", "../../examples/strategies/breakout.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("strategy", "add", "../../examples/strategies/breakout.yaml", "--instance", "cli-breakout", "--provider", "fixture", "--market", "spot", "--symbol", "BTC/USDT", "--account", "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("strategy", "enable", "cli-breakout"); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("market", "watch", "--fixture", "../../testdata/market/m3.json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("signals", "list", "--instance", "cli-breakout"); err != nil {
+		t.Fatal(err)
+	}
+	var signals []map[string]any
+	if json.Unmarshal(out.Bytes(), &signals) != nil || len(signals) != 1 || signals[0]["kind"] != "entry" {
+		t.Fatalf("signal pipeline: %s", &out)
+	}
+	if err := invoke("strategy", "disable", "cli-breakout"); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("strategy", "list"); err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if json.Unmarshal(out.Bytes(), &state) != nil {
+		t.Fatal("invalid strategy list JSON")
+	}
+}
+
+func TestStrategyEvaluateCommandIsOfflineAndIdempotent(t *testing.T) {
+	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+	directory := t.TempDir()
+	path := filepath.Join(directory, "millionaire.yaml")
+	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, logs bytes.Buffer
+	invoke := func(args ...string) error {
+		out.Reset()
+		logs.Reset()
+		return cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+	}
+	if err := invoke("init"); err != nil {
+		t.Fatal(err)
+	}
+	add := []string{"strategy", "add", "../../examples/strategies/breakout.yaml", "--instance", "offline-demo", "--provider", "fixture", "--account", "demo"}
+	if err := invoke(add...); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("strategy", "enable", "offline-demo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke(add...); err != nil {
+		t.Fatal(err)
+	}
+	var registered struct {
+		Instance struct {
+			Enabled bool `json:"enabled"`
+		} `json:"instance"`
+	}
+	if json.Unmarshal(out.Bytes(), &registered) != nil || !registered.Instance.Enabled {
+		t.Fatal("idempotent add misreported enabled state")
+	}
+	if err := invoke("market", "backfill", "--fixture", "../../testdata/market/m3.json", "--from", "2026-01-01T00:00:00Z", "--to", "2026-01-01T00:22:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("../../testdata/market/m3.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dataset struct {
+		Candles []json.RawMessage `json:"candles"`
+	}
+	if json.Unmarshal(raw, &dataset) != nil {
+		t.Fatal("invalid dataset")
+	}
+	eventPath := filepath.Join(directory, "event.json")
+	if err := os.WriteFile(eventPath, dataset.Candles[20], 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("strategy", "evaluate", "offline-demo", "--event", eventPath); err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Signals []map[string]any `json:"signals"`
+	}
+	if json.Unmarshal(out.Bytes(), &result) != nil || len(result.Signals) != 1 || result.Signals[0]["source_ready"] != false {
+		t.Fatalf("offline evaluation result: %s", &out)
+	}
+	if err := invoke("strategy", "evaluate", "offline-demo", "--event", eventPath); err != nil {
+		t.Fatal(err)
+	}
+	if json.Unmarshal(out.Bytes(), &result) != nil || len(result.Signals) != 0 {
+		t.Fatal("replayed event emitted twice")
+	}
+	invalid := strings.Replace(string(dataset.Candles[20]), `"close":"11"`, `"close":"1e1000000000"`, 1)
+	if err := os.WriteFile(eventPath, []byte(invalid), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := invoke("strategy", "evaluate", "offline-demo", "--event", eventPath); err == nil {
+		t.Fatal("unbounded exponent accepted")
+	}
+}

@@ -1,0 +1,5 @@
+# Preserve availability separately from provider observation
+
+Accepted for offline M3 on 2026-11-12. Keep a candle's provider observation time and its evaluation availability clock separate. REST pages arrive newest-first, so chronological recovery can reverse fetch timestamps; evaluating directly against each page timestamp would skip events or hide history already received before recovery started. Availability is normalized monotonically to the source observations received, and a pending revision retains that original availability time across retry.
+
+Build strategy snapshots as of recorded availability, excluding later closes and corrections, and retain both timestamps in signal/audit data. This adds persisted clock metadata instead of reinterpreting provider timestamps or recomputing replay time from the current wall clock. Event identity remains tied to normalized provider content/update identity; availability changes do not create duplicate events. M5 must supply an explicit virtual availability clock for a frozen dataset, and OHLCV alone still cannot reproduce intrabar updates. See [M3 semantics](../m3-report.md#snapshot-and-clock-semantics).

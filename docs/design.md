@@ -161,7 +161,7 @@ Integration steps:
 
 The implemented schema and defaults live in [configs/example.yaml](../configs/example.yaml), embedded into the binary. See [README](../README.md#commands-and-configuration) for strict validation, supported environment overrides, secret references, and failure behavior. M1 intentionally includes only app, storage, market-data selection, and initial paper-capital settings; strategy/risk/notification/journal settings are added with their implementing milestones. Configuration rejects live mode and exchange credential fields. Provider URLs are configurable but public/read-only; M1 status checks storage rather than provider availability.
 
-A reference strategy file should encode `id: breakout-20`, `version`, `market`/`symbols`/`timeframes`, evaluation mode, emission mode, `lookback: 20`, `stop: breakout_candle_low_minus_offset`, `take_profit_rr: 2`, `action: auto_paper`, account ID and risk overrides. Codex should finalize schema only after implementing config validation and immutable version semantics.
+The M3 strategy contract is implemented in [examples/strategies/](../examples/strategies/) and documented in the [M3 report](m3-report.md). Configuration hashes produce immutable numbered versions; instances pin their instrument/account/action and version. The registry exposes compiled Go validation/evaluation/warm-up interfaces, and declarative rules use a bounded typed schema. PostgreSQL commits evaluation identity, policy state and signals together. Order/risk execution is M4. See [ADR 0004](adr/0004-preserve-event-availability-clock.md) for recorded availability clocks and retry semantics.
 
 ## Original baseline summary (technical choices pending M0)
 

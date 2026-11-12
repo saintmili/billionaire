@@ -11,3 +11,10 @@ and late-partial updates. The adapter derives other intervals from complete 1m
 buckets and advances its observation clock deterministically. All fixture
 identities are separate from `bybit`; the data is never passed off as captured
 exchange history. It requires no network access or credentials.
+
+`m3.json` is a separate synthetic breakout dataset: 20 preceding candles, a valid
+breakout, a false breakout, and scripted updates for a subsequent breakout. It
+covers BTC/USDT and ETH/USDT in both spot and linear categories under the fixture
+provider. Prices are illustrative; observation and availability clocks are
+explicitly controlled. It is not a historical backtest result or a full warm-up
+for every S/R/higher-frame example.

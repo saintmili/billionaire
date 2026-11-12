@@ -1,9 +1,9 @@
 # Millionaire
 
-A Linux-first Go CLI for public-market monitoring and paper trading. M2 provides
-configuration, PostgreSQL storage, public Bybit candles, historical backfill,
-streaming recovery and explicit offline fixtures. Strategies, accounts, execution,
-and the daemon are later milestones.
+A Linux-first Go CLI for public-market monitoring and paper trading. M3 provides
+configuration, PostgreSQL storage, public candle synchronization, versioned
+strategies and recorded signals. Accounts, order execution, backtesting and the
+daemon are later milestones.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -186,6 +186,70 @@ never substitutes for a failed live request. Bybit REST remains geographically
 blocked from this execution environment; actual-host REST and streaming checks
 are required before forward monitoring. Offline tests use local protocol servers.
 
+## Strategies and signals (M3)
+
+Run `init` after upgrading to apply migration 3. Strategy validation is offline;
+registration and evaluation use PostgreSQL.
+
+```sh
+./bin/millionaire strategy validate examples/strategies/breakout.yaml --output json
+./bin/millionaire strategy add examples/strategies/breakout.yaml \
+  --instance breakout-demo --provider fixture --market spot --symbol BTC/USDT --account demo
+./bin/millionaire strategy enable breakout-demo
+./bin/millionaire market watch --fixture testdata/market/m3.json --output json
+./bin/millionaire signals list --instance breakout-demo --output json
+./bin/millionaire strategy disable breakout-demo
+./bin/millionaire strategy list --output json
+```
+
+Unchanged YAML reuses the same content-hashed version; edited YAML creates the
+next immutable version. Instances pin their version/instrument/account/action and
+are created disabled. Use a new instance ID to change a binding; re-adding an
+existing binding preserves its enabled state. `account` is a validated reference
+for M4, not an account/balance created by these commands. `alert_only`,
+`manual_paper`, `auto_paper` and `risk_percent` are recorded metadata; M3 creates
+signals and does not execute orders.
+
+Market watch warms up enabled instances' required primary/higher-frame history
+and evaluates matching updates before acknowledging source delivery. It checks
+closed-candle versus update mode, distinct event identity, emission policy and
+signal cooldown. Entry/exit state and signals commit together; source replay
+cannot duplicate a committed signal. Watch JSON includes `signals` when emitted.
+Only one watcher per instrument/timeframe should run until M6 adds ownership.
+
+For explicit offline evaluation, seed history and use a fresh enabled instance:
+
+```sh
+./bin/millionaire strategy add examples/strategies/breakout.yaml \
+  --instance offline-demo --provider fixture --account demo
+./bin/millionaire strategy enable offline-demo
+./bin/millionaire market backfill --fixture testdata/market/m3.json \
+  --from 2026-01-01T00:00:00Z --to 2026-01-01T00:22:00Z
+python3 - <<'PYCODE'
+import json
+with open('testdata/market/m3.json') as source:
+    event = json.load(source)['candles'][20]
+with open('/tmp/millionaire-event.json', 'w') as target:
+    json.dump(event, target)
+PYCODE
+./bin/millionaire strategy evaluate offline-demo --event /tmp/millionaire-event.json --output json
+```
+
+Repeated evaluation returns no new signals. Offline events never claim live
+source readiness. Event financial fields require bounded plain decimal strings.
+Snapshots exclude future higher closes and later corrections; missing warm-up
+records an unavailable result rather than a signal. Availability time is separate
+from provider observation time and remains stable across pending replay. A
+backtest/fill model is not implemented by `strategy evaluate`.
+
+See [strategy examples](examples/strategies/), [exact algorithms and rule limits](docs/m3-report.md),
+and [availability-clock ADR](docs/adr/0004-preserve-event-availability-clock.md).
+`signals list` applies `--instance`/`--strategy` filters before returning at most
+10000 results. Separate notification/execution cooldowns arrive in M6/M4;
+`signal_cooldown` only controls signal emission. S/R defaults need 50 bars, and
+the higher-timeframe example needs its stated SMA history; the small breakout
+fixture is not claimed to satisfy every example's warm-up.
+
 ## M0 candle reconnaissance
 
 ```sh
@@ -198,5 +262,5 @@ The offline fixture is synthetic, not captured exchange history. The spike is
 separate from the application and has no automatic fallback. Bybit REST returned
 geographic HTTP 403 during M0; WebSocket handshakes succeeded, but subscriptions
 were not tested. Actual-host connectivity remains a gate before monitoring.
-See the [M0 report](docs/m0-report.md), [M1 report](docs/m1-report.md), [M2 report](docs/m2-report.md),
+See the [M0 report](docs/m0-report.md), [M1 report](docs/m1-report.md), [M2 report](docs/m2-report.md), [M3 report](docs/m3-report.md),
 [StopLore map](docs/stoplore-integration.md), and [project documents](docs/README.md).

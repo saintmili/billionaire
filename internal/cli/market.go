@@ -15,6 +15,7 @@ import (
 	"github.com/saintmili/billionaire/internal/marketdata/bybit"
 	"github.com/saintmili/billionaire/internal/marketdata/fixture"
 	"github.com/saintmili/billionaire/internal/store/postgres"
+	"github.com/saintmili/billionaire/internal/strategy"
 )
 
 type marketFlags struct {
@@ -77,7 +78,7 @@ func (f marketFlags) prepare(cfg config.Config) (marketRequest, error) {
 	i, frame, err := f.identity(name)
 	return marketRequest{p, now, marketdata.Query{Instrument: i, Timeframe: frame}}, err
 }
-func (o *options) withSynchronizer(ctx context.Context, cfg config.Config, f marketFlags, request marketRequest, operation func(context.Context, *marketdata.Synchronizer) error) error {
+func (o *options) withSynchronizer(ctx context.Context, cfg config.Config, f marketFlags, request marketRequest, operation func(context.Context, *marketdata.Synchronizer, *postgres.Store) error) error {
 	return o.withDatabase(ctx, cfg, func(ctx context.Context, store *postgres.Store) error {
 		state, err := store.Status(ctx)
 		if err != nil {
@@ -91,7 +92,7 @@ func (o *options) withSynchronizer(ctx context.Context, cfg config.Config, f mar
 		if err != nil {
 			return err
 		}
-		return operation(ctx, syncer)
+		return operation(ctx, syncer, store)
 	})
 }
 func (o *options) backfillCommand() *cobra.Command {
@@ -128,7 +129,7 @@ func (o *options) backfillCommand() *cobra.Command {
 		if err := request.query.Validate(); err != nil {
 			return err
 		}
-		return o.withSynchronizer(cmd.Context(), cfg, *f, request, func(ctx context.Context, syncer *marketdata.Synchronizer) error {
+		return o.withSynchronizer(cmd.Context(), cfg, *f, request, func(ctx context.Context, syncer *marketdata.Synchronizer, store *postgres.Store) error {
 			result, err := syncer.Backfill(ctx, request.query, f.refresh)
 			if outputErr := o.write(result, fmt.Sprintf("Candles: %d, changed: %d, missing: %d", result.Candles, result.Changed, result.Missing)); outputErr != nil {
 				return outputErr
@@ -164,9 +165,34 @@ func (o *options) watchCommand() *cobra.Command {
 		if err := request.query.Validate(); err != nil {
 			return err
 		}
-		return o.withSynchronizer(cmd.Context(), cfg, *f, request, func(ctx context.Context, syncer *marketdata.Synchronizer) error {
+		return o.withSynchronizer(cmd.Context(), cfg, *f, request, func(ctx context.Context, syncer *marketdata.Synchronizer, store *postgres.Store) error {
+			registry := strategy.DefaultRegistry()
+			earliest, err := warmStrategies(ctx, store, syncer, request.query, request.now(), nil, registry)
+			if err != nil {
+				return err
+			}
+			if !earliest.IsZero() && earliest.Before(request.query.From) {
+				request.query.From = earliest
+			}
 			return syncer.Run(ctx, request.query, func(event marketdata.Event) error {
-				return o.write(event, fmt.Sprintf("%s: %s %s, gaps=%d, automatic entries allowed=%v", event.Kind, f.symbol, f.frame, event.Feed.Gaps, event.AllowsEntries))
+				if event.Candle != nil {
+					at, err := strategy.EventTime(event)
+					if err != nil {
+						return err
+					}
+					if _, err := warmStrategies(ctx, store, syncer, request.query, at, event.Candle, registry); err != nil {
+						return err
+					}
+				}
+				signals, err := store.EvaluateEnabledStrategies(ctx, event, registry)
+				if err != nil {
+					return err
+				}
+				result := struct {
+					marketdata.Event
+					Signals []strategy.Signal `json:"signals,omitempty"`
+				}{event, signals}
+				return o.write(result, fmt.Sprintf("%s: %s %s, gaps=%d, source ready=%v, signals=%d", event.Kind, f.symbol, f.frame, event.Feed.Gaps, event.AllowsEntries, len(signals)))
 			})
 		})
 	}
@@ -256,4 +282,41 @@ func (o *options) addProviderCommands(root *cobra.Command) {
 	}
 	provider.AddCommand(test)
 	root.AddCommand(provider)
+}
+
+func warmStrategies(ctx context.Context, store *postgres.Store, syncer *marketdata.Synchronizer, q marketdata.Query, at time.Time, primaryEvent *domain.Candle, registry *strategy.Registry) (time.Time, error) {
+	versions, err := store.ActiveStrategyVersions(ctx, q.Instrument, q.Timeframe)
+	if err != nil {
+		return time.Time{}, err
+	}
+	earliest := time.Time{}
+	for _, version := range versions {
+		queries, err := strategy.WarmupQueries(version.Definition, q.Instrument, at, registry)
+		if err != nil {
+			return earliest, err
+		}
+		for _, required := range queries {
+			if primaryEvent != nil && required.Query.Timeframe == q.Timeframe {
+				required.Query.To = primaryEvent.OpenTime
+				required.Query.From = required.Query.To
+				for range required.Count {
+					required.Query.From, _ = q.Timeframe.Bounds(required.Query.From.Add(-time.Nanosecond))
+				}
+			}
+			if required.Query.Timeframe == q.Timeframe && (earliest.IsZero() || required.Query.From.Before(earliest)) {
+				earliest = required.Query.From
+			}
+			cached, err := store.Candles(ctx, required.Query)
+			if err != nil {
+				return earliest, err
+			}
+			if len(cached) == required.Count {
+				continue
+			}
+			if _, err := syncer.Backfill(ctx, required.Query, false); err != nil {
+				return earliest, err
+			}
+		}
+	}
+	return earliest, nil
 }

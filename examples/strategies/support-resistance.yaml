@@ -1,0 +1,19 @@
+schema_version: 1
+id: support-rejection
+name: Confirmed support rejection
+implementation: support_resistance
+primary_timeframe: 1m
+timeframes: [1m]
+markets: [spot, linear]
+direction: long
+evaluation: on_candle_close
+emission: on_transition
+parameters:
+  lookback: "50"
+  pivot_left: "2"
+  pivot_right: "2"
+  zone_tolerance: "0.2"
+  min_touches: "2"
+  setup: rejection
+  stop_offset: "0.1"
+  reward_risk: "2"

@@ -278,3 +278,55 @@ func TestFailedOlderCorrectionReplaysIndependentlyOfEndTime(t *testing.T) {
 		t.Fatalf("older unacknowledged correction was lost: count=%d err=%v", replayed, err)
 	}
 }
+
+func TestPendingReplayKeepsOriginalAvailabilityClock(t *testing.T) {
+	ctx := context.Background()
+	store, err := postgres.Open(ctx, testdb.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := fixture.Open("../../testdata/market/m2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := provider.Instrument(ctx, domain.Spot, "BTC/USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset := time.Duration(0)
+	now := func() time.Time { return provider.Now().Add(offset) }
+	syncer, err := marketdata.NewSynchronizer(provider, store, marketdata.SyncOptions{Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := marketdata.Query{Instrument: info.Instrument, Timeframe: "1m", From: provider.Now().Add(-time.Hour), To: provider.Now()}
+	failure := errors.New("consumer unavailable")
+	original := time.Time{}
+	err = syncer.Run(ctx, q, func(event marketdata.Event) error {
+		if event.Candle != nil && event.Candle.Closed {
+			original = event.AvailableAt
+			return failure
+		}
+		return nil
+	})
+	if !errors.Is(err, failure) || original.IsZero() {
+		t.Fatalf("failed event clock: %v %v", original, err)
+	}
+	offset = 10 * time.Second
+	stop := errors.New("test stopped after observing replay")
+	replayed := time.Time{}
+	err = syncer.Run(ctx, q, func(event marketdata.Event) error {
+		if event.Kind == "recovered_candle" {
+			replayed = event.AvailableAt
+			return stop
+		}
+		return nil
+	})
+	if !errors.Is(err, stop) || !replayed.Equal(original) {
+		t.Fatalf("retry changed event availability: original=%v replay=%v error=%v", original, replayed, err)
+	}
+}
