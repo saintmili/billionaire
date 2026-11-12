@@ -78,3 +78,15 @@ Confirmed command seam: offline JSON output and invalid/provider-error handling,
 Validation: `go test ./...` and `go test -race ./...` passed; focused command tests and `go build -o /tmp/billionaire-candle-spike ./cmd/candle-spike` passed during implementation. Local Markdown targets and `git diff --check` passed. `go vet ./...` and the final command build passed. Independent Standards and Spec review follows the implementation commit, using baseline `861682c`. The spike intentionally supports only one fixed spot BTCUSDT minute. It is not a configurable history adapter, decimal ledger, migration runner, application CLI, or strategy runtime.
 
 Remaining gates: resolve StopLore licensing before adding the dependency; verify provider availability on the actual host before live monitoring; test StopLore's real PostgreSQL behavior and uncertain-write recovery in M7. Those are explicit later acceptance gates, not fabricated M0 successes.
+
+## Independent code review
+
+Reviewed implementation commit `732db1b` against user-approved baseline `861682c` using `git diff 861682c...HEAD`. The Standards and Spec axes ran in separate fresh-context agents. This report addition records their results without changing code.
+
+### Standards
+
+No findings. The diff follows documented M0 scope, glossary vocabulary, document ownership, and ADR boundaries. Deterministic fixtures/local HTTP servers, exact decimal strings, UTC exclusive ends, and public unauthenticated requests conform to project requirements. No actionable baseline smells. Total: 0 documented-standard breaches; 0 smell findings.
+
+### Spec
+
+No findings. Reconnaissance, the source-backed StopLore map, ADRs, checklist, and bootstrap satisfy M0 through its permitted documented-connectivity-limitation/offline-fixture path. No M1 implementation or real trading was introduced. Licensing, connectivity, and uncertain journal writes are explicit later gates. Total: 0 findings.
