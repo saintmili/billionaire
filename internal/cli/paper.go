@@ -89,6 +89,7 @@ func (o *options) addPaperCommands(root *cobra.Command) {
 	}})
 	group.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 	account.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
+	o.addSpotCommands(group)
 	root.AddCommand(group)
 }
 

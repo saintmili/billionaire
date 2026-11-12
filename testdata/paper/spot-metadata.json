@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "instrument": {
+      "provider": "fixture",
+      "market": "spot",
+      "base": "BTC",
+      "quote": "USDT",
+      "instrument_id": "BTCUSDT"
+    },
+    "price_step": "0.01",
+    "quantity_step": "0.001",
+    "min_quantity": "0.001",
+    "min_notional": "5"
+  }
+}
