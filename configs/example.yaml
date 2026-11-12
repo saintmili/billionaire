@@ -1,0 +1,25 @@
+schema_version: 1
+app:
+  mode: paper
+  timezone: UTC
+  log_level: info
+storage:
+  driver: postgres
+  dsn_env: MILLIONAIRE_DATABASE_URL
+  timeout: 5s
+market_data:
+  provider: bybit
+  rest_url: https://api.bybit.com
+  spot_ws_url: wss://stream.bybit.com/v5/public/spot
+  linear_ws_url: wss://stream.bybit.com/v5/public/linear
+  stale_after: 60s
+  instruments:
+    - market: spot
+      symbol: BTC/USDT
+      timeframes: [1m, 15m]
+    - market: linear
+      symbol: ETH/USDT
+      timeframes: [1m, 15m]
+paper:
+  initial_balance: "10000"
+  quote_currency: USDT

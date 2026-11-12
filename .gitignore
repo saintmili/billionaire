@@ -1,0 +1,7 @@
+/bin/
+/millionaire.yaml
+.env
+.env.*
+!.env.example
+*.test
+coverage.out

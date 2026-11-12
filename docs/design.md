@@ -157,47 +157,9 @@ Integration steps:
 6. Integration-test opening, partial exits, final exit, fees/funding, restart/retry and failed journal delivery. If a StopLore feature is unsupported, implement a documented partial mapping and hold the feature behind a capability check.
 7. Prefer reusing StopLore's analytics for its supported trade metrics, and implement Millionaire-only signal/backtest metrics separately. Cross-check calculations to avoid disagreement.
 
-## Configuration example (illustrative schema; refine in milestone 1)
+## Configuration contract (M1)
 
-```yaml
-app:
-  name: millionaire
-  timezone: UTC
-  mode: paper                 # only accepted mode in MVP
-  log_level: info
-storage:
-  driver: postgres
-  dsn_env: MILLIONAIRE_DATABASE_URL
-market_data:
-  provider: bybit
-  reconnect: true
-  stale_after: 60s
-  instruments:
-    - market: spot
-      symbol: BTC/USDT
-    - market: linear
-      symbol: ETH/USDT
-paper:
-  initial_balance: "10000"
-  quote_currency: USDT
-  default_fee_bps: "6"
-  default_slippage_bps: "3"
-  default_risk_pct: "1"
-  max_open_positions: 3
-  pyramiding: false
-notifications:
-  terminal: true
-  desktop: true
-  telegram:
-    enabled: false
-    token_env: MILLIONAIRE_TELEGRAM_BOT_TOKEN
-    chat_id_env: MILLIONAIRE_TELEGRAM_CHAT_ID
-journal:
-  enabled: true
-  adapter: stoplore
-```
-
-Do not assume example fees/slippage approximate any venue's real costs. Parse money and percentages as validated decimals. No secrets embedded in repository examples.
+The implemented schema and defaults live in [configs/example.yaml](../configs/example.yaml), embedded into the binary. See [README](../README.md#commands-and-configuration) for strict validation, supported environment overrides, secret references, and failure behavior. M1 intentionally includes only app, storage, market-data selection, and initial paper-capital settings; strategy/risk/notification/journal settings are added with their implementing milestones. Configuration rejects live mode and exchange credential fields. Provider URLs are configurable but public/read-only; M1 status checks storage rather than provider availability.
 
 A reference strategy file should encode `id: breakout-20`, `version`, `market`/`symbols`/`timeframes`, evaluation mode, emission mode, `lookback: 20`, `stop: breakout_candle_low_minus_offset`, `take_profit_rr: 2`, `action: auto_paper`, account ID and risk overrides. Codex should finalize schema only after implementing config validation and immutable version semantics.
 
