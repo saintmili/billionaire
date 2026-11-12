@@ -65,7 +65,28 @@ Passed:
 - `go test ./...` with disposable PostgreSQL 17 enabled, `go vet ./...`,
   `go build ./...`, and `git diff --check`.
 
-Race validation and independent standards/spec review are recorded after completion.
+- `go test -race ./internal/paper ./internal/store/postgres ./internal/cli` with
+  PostgreSQL enabled. The full suite, race checks, vet and build passed again after
+  the review refactor.
+
+## Standards review
+
+Independent review found no clear documented-rule violations. Two maintainability
+judgements identified duplicated admission policy between persistence and execution,
+and repeated CLI configuration loads that could mix policy/storage snapshots.
+`SpotOrderRejection` now owns the shared admission rules, called at submission and
+execution. Financial commands pass their loaded configuration to
+`paperDatabaseWithConfig`, while inspection loads configuration once. Re-review
+confirmed both findings resolved and no remaining standards findings.
+
+## Spec review
+
+Independent review found no actionable missing/partial requirements, scope creep
+or wrong implementations for #2. Re-review confirmed the shared-policy and
+configuration refactor preserved disabled-entry/holdings rules and introduced no
+spec regression.
+
+Review totals: Standards — 2 findings addressed, 0 remaining; Spec — 0 findings.
 
 ## Remaining gates
 

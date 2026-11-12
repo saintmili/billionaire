@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/saintmili/billionaire/internal/config"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"github.com/spf13/cobra"
@@ -34,7 +35,7 @@ func (o *options) addPaperCommands(root *cobra.Command) {
 		if _, err := request.Validate(); err != nil {
 			return err
 		}
-		return o.paperDatabase(cmd.Context(), func(ctx context.Context, store *postgres.Store) error {
+		return o.paperDatabaseWithConfig(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
 			a, err := store.CreatePaperAccount(ctx, request)
 			if err != nil {
 				return err
@@ -102,6 +103,11 @@ func (o *options) paperDatabase(ctx context.Context, operation func(context.Cont
 	if err != nil {
 		return err
 	}
+	return o.paperDatabaseWithConfig(ctx, cfg, operation)
+}
+
+// paperDatabaseWithConfig keeps policy, storage and timeouts on the same snapshot.
+func (o *options) paperDatabaseWithConfig(ctx context.Context, cfg config.Config, operation func(context.Context, *postgres.Store) error) error {
 	return o.database(ctx, cfg, func(ctx context.Context, store *postgres.Store) error {
 		state, err := store.Status(ctx)
 		if err != nil {

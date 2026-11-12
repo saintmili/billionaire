@@ -63,6 +63,7 @@ func (o *PaperOwner) SubmitSpotOrder(ctx context.Context, request paper.OrderReq
 		}
 		return order, safeError(ctx, ErrUnavailable)
 	}
+	var position *paper.Position
 	if request.Action == "close" {
 		p, err := decodePaperRow[paper.Position](tx.QueryRow(ctx, "SELECT payload FROM millionaire.paper_positions WHERE id=$1 FOR UPDATE", request.PositionID))
 		if err != nil {
@@ -71,15 +72,11 @@ func (o *PaperOwner) SubmitSpotOrder(ctx context.Context, request paper.OrderReq
 			}
 			return order, safeError(ctx, ErrUnavailable)
 		}
-		quantity, _ := domain.ParseDecimal(order.Request.Quantity)
-		if p.AccountID != request.AccountID || p.Instrument != request.Instrument || p.Status != "open" || quantity.GreaterThan(p.RemainingQuantity) {
-			order.Status = "rejected"
-			order.Reason = "close exceeds owned holdings or position identity is invalid"
-		}
+		position = &p
 	}
-	if request.Action == "open" && !enabled {
+	if reason := paper.SpotOrderRejection(order, enabled, position); reason != "" {
 		order.Status = "rejected"
-		order.Reason = "market disabled"
+		order.Reason = reason
 	}
 	payload, err := json.Marshal(order)
 	if err != nil {

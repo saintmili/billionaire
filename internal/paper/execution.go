@@ -187,6 +187,22 @@ func SameOrder(a, b Order) bool {
 	return string(x) == string(y)
 }
 
+// SpotOrderRejection applies the same admission rules at intent submission and
+// again against locked current holdings at execution. Order syntax is prepared first.
+func SpotOrderRejection(order Order, enabled bool, position *Position) string {
+	if order.Request.Action == "open" {
+		if !enabled {
+			return "market disabled"
+		}
+		return ""
+	}
+	quantity, err := ExactValue(order.Request.Quantity, true)
+	if err != nil || position == nil || position.ID != order.Request.PositionID || position.AccountID != order.Request.AccountID || position.Instrument != order.Request.Instrument || position.Status != "open" || quantity.GreaterThan(position.RemainingQuantity) {
+		return "close exceeds owned holdings or position identity is invalid"
+	}
+	return ""
+}
+
 func PlanSpotFill(order Order, observation Observation, gate ExecutionGate, balance domain.Decimal, position *Position) (Execution, error) {
 	result := Execution{Order: order}
 	if _, err := PrepareOrder(order.Request, order.Metadata); err != nil {
@@ -213,8 +229,8 @@ func PlanSpotFill(order Order, observation Observation, gate ExecutionGate, bala
 	if !observation.Ready || gate.Now.Sub(observation.ObservedAt) > gate.StaleAfter {
 		return reject("source stale/unready")
 	}
-	if order.Request.Action == "open" && !gate.Enabled {
-		return reject("market disabled")
+	if reason := SpotOrderRejection(order, gate.Enabled, position); reason != "" {
+		return reject(reason)
 	}
 	quantity := decimal(order.Request.Quantity)
 	price := observation.Price
@@ -256,9 +272,6 @@ func PlanSpotFill(order Order, observation Observation, gate ExecutionGate, bala
 		result.Position = &Position{ID: fill.PositionID, AccountID: order.Request.AccountID, Instrument: order.Request.Instrument, Metadata: order.Metadata, Status: "open", InitialQuantity: quantity, RemainingQuantity: quantity, EntryPrice: price, RemainingCost: total, FeesPaid: fee}
 		result.Movements = []Movement{{Kind: "spot_buy", Amount: notional.Neg()}, {Kind: "fee", Amount: fee.Neg()}}
 	} else {
-		if position == nil || position.ID != order.Request.PositionID || position.AccountID != order.Request.AccountID || position.Instrument != order.Request.Instrument || position.Status != "open" || quantity.GreaterThan(position.RemainingQuantity) {
-			return reject("close exceeds owned holdings or position identity is invalid")
-		}
 		copy := *position
 		cost := copy.RemainingCost
 		if quantity.LessThan(copy.RemainingQuantity) {

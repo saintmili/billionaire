@@ -78,7 +78,7 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			if err != nil {
 				return err
 			}
-			return o.paperDatabase(cmd.Context(), func(ctx context.Context, store *postgres.Store) error {
+			return o.paperDatabaseWithConfig(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
 				var info marketdata.InstrumentInfo
 				if action == "open" {
 					fixture, err := readSpotFixture(fixturePath)
@@ -157,7 +157,7 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			return err
 		}
 		staleAfter, _ := time.ParseDuration(cfg.MarketData.StaleAfter)
-		return o.paperDatabase(cmd.Context(), func(ctx context.Context, store *postgres.Store) error {
+		return o.paperDatabaseWithConfig(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
 			owner, err := store.AcquirePaperOwner(ctx)
 			if err != nil {
 				return err
