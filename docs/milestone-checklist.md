@@ -1,0 +1,13 @@
+# Milestone implementation checklist
+
+This is a sequencing checklist derived from [the roadmap](roadmap.md), not a substitute for GitHub ticket status. Prepare individual issues with dependency links through the repository's ticket workflow when requested. Stop at each milestone acceptance gate.
+
+- [x] **M0:** inspect the existing repo and pinned StopLore source; map public API, storage, license and gaps; verify Bybit contracts/connectivity; bootstrap Go and offline candle spike; record three ADRs and findings. Evidence: [M0 report](m0-report.md).
+- [ ] **M1** (after M0): pin used dependencies; add CLI/config/logging/shutdown/domain decimals; PostgreSQL Compose and versioned up/down migrations; init/config/status and CI. Gate: clean database round trip, invalid config rejection, documented install.
+- [ ] **M2** (after M1): public spot/USDT-perpetual metadata, REST pagination, streaming and reconnect/backfill, persistent candles/aggregation, deterministic fixture feed. Gate: actual-host connectivity plus offline two-symbol/two-timeframe ingestion, gaps/staleness and duplicate tests.
+- [ ] **M3** (after M2): immutable strategy versions/instances, YAML/registry, as-of snapshots, emission/dedup policies and three reference strategies. Gate: preceding-20-candle breakout and future-data traps.
+- [ ] **M4** (after M3): paper ledger/accounts, risk and manual/auto intents, simulated fills, isolated margin/funding/liquidation, stop/target/trailing/partial exits and kill switch. Gate: transactional/idempotent balances, precision and rejection invariants.
+- [ ] **M5** (after M4): deterministic isolated replay, manifests/data hashes, metrics, reports/compare/exports. Gate: reproducible fixture runs, no look-ahead or mutation of forward paper accounts.
+- [ ] **M6** (after M5): notification outbox/channels, foreground daemon, single-owner private socket, restart recovery, systemd/VPS runbook. Gate: outage/restart and headless behavior.
+- [ ] **M7** (after M6; license resolved before dependency installation): pin/reinspect StopLore, implement modern decimal adapter, correlation/outbox, capability checks and reconciliation. Gate: real-library/PostgreSQL tests including partial exits and uncertain commit recovery; never duplicate a journal item through blind retry.
+- [ ] **M8** (after M7): end-to-end fixture scenario, race/failure/financial invariants, backup/restore, performance and operational evidence, release artifacts/docs. Gate: no blocking defects; obtain a current supported Go patch before release.

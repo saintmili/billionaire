@@ -1,0 +1,5 @@
+# Candle availability determines replay order
+
+Accepted for the MVP on 2026-11-12. Identify candles by source, market-specific instrument, timeframe, and UTC opening instant; use exclusive ends. Bybit REST returns newest first and can include a forming candle, whereas streaming supplies `confirm`. Normalize before publication, retain provenance/revisions, and process duplicate provider events idempotently. Calendar intervals use calendar boundaries rather than fixed durations.
+
+Close-based strategy snapshots may use only information available at their evaluation instant. A close-confirmed entry fills at the next available candle open in replay, or the next valid observable price in forward paper operation. Use adverse-first treatment for a candle containing both stop and target, and expose ambiguity and gaps. OHLCV cannot reproduce intrabar updates: update-mode replay requires recorded updates or an explicitly approximate model. These choices sacrifice optimistic fills and intrabar fidelity for reproducibility without future-data leakage. See [provider verification](../m0-report.md#market-data-verification) and the governing [specification](../spec.md).

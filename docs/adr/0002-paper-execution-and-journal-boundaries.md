@@ -1,0 +1,5 @@
+# Paper execution owns financial state
+
+Accepted for the MVP on 2026-11-12. A single engine owns paper orders, fills, positions, account locking, and the immutable ledger. Public market-data adapters provide observations; manual approval and automatic entries enter the same risk gate. Backtests use isolated accounts and an injected clock/price source with the same decision services. A Unix socket coordinates CLI mutations rather than allowing multiple engines.
+
+Commit financial events and journal-outbox items atomically in Millionaire; deliver to StopLore afterward. A synchronous journal call cannot join the financial transaction through StopLore's public API and would make trading recovery depend on journaling availability. StopLore generates IDs and lacks idempotency tokens, so an uncertain write must enter reconciliation rather than automatic replay. The [integration map](../stoplore-integration.md#safe-reconciliation-boundary) defines this limitation. No exchange order API, authenticated trading client, or exchange credentials belong in the MVP.

@@ -1,14 +1,14 @@
 # Millionaire technical design
 
-**Status:** Proposed technical baseline, pending M0 repository and provider verification. Examples, interfaces, package layout, and conceptual tables are illustrative rather than implemented contracts.
+**Status:** M0 reconnaissance complete; accepted storage, execution/journal and candle/replay boundaries are recorded in [ADRs](adr/). Examples, interfaces, package layout, and conceptual tables remain illustrative rather than implemented contracts. See [M0 findings](m0-report.md) for provider and integration limitations.
 
-This document owns implementation proposals and their existing rationale. Product requirements remain in [the specification](spec.md); milestone scope and gates live in [the roadmap](roadmap.md). M0 must verify external APIs and record significant settled trade-offs in `docs/adr/`. An unverified proposal is not an accepted ADR.
+This document owns implementation proposals and their existing rationale. Product requirements remain in [the specification](spec.md); milestone scope and gates live in [the roadmap](roadmap.md). The [M0 integration map](stoplore-integration.md) verifies external API claims against a pinned source revision. An unverified proposal is not an accepted ADR.
 
 ## Storage decision: PostgreSQL
 
 Use **PostgreSQL as the only application database for MVP**. Use `pgx/v5`, versioned SQL migrations and `sqlc` where it reduces boilerplate. Ship `compose.yaml` for local development and deployment instructions for a VPS. Why not SQLite: SQLite is attractive for a single-binary/offline CLI but only allows one writer at a time, requires care with high-volume market writes, and may complicate shared journal persistence; this project anticipates continuous market ingestion, multiple CLI readers, later UI access, and already uses Go/PostgreSQL tooling. That is a trade-off, not a claim that SQLite is inadequate for a small single-process bot.
 
-Separate application tables from StopLore storage at the logical/schema boundary. Never couple to StopLore's internal tables or guess its schema. Verify whether the library accepts its own PostgreSQL storage, how lifecycle/fees/partial fills are represented, and whether it supports external correlation IDs. If necessary, maintain a Millionaire-owned journal-sync outbox and correlation table.
+Keep StopLore in a dedicated schema and pool as accepted in [ADR 0001](adr/0001-postgresql-storage-boundary.md). It accepts a PostgreSQL pool, but owns its transactions and whole-journal JSONB persistence. Maintain a Millionaire-owned journal-sync outbox and correlation table; its API has no external idempotency keys. See the [verified map](stoplore-integration.md) before adapter work.
 
 **Do not build a second storage adapter in the MVP.** Document the repository interfaces sufficiently to permit SQLite later if needed, without creating unnecessary database abstractions.
 
@@ -145,7 +145,7 @@ Key invariants:
 
 ## StopLore integration
 
-**Phase 0 verification required.** Access to the referenced repository's current exported API could not be confirmed in this planning session. Codex must inspect it before implementation. Do not rely on assumed package names, functions or storage behavior.
+**M0 source verification complete.** The [integration map](stoplore-integration.md) pins the inspected commit and distinguishes modern decimal service methods from the legacy float API. Resolve the missing license before introducing the dependency. Real PostgreSQL integration tests remain an M7 gate. Uncertain writes require reconciliation; do not claim automatic exactly-once retry with this API.
 
 Integration steps:
 
@@ -153,7 +153,7 @@ Integration steps:
 2. Write `docs/stoplore-integration.md`: mapping of Millionaire `PaperAccount`, `StrategyVersion`, `Signal`, `Order`, `Fill`, `Position`, fees, funding, partial close and SL/TP to **verified** StopLore types/methods.
 3. Decide exactly what constitutes a StopLore journal entry (e.g. opening a position vs recording a closing fill); avoid double counting individual fills as independent trades.
 4. Implement a narrow `JournalSink` adapter that uses the public API. Store source IDs/versions, journal IDs, sync state and failure metadata. Do not write directly to StopLore tables.
-5. Persist journal outbox event and financial transaction atomically in Millionaire; deliver asynchronously and idempotently. Retry without duplicating journal records; provide `journal sync`, `journal status`, `journal reconcile`.
+5. Persist journal outbox event and financial transaction atomically in Millionaire; deliver asynchronously. Follow the integration map's reconciliation boundary for uncertain writes, retry only known-unapplied operations, and provide `journal sync`, `journal status`, `journal reconcile`.
 6. Integration-test opening, partial exits, final exit, fees/funding, restart/retry and failed journal delivery. If a StopLore feature is unsupported, implement a documented partial mapping and hold the feature behind a capability check.
 7. Prefer reusing StopLore's analytics for its supported trade metrics, and implement Millionaire-only signal/backtest metrics separately. Cross-check calculations to avoid disagreement.
 

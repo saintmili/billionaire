@@ -1,6 +1,6 @@
 # Millionaire roadmap
 
-**Current state:** Documentation setup complete. M0 is the next milestone; no milestone acceptance has been verified during this reorganization.
+**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is next and has not started. See [M0 evidence and limitations](m0-report.md).
 
 Read [the specification](spec.md) for requirements and [technical design](design.md) for the proposed baseline. Track implementation tickets and their dependencies in GitHub Issues using [the tracker conventions](agents/issue-tracker.md).
 
@@ -8,7 +8,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 
 | Milestone | Status |
 | --- | --- |
-| M0 — Repository reconnaissance and technical design | Not started |
+| M0 — Repository reconnaissance and technical design | Complete — [evidence](m0-report.md), [StopLore map](stoplore-integration.md) |
 | M1 — Project scaffolding and durable storage | Not started |
 | M2 — Market data and historical synchronization | Not started |
 | M3 — Strategy runtime and reference strategies | Not started |
@@ -95,10 +95,10 @@ Treat [the specification](spec.md) as the governing product contract and [techni
 
 **Milestone gate:** Don't begin M(n+1) if tests or core acceptance for M(n) fail. If a dependency forces changing the sequence, document why and update this roadmap first.
 
-## Recommended first Codex prompt
+## Original M0 prompt (completed; retained for provenance)
 
 > Read `docs/spec.md`, `docs/design.md`, and `docs/roadmap.md`; use them as the product contract, proposed technical baseline, and milestone plan respectively. Implement **M0 only**. First inspect the current repository and `github.com/saintmili/stoplore` directly; inventory StopLore's actual exported API and persistence contract without guessing. Verify public market data choices and propose any necessary adjustments. Produce `docs/stoplore-integration.md`, the architecture/ADR notes and a milestone-by-milestone task checklist. Do not implement real trading or proceed to M1 until M0 findings and acceptance criteria are presented. Run any available checks and report results.
 
 ---
 
-**Planning note:** The StopLore repository could not be reliably fetched while preparing this document. Claims about its exact exported API/storage are therefore intentionally not relied upon. M0 verification is mandatory before implementing the adapter.
+**M0 outcome:** StopLore source was inspected at a pinned commit; see the [integration map](stoplore-integration.md). Licensing remains unresolved and its API lacks external idempotency keys. Public REST returned geographic HTTP 403 while WebSocket handshakes succeeded; the offline fixture spike satisfies the permitted M0 fallback. Validate actual-host connectivity before monitoring and use explicit reconciliation for uncertain journal writes. M1 has not begun.
