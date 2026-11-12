@@ -1,7 +1,7 @@
 # Millionaire product specification
 
 **Status:** Approved product requirements; technical defaults remain subject to M0 inspection.
-**Product:** `millionaire`, a Go CLI, with TUI and web interfaces planned later.
+**Product:** `millionaire`, a Go application with CLI and private web interfaces for MVP; a native TUI is deferred.
 
 This document owns product behavior, constraints, test requirements, and release acceptance. See [the roadmap](roadmap.md) for milestone order and progress, [technical design](design.md) for proposed implementation details, and [the glossary](../GLOSSARY.md) for domain terms.
 
@@ -24,11 +24,13 @@ This document owns product behavior, constraints, test requirements, and release
 13. Terminal alerts and Linux desktop notifications; Telegram optional. More channels later.
 14. CLI control, local workstation and VPS operation, persistence and recovery across restarts.
 15. Journaling integration with StopLore, through its verified public API.
+16. A private, single-user web app for daily paper-trading operations, with responsive desktop/mobile views and light/dark themes. See the web contract below and [ADR 0005](adr/0005-private-web-in-mvp.md).
 
 ### Explicitly excluded from MVP
 
 - Real-money order placement, exchange API keys, broker account sync, authenticated balance endpoints.
-- Native TUI and web UI (architecture should not block them).
+- Native TUI; web price charts, strategy editing and backtest configuration (the latter two remain CLI workflows).
+- Multiple UI languages, a language selector and right-to-left layouts; prepare UI text for later translation, but ship English only.
 - Portfolio optimization/AI predictions, arbitrary user script execution, distributed market-data clusters.
 - Production-perfect venue matching, order-book matching, order-book depth-aware slippage, full cross-margin/inverse-contract modeling.
 - Spot margin trading/shorting and coin-margined contracts.
@@ -206,6 +208,22 @@ millionaire journal reconcile
 
 For commands affecting the running engine, provide safe single-owner coordination. Preferred first step: daemon maintains the only active runtime; CLI uses a Unix-domain control socket for mutations. Separate CLI processes must not independently evaluate/process live events against the same account. VPS access via SSH rather than publicly exposed control endpoints. Reading reports can use read-only database queries or the same control API, but keep write semantics consistent.
 
+## Web contract
+
+The MVP includes a private, single-user web app accessed locally, through an SSH tunnel, or over a private network. Public hosting and multi-user access are outside this scope. The browser is another interface to the same single engine and risk gate, not a separate trading runtime.
+
+- Tables and detail views show signals and their evidence, paper-account balances, positions, orders, risk status and market-data freshness. Price charts are deferred.
+- Support explicit signal approval and manual paper orders without a signal. Before submission, show account, instrument/market, direction, size and risk settings; afterward distinguish accepted/pending orders, fills and rejections with reasons.
+- Support partial/full position closes and stop-loss, take-profit and trailing-stop adjustments through the same application rules as CLI operations.
+- Label the kill switch **Pause new entries** and provide an explicit resume action. Pausing blocks new manual and automatic entries while preserving monitoring, exit management and reporting; it never implicitly closes positions.
+- Prevent duplicate submissions. If a response is lost or times out, determine the original request's outcome before allowing a retry; show an unresolved outcome explicitly rather than guessing success or failure. Mark disconnected views and outdated data clearly.
+- Make tables, detail views and trading forms usable in desktop and narrow mobile browsers.
+- Follow the system light/dark theme by default; allow a browser-local override and remember it across reloads. Allow returning to the system preference.
+- Ship English only. Organize UI text for future translation; instrument symbols, strategy names and other user-entered values remain unchanged by translation. Language selection, translations and right-to-left layouts are later-release work.
+- Strategy editing and backtest configuration remain CLI workflows. The web contract does not require full CLI parity.
+
+Implement web after M6's daemon/control boundary and require its acceptance before MVP release, as sequenced in [the roadmap](roadmap.md).
+
 ## Required automated test matrix
 
 1. **Market:** REST pagination, WebSocket out-of-order, duplicated partial/closed candles, interrupted connection, gap reconciliation, stale feed, timeframe aggregation boundaries and market-type separation.
@@ -215,6 +233,7 @@ For commands affecting the running engine, provide safe single-owner coordinatio
 5. **Journal:** unsupported StopLore feature, transient DB failure, outbox retry, idempotent mapping, multiple fills per position, reconcile after restart.
 6. **Notification:** duplicate event, repeated-condition alert policy, Telegram errors, headless desktop, secrets not logged.
 7. **Operations:** process restart, corrupt/invalid config, failed migrations, missing PostgreSQL, single-instance lock, graceful stop and recovery.
+8. **Web:** signal approval and standalone manual entry through the shared risk gate, partial/full close and stop/target/trailing adjustments, pause/resume semantics, rejected requests, duplicate clicks and lost responses, disconnected/stale views, narrow-screen controls, system/default/remembered theme behavior.
 
 Use deterministic fixture data for core tests; external-provider network tests must be opt-in so CI is reliable.
 
@@ -223,6 +242,7 @@ Use deterministic fixture data for core tests; external-provider network tests m
 - Local: PostgreSQL via Compose or installed service, `millionaire start` foreground initially; desktop notifications optional; no publicly exposed control API.
 - VPS: dedicated OS user, env file mode 0600, systemd unit for engine, PostgreSQL with authentication and backup schedule, journal file/report retention, logs through journald or structured files; Telegram for off-device notifications.
 - Do not place PostgreSQL or the control socket on a public internet interface.
+- Web access must remain private: loopback with SSH forwarding, or an explicitly configured private-network listener. Document the access setup and browser request protections; a private network does not replace validation of browser-originated mutations.
 - Minimum visibility: last successful market update per instrument, current provider state, gap count, active strategy instances, signals emitted, active paper positions, backtest status, journal outbox lag and notification delivery failures.
 - Backup: PostgreSQL logical backup plus strategy YAML and application version metadata; document restore drill.
 
@@ -242,3 +262,6 @@ With a seeded `10,000 USDT` demo account and deterministic sample market data:
 10. Run the same strategy version on historical fixtures and obtain deterministic backtest analytics, equity curve and export.
 11. Restart the daemon during monitoring; perform backfill and continue without duplicate signals, orders or journals.
 12. Verify all exchange access was public market data. No real exchange account, API key or order submitted.
+13. Through the private web app, inspect signals/accounts/positions/orders/risk/freshness, approve a signal and create a standalone manual order. Exercise rejection, partial/full closes and stop/target/trailing adjustments through the same engine rules as the CLI.
+14. Pause new entries from the browser: both manual and automatic entries are blocked, while monitoring and exit management continue. Resume explicitly. A duplicate click or lost response produces no duplicate action; disconnected/stale data is visibly identified.
+15. Complete these browser workflows on desktop and a narrow mobile viewport. Verify system light/dark selection and a remembered override; UI text is English with translation preparation, without requiring a language selector or RTL layout.

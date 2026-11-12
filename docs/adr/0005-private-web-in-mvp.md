@@ -1,0 +1,5 @@
+# Include a private operational web app in MVP
+
+Accepted on 2026-11-13 after the user confirmed the scope trade-off. Require a private, single-user web interface for daily paper-trading operations before MVP release, rather than deferring all web work until after the CLI MVP. This adds delivery time but makes signal review, manual entry, position management and risk visibility available in a browser. Deliver web after M6's daemon/control services; retain one financial engine and the shared risk gate from [ADR 0002](0002-paper-execution-and-journal-boundaries.md), with local, SSH-tunnel or private-network access rather than public hosting.
+
+Bound the added scope with tables/detail views, responsive desktop/mobile controls and system-aware light/dark themes with a remembered browser override. Charts, strategy editing and backtest configuration stay outside the MVP web interface; the latter two remain CLI workflows. Ship English with UI text prepared for later translation; multiple languages, language selection and RTL layouts are deferred. See the [web contract](../spec.md#web-contract) for behavior and [roadmap](../roadmap.md) for acceptance gates.

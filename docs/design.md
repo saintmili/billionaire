@@ -17,7 +17,7 @@ Keep StopLore in a dedicated schema and pool as accepted in [ADR 0001](adr/0001-
 Use a modular monolith, ports-and-adapters style, with a single shared domain model, isolated application services and transport-independent business logic.
 
 ```text
-CLI (Cobra) / future TUI / future HTTP API
+CLI (Cobra) / private web HTTP interface / future TUI
          |
  Application services / control interface
          |
@@ -72,6 +72,7 @@ internal/journal/           # StopLore adapter and durable sync/retry
 internal/store/postgres/    # Queries and repositories
 internal/control/           # Local process control, optional Unix socket
 internal/cli/               # Cobra commands and formatters
+internal/web/               # Private HTTP transport and browser UI integration
 migrations/
 configs/
 examples/strategies/
@@ -163,13 +164,25 @@ The implemented schema and defaults live in [configs/example.yaml](../configs/ex
 
 The M3 strategy contract is implemented in [examples/strategies/](../examples/strategies/) and documented in the [M3 report](m3-report.md). Configuration hashes produce immutable numbered versions; instances pin their instrument/account/action and version. The registry exposes compiled Go validation/evaluation/warm-up interfaces, and declarative rules use a bounded typed schema. PostgreSQL commits evaluation identity, policy state and signals together. Order/risk execution is M4. See [ADR 0004](adr/0004-preserve-event-availability-clock.md) for recorded availability clocks and retry semantics.
 
-## Original baseline summary (technical choices pending M0)
+## Private MVP web interface
 
-This table summarizes the original baseline for navigation; the detailed sections in this document and [the specification](spec.md) govern each topic. Technical choices still require M0 verification.
+[ADR 0005](adr/0005-private-web-in-mvp.md) brings a limited operational web app into MVP. Deliver it after M6 establishes daemon ownership and control services. Preserve [ADR 0002](adr/0002-paper-execution-and-journal-boundaries.md): HTTP handlers delegate mutations to the single owning engine through the shared application/control boundary. They must not create another evaluator, write financial state directly, or bypass risk checks. UI validation assists entry; application services remain authoritative.
+
+Serve the UI and its HTTP transport on a private origin, defaulting to loopback for SSH forwarding. Private-network binding requires explicit configuration. Validate browser origins/hosts and protect mutation requests against cross-site requests; keep reads free of side effects. Public hosting and multi-user identity are not part of this design. Document the chosen private-access setup during the web milestone.
+
+Give each mutation a stable request identity and retain its outcome across retries/restarts as needed. Reusing an identity must return the original outcome without repeating the action; reject conflicting payload reuse. After a lost response the browser queries the original outcome before retrying. Disabling a submit button alone cannot guarantee this behavior. Distinguish transport uncertainty, accepted/pending execution, fills and risk rejection.
+
+Read models expose engine connectivity and market-data freshness separately, with observation times. Reconnect refreshes authoritative state before further trading actions; background updates must not erase an in-progress form. Polling versus streaming and the frontend stack remain implementation proposals to settle when planning the web milestone.
+
+Use responsive tables/detail views and forms for the specified daily workflows; charts, strategy editing and backtest configuration are deferred. Use semantic theme colors for light/dark, system preference when no override exists, and browser-local persistence with a return-to-system option. Organize English UI copy in a translation-ready message catalog, avoiding sentence fragments assembled in code. Do not translate instrument identities or user content. Translations, language selection and RTL layouts are deferred; no localization framework is mandated now.
+
+## Baseline summary
+
+This table summarizes the baseline for navigation, including the approved web scope change; the detailed sections in this document and [the specification](spec.md) govern each topic. Unverified technical proposals still require implementation-time verification.
 
 | Topic | Requirement or proposed MVP default |
 |---|---|
-| Product | Go CLI named Millionaire |
+| Product | Millionaire Go application with CLI and private web UI |
 | Architecture | Modular monolith, single active runtime |
 | Database | PostgreSQL only; SQLite postponed |
 | Market connectivity | Public data APIs only, no authenticated exchange integration |
@@ -188,5 +201,7 @@ This table summarizes the original baseline for navigation; the detailed section
 | Analytics | Signal, trading, strategy and backtest categories |
 | Notifications | Terminal, Linux desktop, optional Telegram |
 | Journal | StopLore public API adapter after verification |
-| UI roadmap | CLI → TUI → web |
+| UI roadmap | CLI + private operational web in MVP; native TUI later |
+| Web appearance | Responsive desktop/mobile, system light/dark with remembered override |
+| UI languages | English MVP; translation preparation now, multiple languages/RTL later |
 | Future live trading | Not implemented and disabled in MVP |

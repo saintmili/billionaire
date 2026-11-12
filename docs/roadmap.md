@@ -15,6 +15,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M4 — Paper accounts, orders, risk, and position lifecycle | In progress — [accounts (#1)](m4-accounts-report.md), [manual spot (#2)](m4-spot-report.md), [risk gate (#3)](m4-risk-report.md); remaining acceptance pending |
 | M5 — First-class backtesting and analytics | Not started |
 | M6 — Notifications and process operation | Not started |
+| M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
 | M7 — StopLore journaling | Not started |
 | M8 — Production hardening and MVP release | Not started |
 
@@ -47,6 +48,10 @@ pass before forward monitoring is enabled; this exception does not waive it or
 mark M2 fully accepted. Stop at the M3 boundary.
 
 ## Implementation milestones
+
+### Approved scope addition: private web in MVP
+
+On 2026-11-13, the user confirmed a private, single-user operational web app as an MVP requirement, accepting the added delivery time. See the [web contract](spec.md#web-contract) and [ADR 0005](adr/0005-private-web-in-mvp.md). Add M6W after M6 and before M7, preserving the existing milestone identifiers. Execution order is M4 → M5 → M6 → M6W → M7 → M8; this does not authorize starting a later milestone or waive pending acceptance gates. Light/dark themes and responsive desktop/mobile workflows are included; multiple languages and RTL layouts are deferred, with English text prepared for later translation.
 
 ### Sequencing exception: offline M4 work
 
@@ -99,9 +104,15 @@ monitoring is enabled. This exception does not waive that gate. Stop at M4.
 
 **Acceptance:** Terminal works in foreground; desktop failure on headless server is nonfatal; Telegram retry is bounded; duplicate event does not spam; engine restart restores state and continues after backfill; control socket restricted to current user.
 
+### M6W — Private operational web app
+
+**Tasks:** After M6 acceptance, add the private HTTP/browser interface over the single-owner application/control boundary. Implement signal/account/position/order/risk/freshness tables and detail views; explicit signal approval and standalone manual paper entry; partial/full closes and stop/target/trailing adjustments; pause-new-entries/resume controls. Add request identity and outcome lookup for duplicate/lost-response handling, visible disconnection/staleness, private access configuration and browser request protections. Support responsive desktop/mobile forms and system light/dark themes with a remembered browser override. Organize English UI text for later translation. Choose the frontend stack and refresh transport during milestone planning; no framework is prescribed by the scope decision.
+
+**Acceptance:** Deterministic fixtures exercise browser approval/manual entry through the shared risk gate, rejection reasons, position adjustments and partial/full exits. Pause blocks new manual/automatic entries while monitoring and exit management continue; resume is explicit. Repeated submissions and a lost response do not duplicate actions; unknown outcomes remain visible until resolved. Verify disconnected/stale states, private access and mutation protection, desktop/narrow-screen usability, system theme changes, remembered overrides and return-to-system. Document the run/access procedure and verification evidence. No charts, strategy editor, backtest configuration UI, translations, language selector or RTL layout are required. Web acceptance is mandatory before MVP release.
+
 ### M7 — StopLore journaling
 
-**Tasks:** Adapter according to M0 findings; strategy/setup linkage, trade open/adjust/partial close/final close event mapping; persistent correlation and outbox; journal reports and reconciliation commands.
+**Tasks:** After M6W acceptance, adapter according to M0 findings; strategy/setup linkage, trade open/adjust/partial close/final close event mapping; persistent correlation and outbox; journal reports and reconciliation commands.
 
 **Acceptance:** Verified real StopLore integration tests; journaling outage never erases financial events; replay/restart does not double-journal; journal status and reconciliation detect missing/failed links; unsupported concepts are documented, not fabricated.
 
@@ -109,9 +120,9 @@ monitoring is enabled. This exception does not waive that gate. Stop at M4.
 
 **Tasks:** End-to-end scenario tests, `go test -race`, provider failure injection, financial invariant tests, performance tests for configured streams/backtest sizes, backup/restore, secrets redaction, release binaries, systemd/Compose docs, operational observability and release notes.
 
-**Acceptance:** End-to-end: market fixture → breakout signal → auto/manual paper position → risk management → exit → journal → report; no exchange credentials anywhere; restart and outage simulations pass; `millionaire --help` documents runnable MVP; no blocking P0 defects.
+**Acceptance:** End-to-end: market fixture → breakout signal → auto/manual paper position → risk management → exit → journal → report; no exchange credentials anywhere; restart and outage simulations pass; `millionaire --help` documents runnable MVP; M6W browser workflows, themes and responsive checks pass under the specification's release scenario; private web access documented; no blocking P0 defects.
 
-**Milestone gate:** Don't begin M(n+1) if tests or core acceptance for M(n) fail. If a dependency forces changing the sequence, document why and update this roadmap first.
+**Milestone gate:** Don't begin the next milestone in the documented execution order if tests or core acceptance for its predecessor fail; M6W sits between M6 and M7. If a dependency forces changing the sequence, document why and update this roadmap first.
 
 ## Original M0 prompt (completed; retained for provenance)
 

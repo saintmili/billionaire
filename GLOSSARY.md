@@ -25,6 +25,9 @@ A recorded strategy observation containing direction, market context, and suppor
 **Paper account**:
 A simulated trading account with balances, exposure, and a history of financial changes.
 
+**Kill switch**:
+A control that pauses new paper entries while preserving monitoring, exit management and reporting. Resuming entries requires an explicit action; activating it does not close existing positions.
+
 **Order**:
 A request to execute a paper trade, subject to validation and risk rules.
 
