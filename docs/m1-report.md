@@ -109,5 +109,12 @@ field/line required by the configuration error contract. The fix extracts only
 location metadata, maps it to a field path, and omits decoder text containing
 submitted values. A regression test first failed, then passed for unknown keys,
 duplicate keys, sequence-vs-scalar errors and malformed field types. The full
-suite, vet and build were rerun successfully after the fix. Final review of the
-fix is recorded below.
+suite, vet and build were rerun successfully after the fix. Both reviewers rechecked `40a7820...a66d1a8`: the P3 is resolved, with no new Standards or Spec findings.
+
+### Standards
+
+Zero findings in the implementation or follow-up fix.
+
+### Spec
+
+One initial P3 configuration-diagnostic finding, fixed and independently verified. Zero outstanding findings. No M2 implementation was introduced.
