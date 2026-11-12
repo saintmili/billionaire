@@ -330,6 +330,8 @@ func TestSignalLinkedRiskRejectionRetainsSignalIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	definition.Emission = strategy.WhileTrue
+	definition.Evaluation = strategy.OnUpdate
 	version, err := store.AddStrategyVersion(ctx, definition, registry)
 	if err != nil {
 		t.Fatal(err)
@@ -377,6 +379,76 @@ func TestSignalLinkedRiskRejectionRetainsSignalIdentity(t *testing.T) {
 	if err != nil || orders[0].Request.SignalID != r.SignalID || orders[0].Reason != "entry risk budget exceeded" {
 		t.Fatalf("%+v %v", orders, err)
 	}
+	r.RequestID = "before-signal"
+	r.At = evaluation.Signals[0].ObservedAt.Add(-time.Second)
+	earlier, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true)
+	if err != nil || earlier.Reason != "intent precedes signal availability" {
+		t.Fatalf("earlier intent %+v %v", earlier, err)
+	}
+	r.RequestID = "valid-signal-entry"
+	r.At = obs.AvailableAt
+	r.Quantity = "0.5"
+	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+		t.Fatal(err)
+	}
+	obs, gate = spotObservation(2)
+	result, err = owner.ObserveSpot(ctx, obs, gate)
+	if err != nil || result.Orders[0].Status != "filled" {
+		t.Fatalf("entry %+v %v", result, err)
+	}
+	positions, err := store.PaperPositions(ctx, account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeRequest := r
+	closeRequest.RequestID = "signal-close"
+	closeRequest.Action = "close"
+	closeRequest.PositionID = positions[0].ID
+	closeRequest.At = obs.AvailableAt
+	if _, err := owner.SubmitSpotOrder(ctx, closeRequest, spotInfo(), true); err != nil {
+		t.Fatal(err)
+	}
+	obs, gate = spotObservation(3)
+	if _, err := owner.ObserveSpot(ctx, obs, gate); err != nil {
+		t.Fatal(err)
+	}
+	r.RequestID = "reuse-signal"
+	r.At = obs.AvailableAt
+	reused, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true)
+	if err != nil || reused.Reason != "signal already filled" {
+		t.Fatalf("reused signal %+v %v", reused, err)
+	}
+	candle.ObservedAt = candle.ObservedAt.Add(time.Second)
+	candle.BaseVolume = candle.BaseVolume.Add(spotDecimal("1"))
+	candle = marketdata.Stamp(candle)
+	next, err := store.EvaluateStrategyEvent(ctx, instance.ID, marketdata.Event{Kind: "candle", Candle: &candle, AllowsEntries: true}, registry)
+	if err != nil || len(next.Signals) != 1 {
+		t.Fatalf("second signal %+v %v", next, err)
+	}
+	r.RequestID = "same-candle"
+	r.SignalID = next.Signals[0].ID
+	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+		t.Fatal(err)
+	}
+	obs, gate = spotObservation(4)
+	result, err = owner.ObserveSpot(ctx, obs, gate)
+	if err != nil || result.Orders[0].Reason != "entry already filled for signal candle" {
+		t.Fatalf("same candle %+v %v", result, err)
+	}
+	if err := store.SetRiskPolicy(ctx, account.ID, "", paper.RiskPolicy{Pyramiding: true}); err != nil {
+		t.Fatal(err)
+	}
+	r.RequestID = "allowed-same-candle"
+	r.At = obs.AvailableAt
+	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+		t.Fatal(err)
+	}
+	obs, gate = spotObservation(5)
+	result, err = owner.ObserveSpot(ctx, obs, gate)
+	if err != nil || result.Orders[0].Status != "filled" {
+		t.Fatalf("allowed candle %+v %v", result, err)
+	}
+
 }
 
 func TestPercentageSizingRejectsStaleValuationOfOtherHoldings(t *testing.T) {
@@ -412,5 +484,47 @@ func TestPercentageSizingRejectsStaleValuationOfOtherHoldings(t *testing.T) {
 	result, err := owner.ObserveSpot(ctx, obs, gate)
 	if err != nil || result.Orders[0].Reason != "valuation source stale/unready" {
 		t.Fatalf("%+v %v", result, err)
+	}
+}
+
+func TestExecutionFailuresPersistReasonsWithoutFinancialChanges(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		ready, enabled bool
+		quantity       string
+		reason         string
+	}{
+		{"unready", false, true, "2", "source stale/unready"},
+		{"disabled", true, false, "2", "market disabled"},
+		{"insufficient funds", true, true, "20", "insufficient USDT funds"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			store, owner, account, _ := newSpotTest(t)
+			r := spotRequest(account.ID, "entry")
+			r.Quantity = tt.quantity
+			if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+				t.Fatal(err)
+			}
+			obs, gate := spotObservation(1)
+			obs.Ready = tt.ready
+			gate.Enabled = tt.enabled
+			result, err := owner.ObserveSpot(ctx, obs, gate)
+			if err != nil || result.Orders[0].Reason != tt.reason {
+				t.Fatalf("%+v %v", result, err)
+			}
+			orders, err := store.PaperOrders(ctx, account.ID)
+			if err != nil || orders[0].Reason != tt.reason {
+				t.Fatalf("%+v %v", orders, err)
+			}
+			saved, err := store.PaperAccount(ctx, account.ID)
+			if err != nil || saved.Balance.String() != "1000" {
+				t.Fatalf("%+v %v", saved, err)
+			}
+			fills, err := store.PaperFills(ctx, account.ID)
+			if err != nil || len(fills) != 0 {
+				t.Fatalf("%+v %v", fills, err)
+			}
+		})
 	}
 }

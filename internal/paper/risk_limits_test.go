@@ -56,3 +56,22 @@ func TestRiskPolicyValidationAndUnavailableSizingState(t *testing.T) {
 		t.Fatalf("strictest budget %s %s", q, why)
 	}
 }
+
+func TestLeverageAndPercentageRiskBoundaries(t *testing.T) {
+	now := time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
+	p := paper.RiskPolicy{MaxLeverage: 2}
+	if why := paper.EntryRiskReason(p, paper.RiskState{}, amount("1"), amount("100"), amount("90"), 2, now); why != "" {
+		t.Fatal(why)
+	}
+	if why := paper.EntryRiskReason(p, paper.RiskState{}, amount("1"), amount("100"), amount("90"), 3, now); why != "maximum leverage exceeded" {
+		t.Fatal(why)
+	}
+	p = paper.RiskPolicy{PercentRisk: "1"}
+	state := paper.RiskState{Equity: amount("1000")}
+	if why := paper.EntryRiskReason(p, state, amount("1"), amount("100"), amount("90"), 1, now); why != "" {
+		t.Fatal(why)
+	}
+	if why := paper.EntryRiskReason(p, state, amount("1.001"), amount("100"), amount("90"), 1, now); why != "entry risk budget exceeded" {
+		t.Fatal(why)
+	}
+}

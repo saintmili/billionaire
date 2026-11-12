@@ -225,20 +225,16 @@ func PlanSpotFill(order Order, observation Observation, gate ExecutionGate, bala
 	if gate.Now.IsZero() || gate.StaleAfter <= 0 {
 		return result, errors.New("execution clock and positive stale threshold are required")
 	}
-	if order.Status != "pending" || order.Request.Instrument != observation.Instrument {
-		return result, nil
-	}
-	// Neither delayed old prices nor information unavailable at the processing clock can fill an intent.
-	if !observation.ObservedAt.After(order.Request.At) || !observation.AvailableAt.After(order.Request.At) || observation.AvailableAt.After(gate.Now) {
-		return result, nil
-	}
 	reject := func(reason string) (Execution, error) {
 		result.Order.Status = "rejected"
 		result.Order.Reason = reason
 		return result, nil
 	}
-	if !observation.Ready || gate.Now.Sub(observation.ObservedAt) > gate.StaleAfter {
-		return reject("source stale/unready")
+	if eligible, reason := SpotObservationEligibility(order, observation, gate); !eligible {
+		if reason != "" {
+			return reject(reason)
+		}
+		return result, nil
 	}
 	if reason := SpotOrderRejection(order, gate.Enabled, position); reason != "" {
 		return reject(reason)
@@ -317,4 +313,19 @@ func ExecutablePrice(order Order, observed domain.Decimal) domain.Decimal {
 	price = steps.Mul(order.Metadata.PriceStep)
 
 	return price
+}
+
+// SpotObservationEligibility is shared by risk planning and fill planning.
+// A blank reason with eligible=false leaves the intent pending for a later price.
+func SpotObservationEligibility(order Order, observation Observation, gate ExecutionGate) (bool, string) {
+	if order.Status != "pending" || order.Request.Instrument != observation.Instrument {
+		return false, ""
+	}
+	if !observation.ObservedAt.After(order.Request.At) || !observation.AvailableAt.After(order.Request.At) || observation.AvailableAt.After(gate.Now) {
+		return false, ""
+	}
+	if !observation.Ready || gate.Now.Sub(observation.ObservedAt) > gate.StaleAfter {
+		return false, "source stale/unready"
+	}
+	return true, ""
 }

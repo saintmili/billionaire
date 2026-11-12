@@ -88,30 +88,64 @@ func entryAdmission(ctx context.Context, tx pgx.Tx, order paper.Order) (string, 
 			return "", err
 		}
 	}
+
 	if order.Request.SignalID != "" {
-		var valid bool
-		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM millionaire.strategy_signals s JOIN millionaire.strategy_instances i ON i.id=s.instance_id WHERE s.id=$1 AND s.kind='entry' AND s.direction='long' AND s.payload->>'strategy_id'=$2 AND i.binding->>'account'=$3 AND s.payload->'instrument'=$4::jsonb AND s.payload->>'source_ready'='true' AND i.binding->>'action' IN ('manual_paper','auto_paper'))`, order.Request.SignalID, order.Request.StrategyID, order.Request.AccountID, mustJSON(order.Request.Instrument)).Scan(&valid)
+		signal, err := decodePaperRow[strategy.Signal](tx.QueryRow(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE id=$1", order.Request.SignalID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "signal unavailable or incompatible with entry", nil
+		}
 		if err != nil {
 			return "", err
 		}
-		if !valid {
+		instance, err := decodePaperRow[strategy.Instance](tx.QueryRow(ctx, "SELECT binding FROM millionaire.strategy_instances WHERE id=$1", signal.InstanceID))
+		if err != nil {
+			return "", err
+		}
+		if signal.Kind != "entry" || signal.Direction != strategy.Long || signal.StrategyID != order.Request.StrategyID || instance.Account != order.Request.AccountID || signal.Instrument != order.Request.Instrument || !signal.SourceReady || (instance.Action != strategy.ManualPaper && instance.Action != strategy.AutoPaper) {
 			return "signal unavailable or incompatible with entry", nil
 		}
+		if order.Request.At.Before(signal.ObservedAt) {
+			return "intent precedes signal availability", nil
+		}
+		var used bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM millionaire.paper_orders WHERE status='filled' AND payload->'request'->>'signal_id'=$1 AND payload->'request'->>'action'='open')`, signal.ID).Scan(&used); err != nil {
+			return "", err
+		}
+		if used {
+			return "signal already filled", nil
+		}
 	}
+
 	return "", nil
 }
-func mustJSON(value any) []byte { data, _ := json.Marshal(value); return data }
+
+type scopedRiskPolicy struct {
+	policy         paper.RiskPolicy
+	strategyScoped bool
+}
 
 func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observation paper.Observation, gate paper.ExecutionGate, balance domain.Decimal) (paper.ExecutionGate, string, error) {
 	reason, err := entryAdmission(ctx, tx, order)
 	if reason != "" || err != nil {
 		return gate, reason, err
 	}
-	rows, err := tx.Query(ctx, `SELECT policy FROM millionaire.paper_risk_policies WHERE account_id=$1 AND (strategy_id='' OR strategy_id=$2) ORDER BY strategy_id`, order.Request.AccountID, order.Request.StrategyID)
+	rows, err := tx.Query(ctx, `SELECT strategy_id,policy FROM millionaire.paper_risk_policies WHERE account_id=$1 AND (strategy_id='' OR strategy_id=$2) ORDER BY strategy_id`, order.Request.AccountID, order.Request.StrategyID)
 	if err != nil {
 		return gate, "", err
 	}
-	policies, err := decodePaperRows[paper.RiskPolicy](rows)
+	policies, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (scopedRiskPolicy, error) {
+		var scope string
+		var data []byte
+		var p scopedRiskPolicy
+		if err := row.Scan(&scope, &data); err != nil {
+			return p, err
+		}
+		p.strategyScoped = scope != ""
+		if err := json.Unmarshal(data, &p.policy); err != nil {
+			return p, ErrSchema
+		}
+		return p, nil
+	})
 	if err != nil {
 		return gate, "", err
 	}
@@ -120,14 +154,29 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		return gate, "", err
 	}
 	if !accountConfigured {
-		policies = append([]paper.RiskPolicy{{}}, policies...)
+		policies = append([]scopedRiskPolicy{{}}, policies...)
 	}
 	if order.Request.SignalID != "" {
 		signal, e := decodePaperRow[strategy.Signal](tx.QueryRow(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE id=$1", order.Request.SignalID))
 		if e != nil {
 			return gate, "", e
 		}
-		policies = append(policies, paper.RiskPolicy{PercentRisk: signal.RiskPercent, Pyramiding: true})
+		policies = append(policies, scopedRiskPolicy{policy: paper.RiskPolicy{PercentRisk: signal.RiskPercent, Pyramiding: true}, strategyScoped: true})
+		candleLimited := false
+		for _, p := range policies {
+			candleLimited = candleLimited || !p.policy.Pyramiding
+		}
+		if candleLimited {
+			var used bool
+			err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM millionaire.paper_orders o JOIN millionaire.strategy_signals s ON s.id=o.payload->'request'->>'signal_id' WHERE o.account_id=$1 AND o.status='filled' AND o.payload->'request'->>'action'='open' AND s.payload->>'strategy_id'=$2 AND s.payload->'instrument'=$3::jsonb AND s.payload->>'timeframe'=$4 AND s.payload->>'candle_open'=$5)`, order.Request.AccountID, signal.StrategyID, jsonInstrument(signal.Instrument), string(signal.Timeframe), signal.CandleOpen.UTC().Format(time.RFC3339Nano)).Scan(&used)
+			if err != nil {
+				return gate, "", err
+			}
+			if used {
+				return gate, "entry already filled for signal candle", nil
+			}
+		}
+
 	}
 	positionsRows, err := tx.Query(ctx, "SELECT payload FROM millionaire.paper_positions WHERE account_id=$1 AND status='open'", order.Request.AccountID)
 	if err != nil {
@@ -160,7 +209,8 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 	equity := balance
 	marks := map[string]domain.Decimal{}
 	needsMarks := false
-	for _, p := range policies {
+	for _, scoped := range policies {
+		p := scoped.policy
 		needsMarks = needsMarks || p.PercentRisk != "" || p.MarginPercent != "" || p.SymbolExposure != ""
 	}
 	for _, p := range positions {
@@ -191,7 +241,8 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 	quantity, _ := paper.ExactValue(order.Request.Quantity, true)
 	if order.Request.Quantity == "risk" {
 		sized := false
-		for _, p := range policies {
+		for _, scoped := range policies {
+			p := scoped.policy
 			if p.FixedRisk != "" || p.PercentRisk != "" {
 				q, why := paper.SizeEntry(p, equity, entry, stop, order.Metadata.QuantityStep)
 				if why != "" {
@@ -208,11 +259,12 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		}
 		gate.RiskQuantity = quantity.String()
 	}
-	for index, p := range policies {
-		scoped := index > 0
+	for _, policy := range policies {
+		p := policy.policy
+		strategyScoped := policy.strategyScoped
 		state := paper.RiskState{Equity: equity}
 		for _, position := range positions {
-			if scoped && position.StrategyID != order.Request.StrategyID {
+			if strategyScoped && position.StrategyID != order.Request.StrategyID {
 				continue
 			}
 			state.Positions++
@@ -225,7 +277,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		day := gate.Now.UTC().Truncate(24 * time.Hour)
 		for _, f := range fills {
 			position := byID[f.PositionID]
-			if scoped && position.StrategyID != order.Request.StrategyID {
+			if strategyScoped && position.StrategyID != order.Request.StrategyID {
 				continue
 			}
 			opening := position.ID == paper.Identity("position", f.OrderID)
@@ -246,4 +298,9 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		}
 	}
 	return gate, "", nil
+}
+
+func jsonInstrument(instrument domain.Instrument) []byte {
+	data, _ := json.Marshal(instrument)
+	return data
 }

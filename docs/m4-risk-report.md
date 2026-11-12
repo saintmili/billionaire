@@ -20,6 +20,15 @@ Both scopes must pass; neither overrides or loosens the other. Linked signals al
 retain their immutable strategy-version percentage-risk ceiling. Strategy scope
 requires an existing definition. Signal links must identify a ready long entry,
 matching strategy, instrument and bound account in manual/auto paper mode.
+Intents cannot predate signal availability, and the execution observation must
+follow that intent. A filled signal cannot be consumed again under a new request
+ID, even after closing its position or enabling pyramiding. Distinct signals from
+the same strategy/instrument/timeframe/candle can fill at most once unless all
+applicable scopes allow pyramiding; this check uses durable entry history,
+including closed positions. Standalone manual orders carry no signal candle;
+their deduplication uses request identity, held exposure and configured cooldown.
+Strategy bindings now accept generated paper-account IDs (up to 128 characters),
+which exceeded the earlier 64-character strategy-identifier limit.
 Approval/automatic orchestration remains a later ticket; both can call the same
 `SubmitSpotOrder` / `ObserveSpot` API.
 
@@ -106,4 +115,32 @@ because it deliberately opens two positions in the same instrument.
 
 Validation commands use a disposable PostgreSQL 17 server and isolated test
 databases via `MILLIONAIRE_TEST_DATABASE_URL`; no existing application database is
-modified. Final full-suite, vet and race outcomes are recorded after review.
+modified. Final verification passed with PostgreSQL integration tests enabled:
+
+- `go test ./...` — all packages pass, including migration up/down and rollback.
+- `go vet ./...` — passes.
+- `go test -race ./internal/paper ./internal/store/postgres ./internal/cli` — passes.
+- `git diff --check` — passes.
+
+The temporary PostgreSQL 17 container was removed after verification. The nominal
+risk model excludes fees and future gap/slippage losses as described above;
+protective exits, linear execution, and approval orchestration retain their
+separate M4 acceptance gates.
+
+## Standards
+
+Review found no documented-standard violations and three optional maintainability
+observations. Shared `SpotObservationEligibility` now eliminates duplicate
+eligibility predicates; explicit `scopedRiskPolicy.strategyScoped` replaces
+slice-position scope inference. The documented `quantity="risk"` syntax remains
+a deliberate interface choice. Recheck found no residual standard violations.
+
+## Spec
+
+Review found two defects: linked intents could predate signal availability, and
+closed positions could permit another entry from a consumed signal or its candle.
+Both were fixed under the account transaction and regression-tested, including
+explicit same-candle pyramiding allowance. Recheck found no residual spec findings.
+
+Review totals: Standards 3 optional observations (2 addressed, 1 retained interface
+choice), no hard violations; Spec 2 findings, both resolved.

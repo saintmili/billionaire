@@ -190,7 +190,8 @@ func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observat
 			}
 			orderGate := gate
 			riskReason := ""
-			if order.Request.Action == "open" && observation.ObservedAt.After(order.Request.At) && observation.AvailableAt.After(order.Request.At) && !observation.AvailableAt.After(gate.Now) && observation.Ready && gate.Now.Sub(observation.ObservedAt) <= gate.StaleAfter && gate.Enabled {
+			eligible, _ := paper.SpotObservationEligibility(order, observation, gate)
+			if order.Request.Action == "open" && eligible && gate.Enabled {
 				var riskErr error
 				orderGate, riskReason, riskErr = planRiskEntry(ctx, tx, order, observation, gate, balance)
 				if riskErr != nil {
