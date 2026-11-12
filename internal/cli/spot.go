@@ -58,6 +58,7 @@ func spotEnabled(cfg config.Config, info marketdata.InstrumentInfo) bool {
 }
 
 func (o *options) addSpotCommands(group *cobra.Command) {
+	o.addProtectionCommand(group)
 	for _, action := range []string{"open", "close"} {
 		var r paper.OrderRequest
 		var fixturePath, at, market, symbol string
@@ -128,7 +129,11 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			_ = cmd.MarkFlagRequired(flag)
 		}
 		if action == "open" {
-			cmd.Flags().StringVar(&r.StopPrice, "stop-price", "", "sizing stop price; required for risk budgets (protective execution is a later ticket)")
+			cmd.Flags().StringVar(&r.TargetPrice, "take-profit", "", "initial long target above fill price")
+			cmd.Flags().StringVar(&r.TargetQuantity, "target-quantity", "", "one-time partial target quantity; default all remaining holdings")
+			cmd.Flags().StringVar(&r.TrailActivation, "trail-activation", "", "absolute trailing activation price")
+			cmd.Flags().StringVar(&r.TrailDistance, "trail-distance", "", "absolute trailing price distance")
+			cmd.Flags().StringVar(&r.StopPrice, "stop-price", "", "initial protective stop below fill price; also used for risk sizing")
 			cmd.Flags().StringVar(&r.StrategyID, "strategy", "", "optional strategy definition scope")
 			cmd.Flags().StringVar(&r.SignalID, "signal", "", "optional originating signal ID")
 			cmd.Flags().StringVar(&r.AccountID, "account", "", "existing paper account ID")

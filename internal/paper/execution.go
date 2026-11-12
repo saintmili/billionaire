@@ -12,20 +12,24 @@ import (
 )
 
 type OrderRequest struct {
-	StrategyID  string            `json:"strategy_id,omitempty"`
-	SignalID    string            `json:"signal_id,omitempty"`
-	StopPrice   string            `json:"stop_price,omitempty"`
-	RequestID   string            `json:"request_id"`
-	AccountID   string            `json:"account_id"`
-	PositionID  string            `json:"position_id,omitempty"`
-	Action      string            `json:"action"`
-	Instrument  domain.Instrument `json:"instrument"`
-	Side        string            `json:"side"`
-	Leverage    int               `json:"leverage"`
-	Quantity    string            `json:"quantity"`
-	At          time.Time         `json:"at"`
-	FeeRate     string            `json:"fee_rate"`
-	SlippageBPS string            `json:"slippage_bps"`
+	StrategyID      string            `json:"strategy_id,omitempty"`
+	SignalID        string            `json:"signal_id,omitempty"`
+	TargetPrice     string            `json:"target_price,omitempty"`
+	TargetQuantity  string            `json:"target_quantity,omitempty"`
+	TrailActivation string            `json:"trail_activation,omitempty"`
+	TrailDistance   string            `json:"trail_distance,omitempty"`
+	StopPrice       string            `json:"stop_price,omitempty"`
+	RequestID       string            `json:"request_id"`
+	AccountID       string            `json:"account_id"`
+	PositionID      string            `json:"position_id,omitempty"`
+	Action          string            `json:"action"`
+	Instrument      domain.Instrument `json:"instrument"`
+	Side            string            `json:"side"`
+	Leverage        int               `json:"leverage"`
+	Quantity        string            `json:"quantity"`
+	At              time.Time         `json:"at"`
+	FeeRate         string            `json:"fee_rate"`
+	SlippageBPS     string            `json:"slippage_bps"`
 }
 
 type Order struct {
@@ -37,6 +41,7 @@ type Order struct {
 }
 
 type Observation struct {
+	Bar         *PriceBar         `json:"bar,omitempty"`
 	ID          string            `json:"id"`
 	Instrument  domain.Instrument `json:"instrument"`
 	Source      string            `json:"source"`
@@ -54,6 +59,9 @@ type ExecutionGate struct {
 }
 
 type Fill struct {
+	ExitReason    string         `json:"exit_reason,omitempty"`
+	Ambiguous     bool           `json:"ambiguous,omitempty"`
+	Gap           bool           `json:"gap,omitempty"`
 	ID            string         `json:"id"`
 	OrderID       string         `json:"order_id"`
 	PositionID    string         `json:"position_id"`
@@ -71,6 +79,7 @@ type Fill struct {
 }
 
 type Position struct {
+	Protection        *ProtectionState          `json:"protection,omitempty"`
 	StrategyID        string                    `json:"strategy_id,omitempty"`
 	ID                string                    `json:"id"`
 	AccountID         string                    `json:"account_id"`
@@ -184,7 +193,7 @@ func (o Observation) Validate() error {
 	if err := validateValue(o.Price, true); err != nil {
 		return err
 	}
-	return nil
+	return o.validateBar()
 }
 
 // SameOrder compares only immutable intent and metadata, ignoring fill/rejection state.
@@ -265,12 +274,17 @@ func PlanSpotFill(order Order, observation Observation, gate ExecutionGate, bala
 	fee := notional.Mul(decimal(order.Request.FeeRate)).RoundCeil(18)
 	fill := Fill{ID: Identity("fill", order.ID), OrderID: order.ID, PositionID: Identity("position", order.ID), ObservationID: observation.ID, Quantity: quantity, Price: price, Notional: notional, Fee: fee, Source: observation.Source, ObservedAt: observation.ObservedAt, AvailableAt: observation.AvailableAt, ExecutedAt: gate.Now, LatencyMillis: gate.Now.Sub(order.Request.At).Milliseconds()}
 	if order.Request.Action == "open" {
+		config := order.Request.ProtectionConfig()
+		if err := ValidateProtection(config, Position{Metadata: order.Metadata, RemainingQuantity: quantity}, price); err != nil {
+			return reject(err.Error())
+		}
 		total := notional.Add(fee)
 		if total.GreaterThan(balance) {
 			return reject("insufficient USDT funds")
 		}
 		result.CashDelta = total.Neg()
 		result.Position = &Position{StrategyID: order.Request.StrategyID, ID: fill.PositionID, AccountID: order.Request.AccountID, Instrument: order.Request.Instrument, Metadata: order.Metadata, Status: "open", InitialQuantity: quantity, RemainingQuantity: quantity, EntryPrice: price, RemainingCost: total, FeesPaid: fee}
+		result.Position.Protection = &ProtectionState{ProtectionConfig: config, UpdatedAt: observation.AvailableAt, FeeRate: order.Request.FeeRate, SlippageBPS: order.Request.SlippageBPS}
 		result.Movements = []Movement{{Kind: "spot_buy", Amount: notional.Neg()}, {Kind: "fee", Amount: fee.Neg()}}
 	} else {
 		copy := *position
@@ -328,4 +342,8 @@ func SpotObservationEligibility(order Order, observation Observation, gate Execu
 		return false, "source stale/unready"
 	}
 	return true, ""
+}
+
+func (r OrderRequest) ProtectionConfig() ProtectionConfig {
+	return ProtectionConfig{StopPrice: r.StopPrice, TargetPrice: r.TargetPrice, TargetQuantity: r.TargetQuantity, TrailActivation: r.TrailActivation, TrailDistance: r.TrailDistance}
 }

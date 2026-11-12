@@ -1,0 +1,1 @@
+DROP TABLE millionaire.paper_protection_adjustments;

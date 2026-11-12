@@ -227,6 +227,84 @@ or observation identity. `storage.timeout` bounds each offline invocation, and t
 existing dedicated-session ownership excludes competing processes. M2 live-host
 validation remains pending; this command never enables live monitoring.
 
+## Protective spot exits
+
+Run `millionaire init` to apply migration 0007 before using protection. Initial
+`--stop-price` now attaches an executable stop as well as supplying risk sizing.
+A stop must be below the actual modeled entry fill, and `--take-profit` above it.
+Initial geometry is checked at execution; invalid geometry produces a persisted
+rejection without opening a position. All protection prices and distances must be
+positive exact price ticks. The existing account and entry-risk checks still apply.
+
+For a fresh account, using the existing entry fixture:
+
+```sh
+./bin/millionaire paper open --account <account-id> --quantity 2 --request-id protected-buy \
+  --at 2026-11-12T10:00:00Z --fixture testdata/paper/spot-metadata.json \
+  --stop-price 90 --take-profit 120 --target-quantity 0.5
+./bin/millionaire paper observe --fixture testdata/paper/spot-entry.json --at 2026-11-12T10:00:01Z
+./bin/millionaire paper positions --output json
+./bin/millionaire paper adjust <position-id> --stop-loss 95 --request-id raise-stop \
+  --at 2026-11-12T10:00:02Z
+./bin/millionaire paper observe --fixture testdata/paper/spot-protection-collision.json \
+  --at 2026-11-12T10:01:00Z
+./bin/millionaire paper fills --output json
+```
+
+Adjustments preserve omitted fields; an explicit empty value disables a field.
+Use `--take-profit`, `--target-quantity`, `--trail-activation` and `--trail-distance`
+on either entry or adjustment. To disable trailing, clear both trailing fields.
+`--trail-activation` is an absolute price and `--trail-distance` an absolute price
+distance, smaller than activation. Once a valid observation reaches activation,
+the highest observed price minus distance ratchets the stop upward, rounded down
+to the price tick. It never lowers the stop automatically. The updated stop applies
+only to a **later** observation. An explicit manual stop adjustment or trailing
+reconfiguration resets trailing activation/high-water state.
+
+A target closes all remaining holdings by default. `--target-quantity` makes it a
+one-time partial exit, capped at current remaining holdings after intervening
+manual closes. The configured quantity must match the quantity step/minimum and
+fit the position when set. Stops always close the remaining holdings. A completed
+partial target stays consumed across restart; explicitly adjusting target price
+or quantity rearms it. Every exit still validates minimum quantity/notional: an
+unexecutable exit is recorded as rejected and protection remains available for a
+later observation. No reverse position is opened.
+
+Observations may include a completed `bar` with `start`, exclusive `end`, `open`,
+`high`, `low`, `close`; observation `price` must equal `close`, OHLC must be
+consistent and all prices positive and bounded. `observed_at` must be at or after
+`end`. This is an explicit approximate OHLC model, not recorded intrabar ticks.
+A bar starting before entry, an adjustment, or the last protection update cannot
+retroactively trigger that position's protection. Use consecutive nonoverlapping
+bars or recorded point observations. Initial market entries use the observation's
+price (bar close), so protection begins with a subsequent observation.
+
+Per event: evaluate existing stops, then targets, then update trailing for the
+next event; execute protective decisions before pending manual orders. If the
+old stop and target are both touched, choose the stop and record `ambiguous=true`
+on the fill. At a gap through a level, use bar open (or the point observation's
+price) plus adverse modeled slippage, rather than the crossed level. Otherwise
+use the touched level plus slippage. The collision fixture above closes at the
+adjusted stop and marks ambiguity; it cannot use the same bar's high to invent a
+new trailing stop hit earlier in that bar.
+
+Protection and manual exits bypass entry limits, disabled instruments and the
+kill switch, while requiring fresh, ready, valid observations. Unusable prices
+cannot fabricate a fill or consume a target. Entry fee/slippage assumptions also
+apply to protective exits. Adjustment reference prices must be fresh under
+`market_data.stale_after`, available by `--at`, and ordered after position state.
+Retry an adjustment with the same request ID, fields, timestamp and stale threshold;
+its original outcome is returned even after closure. Changed inputs fail.
+
+Position state, replay outcomes, ledger changes and outbox enqueue are transactional.
+Trailing changes and manual adjustments enqueue journal events without calling
+StopLore. Existing positions upgraded from migration 0006 retain entry execution
+assumptions but do not automatically activate old sizing-only stops; use `paper
+adjust` explicitly. Inspect JSON positions for persisted protection, high water,
+activation and target-consumed state, and fills for exit reason, gap and ambiguity.
+See [ticket #6 evidence](docs/m4-protection-report.md). Linear coverage remains a
+later M4 gate; this does not enable live monitoring.
+
 ## Checks
 
 ```sh

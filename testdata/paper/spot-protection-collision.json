@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "instrument": {
+      "provider": "fixture",
+      "market": "spot",
+      "base": "BTC",
+      "quote": "USDT",
+      "instrument_id": "BTCUSDT"
+    },
+    "price_step": "0.01",
+    "quantity_step": "0.001",
+    "min_quantity": "0.001",
+    "min_notional": "5"
+  },
+  "observation": {
+    "id": "protection-collision",
+    "instrument": {
+      "provider": "fixture",
+      "market": "spot",
+      "base": "BTC",
+      "quote": "USDT",
+      "instrument_id": "BTCUSDT"
+    },
+    "source": "fixture",
+    "price": "110",
+    "observed_at": "2026-11-12T10:01:00Z",
+    "available_at": "2026-11-12T10:01:00Z",
+    "ready": true,
+    "bar": {
+      "start": "2026-11-12T10:00:03Z",
+      "end": "2026-11-12T10:01:00Z",
+      "open": "100",
+      "high": "125",
+      "low": "85",
+      "close": "110"
+    }
+  }
+}

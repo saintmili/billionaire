@@ -157,6 +157,11 @@ func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observat
 	if !accepted {
 		result.Reason = "out-of-order observation skipped"
 	} else {
+		protective, err := observeProtection(ctx, tx, observation, gate)
+		if err != nil {
+			return result, safeError(ctx, ErrUnavailable)
+		}
+		result.Orders = append(result.Orders, protective...)
 		rows, err := tx.Query(ctx, `SELECT payload FROM millionaire.paper_orders WHERE instrument_key=$1 AND status='pending' ORDER BY intent_at,id FOR UPDATE`, key)
 		if err != nil {
 			return result, safeError(ctx, ErrUnavailable)
