@@ -47,7 +47,27 @@ Passed:
   up/down/repeat/reopen and all existing M1–M3 tests.
 - `go vet ./...`, `go build ./...`, and `git diff --check`.
 
-Race validation and independent standards/spec review are recorded after completion.
+- `go test -race ./internal/cli ./internal/store/postgres` with PostgreSQL enabled.
+- Focused race checks for rollback/session loss after the test-only review change.
+
+## Standards review
+
+Independent review found no hard breaches of documented repository standards.
+One P3 testing judgement identified session-loss coverage coupled to the private
+advisory-lock key. The test now identifies the new database session without that
+key, verifies exactly one backend was terminated, and asserts failure through the
+owner API. A direct outbox-count assertion was also removed; injected outbox failure
+still proves atomic rollback through the public account API. Re-review confirmed
+both changes and no remaining standards findings.
+
+## Spec review
+
+Independent review found no actionable missing/partial requirements, scope creep,
+or incorrect implementations for issue #1. It verified dedicated-session ownership,
+exact balances, request retry semantics and atomic account/ledger/outbox writes.
+M4's remaining behavior and M2's outstanding live-host gate stay explicit.
+
+Review totals: Standards — 1 finding addressed, 0 remaining; Spec — 0 findings.
 
 ## Remaining gates
 

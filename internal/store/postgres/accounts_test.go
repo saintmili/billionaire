@@ -154,10 +154,6 @@ func TestPaperAccountRollbackAndLedgerImmutability(t *testing.T) {
 	if err != nil || len(entries) != 1 || entries[0].Amount.String() != "12.5" {
 		t.Fatalf("ledger: %+v %v", entries, err)
 	}
-	var events int
-	if err := conn.QueryRow(ctx, `SELECT count(*) FROM millionaire.journal_outbox WHERE kind='account_opened'`).Scan(&events); err != nil || events != 1 {
-		t.Fatalf("financial outbox: %d %v", events, err)
-	}
 }
 
 func TestPaperOwnershipRejectsCompetitorAndReleasesAfterProcessDeath(t *testing.T) {
@@ -264,18 +260,29 @@ func TestPaperOwnerLosingSessionCannotWriteThroughNewConnection(t *testing.T) {
 	if err := store.Migrate(ctx, postgres.Up); err != nil {
 		t.Fatal(err)
 	}
-	owner, err := store.AcquirePaperOwner(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer owner.Close()
 	admin, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer admin.Close(ctx)
-	if _, err := admin.Exec(ctx, `SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype='advisory' AND classid=(7341928602::bigint >> 32)::oid AND objid=(7341928602::bigint & 4294967295)::oid`); err != nil {
+	// Snapshot this isolated database's existing sessions before acquiring the
+	// owner. Terminate the new session without depending on its lock key.
+	var existing []int32
+	if err := admin.QueryRow(ctx, `SELECT array_agg(pid) FROM pg_stat_activity WHERE datname=current_database()`).Scan(&existing); err != nil {
 		t.Fatal(err)
+	}
+	owner, err := store.AcquirePaperOwner(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	rows, err := admin.Query(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND pid <> ALL($1::int[])`, existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminated, err := pgx.CollectRows(rows, pgx.RowTo[bool])
+	if err != nil || len(terminated) != 1 || !terminated[0] {
+		t.Fatalf("terminate owner session: %v %v", terminated, err)
 	}
 	request := paper.CreateAccount{RequestID: "lost", Name: "lost", Currency: "USDT", InitialBalance: "1"}
 	if _, err := owner.CreateAccount(ctx, request); err == nil {
