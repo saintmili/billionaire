@@ -118,7 +118,7 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			})
 		}}
 		cmd.Flags().StringVar(&r.RequestID, "request-id", "", "stable order request ID; reuse with identical inputs and intent time")
-		cmd.Flags().StringVar(&r.Quantity, "quantity", "", "positive base quantity; full close uses the entire remaining quantity")
+		cmd.Flags().StringVar(&r.Quantity, "quantity", "", "positive base quantity, or risk for policy sizing on entry")
 		cmd.Flags().StringVar(&at, "at", "", "explicit RFC3339 intent timestamp for offline execution")
 		cmd.Flags().StringVar(&r.FeeRate, "fee-rate", "0.001", "taker fee fraction, from 0 to 1, frozen with the order")
 		cmd.Flags().StringVar(&r.SlippageBPS, "slippage-bps", "0", "adverse slippage basis points, from 0 to below 10000")
@@ -128,6 +128,9 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			_ = cmd.MarkFlagRequired(flag)
 		}
 		if action == "open" {
+			cmd.Flags().StringVar(&r.StopPrice, "stop-price", "", "sizing stop price; required for risk budgets (protective execution is a later ticket)")
+			cmd.Flags().StringVar(&r.StrategyID, "strategy", "", "optional strategy definition scope")
+			cmd.Flags().StringVar(&r.SignalID, "signal", "", "optional originating signal ID")
 			cmd.Flags().StringVar(&r.AccountID, "account", "", "existing paper account ID")
 			cmd.Flags().StringVar(&r.Side, "side", "long", "spot holdings direction (long only)")
 			cmd.Flags().IntVar(&r.Leverage, "leverage", 1, "spot leverage (1 only)")

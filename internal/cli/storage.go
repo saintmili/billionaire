@@ -43,9 +43,10 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 		}
 		result := struct {
 			postgres.Status
-			Mode     string `json:"mode"`
-			Database string `json:"database"`
-			Engine   string `json:"engine"`
+			Mode       string `json:"mode"`
+			Database   string `json:"database"`
+			Engine     string `json:"engine"`
+			KillSwitch bool   `json:"kill_switch"`
 		}{Status: postgres.Status{RequiredVersion: postgres.LatestVersion}, Mode: "paper", Database: "unavailable", Engine: "not_implemented"}
 		err = o.database(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
 			state, err := store.Status(ctx)
@@ -56,13 +57,18 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 			result.Database = "uninitialized"
 			if state.Initialized {
 				result.Database = "ready"
+				on, err := store.KillSwitch(ctx)
+				if err != nil {
+					return err
+				}
+				result.KillSwitch = on
 			}
 			return nil
 		})
 		if errors.Is(err, postgres.ErrSchema) {
 			result.Database = "incompatible"
 		}
-		if outputErr := o.write(result, fmt.Sprintf("Mode: paper\nDatabase: %s (schema %d/%d)\nEngine: not implemented", result.Database, result.Version, result.RequiredVersion)); outputErr != nil {
+		if outputErr := o.write(result, fmt.Sprintf("Mode: paper\nDatabase: %s (schema %d/%d)\nEngine: not implemented\nKill switch: %t", result.Database, result.Version, result.RequiredVersion, result.KillSwitch)); outputErr != nil {
 			return outputErr
 		}
 		if err != nil {

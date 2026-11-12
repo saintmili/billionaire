@@ -182,6 +182,9 @@ func TestSpotFinancialFailureRollsBackAndSameObservationRecovers(t *testing.T) {
 func TestSpotObservationReplayAndOrderInputConflicts(t *testing.T) {
 	ctx := context.Background()
 	store, owner, account, _ := newSpotTest(t)
+	if err := store.SetRiskPolicy(ctx, account.ID, "", paper.RiskPolicy{Pyramiding: true}); err != nil {
+		t.Fatal(err)
+	}
 	request := spotRequest(account.ID, "first")
 	if _, err := owner.SubmitSpotOrder(ctx, request, spotInfo(), true); err != nil {
 		t.Fatal(err)

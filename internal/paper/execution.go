@@ -12,6 +12,9 @@ import (
 )
 
 type OrderRequest struct {
+	StrategyID  string            `json:"strategy_id,omitempty"`
+	SignalID    string            `json:"signal_id,omitempty"`
+	StopPrice   string            `json:"stop_price,omitempty"`
 	RequestID   string            `json:"request_id"`
 	AccountID   string            `json:"account_id"`
 	PositionID  string            `json:"position_id,omitempty"`
@@ -44,9 +47,10 @@ type Observation struct {
 }
 
 type ExecutionGate struct {
-	Now        time.Time
-	StaleAfter time.Duration
-	Enabled    bool
+	RiskQuantity string
+	Now          time.Time
+	StaleAfter   time.Duration
+	Enabled      bool
 }
 
 type Fill struct {
@@ -67,6 +71,7 @@ type Fill struct {
 }
 
 type Position struct {
+	StrategyID        string                    `json:"strategy_id,omitempty"`
 	ID                string                    `json:"id"`
 	AccountID         string                    `json:"account_id"`
 	Instrument        domain.Instrument         `json:"instrument"`
@@ -141,11 +146,15 @@ func PrepareOrder(r OrderRequest, info marketdata.InstrumentInfo) (Order, error)
 			return Order{}, errors.New("instrument metadata exceeds supported decimal bounds")
 		}
 	}
-	quantity, err := ExactValue(r.Quantity, true)
+	quantityText := r.Quantity
+	if quantityText == "risk" && r.Action == "open" {
+		quantityText = info.QuantityStep.String()
+	}
+	quantity, err := ExactValue(quantityText, true)
 	if err != nil {
 		return Order{}, err
 	}
-	if !quantity.Mod(info.QuantityStep).IsZero() || quantity.LessThan(info.MinQuantity) {
+	if r.Quantity != "risk" && (!quantity.Mod(info.QuantityStep).IsZero() || quantity.LessThan(info.MinQuantity)) {
 		return Order{}, errors.New("quantity violates instrument step or minimum")
 	}
 	fee, err := ExactValue(r.FeeRate, false)
@@ -156,7 +165,9 @@ func PrepareOrder(r OrderRequest, info marketdata.InstrumentInfo) (Order, error)
 	if err != nil || !slippage.LessThan(decimal("10000")) {
 		return Order{}, errors.New("slippage must be at least 0 and below 10000 basis points")
 	}
-	r.Quantity = quantity.String()
+	if r.Quantity != "risk" {
+		r.Quantity = quantity.String()
+	}
 	r.FeeRate = fee.String()
 	r.SlippageBPS = slippage.String()
 	r.At = r.At.UTC()
@@ -233,19 +244,13 @@ func PlanSpotFill(order Order, observation Observation, gate ExecutionGate, bala
 		return reject(reason)
 	}
 	quantity := decimal(order.Request.Quantity)
-	price := observation.Price
-	factor := decimal(order.Request.SlippageBPS).Shift(-4)
-	if order.Request.Action == "open" {
-		price = price.Mul(decimal("1").Add(factor))
-	} else {
-		price = price.Mul(decimal("1").Sub(factor))
+	if gate.RiskQuantity != "" && order.Request.Action == "open" {
+		quantity = decimal(gate.RiskQuantity)
 	}
-	// Round in the adverse direction to the instrument tick, never improving the modeled fill.
-	steps, remainder := price.QuoRem(order.Metadata.PriceStep, 0)
-	if order.Request.Action == "open" && !remainder.IsZero() {
-		steps = steps.Add(decimal("1"))
+	if !quantity.IsPositive() || !quantity.Mod(order.Metadata.QuantityStep).IsZero() || quantity.LessThan(order.Metadata.MinQuantity) {
+		return reject("invalid risk-sized quantity")
 	}
-	price = steps.Mul(order.Metadata.PriceStep)
+	price := ExecutablePrice(order, observation.Price)
 	if _, err := ExactValue(price.String(), true); err != nil {
 		return reject("invalid modeled fill price")
 	}
@@ -269,7 +274,7 @@ func PlanSpotFill(order Order, observation Observation, gate ExecutionGate, bala
 			return reject("insufficient USDT funds")
 		}
 		result.CashDelta = total.Neg()
-		result.Position = &Position{ID: fill.PositionID, AccountID: order.Request.AccountID, Instrument: order.Request.Instrument, Metadata: order.Metadata, Status: "open", InitialQuantity: quantity, RemainingQuantity: quantity, EntryPrice: price, RemainingCost: total, FeesPaid: fee}
+		result.Position = &Position{StrategyID: order.Request.StrategyID, ID: fill.PositionID, AccountID: order.Request.AccountID, Instrument: order.Request.Instrument, Metadata: order.Metadata, Status: "open", InitialQuantity: quantity, RemainingQuantity: quantity, EntryPrice: price, RemainingCost: total, FeesPaid: fee}
 		result.Movements = []Movement{{Kind: "spot_buy", Amount: notional.Neg()}, {Kind: "fee", Amount: fee.Neg()}}
 	} else {
 		copy := *position
@@ -293,4 +298,23 @@ func PlanSpotFill(order Order, observation Observation, gate ExecutionGate, bala
 	result.Order.Status = "filled"
 	result.Fill = &fill
 	return result, nil
+}
+
+// ExecutablePrice applies adverse slippage and instrument price precision.
+func ExecutablePrice(order Order, observed domain.Decimal) domain.Decimal {
+	price := observed
+	factor := decimal(order.Request.SlippageBPS).Shift(-4)
+	if order.Request.Action == "open" {
+		price = price.Mul(decimal("1").Add(factor))
+	} else {
+		price = price.Mul(decimal("1").Sub(factor))
+	}
+	// Round in the adverse direction to the instrument tick, never improving the modeled fill.
+	steps, remainder := price.QuoRem(order.Metadata.PriceStep, 0)
+	if order.Request.Action == "open" && !remainder.IsZero() {
+		steps = steps.Add(decimal("1"))
+	}
+	price = steps.Mul(order.Metadata.PriceStep)
+
+	return price
 }

@@ -88,6 +88,8 @@ type Instance struct {
 	Enabled    bool              `json:"enabled"`
 }
 
+var accountIdentifier = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,127}$`)
+
 var identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
 func ValidID(id string) bool    { return identifier.MatchString(id) }
@@ -220,7 +222,7 @@ func Prepare(d Definition, registry *Registry) (Definition, error) {
 	return d, implementation.Validate(d)
 }
 func (d Definition) ValidateInstance(i Instance) error {
-	if !ValidID(i.ID) || i.VersionID == "" || !ValidID(i.Account) || !ValidAction(i.Action) {
+	if !ValidID(i.ID) || i.VersionID == "" || !accountIdentifier.MatchString(i.Account) || !ValidAction(i.Action) {
 		return errors.New("instance id/version/account/action are required and must be valid")
 	}
 	if err := i.Instrument.Validate(); err != nil {

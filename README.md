@@ -388,3 +388,20 @@ geographic HTTP 403 during M0; WebSocket handshakes succeeded, but subscriptions
 were not tested. Actual-host connectivity remains a gate before monitoring.
 See the [M0 report](docs/m0-report.md), [M1 report](docs/m1-report.md), [M2 report](docs/m2-report.md), [M3 report](docs/m3-report.md),
 [StopLore map](docs/stoplore-integration.md), and [project documents](docs/README.md).
+
+### Paper risk controls
+
+Run `millionaire init` to apply migration 0006. Configure account limits with
+`millionaire paper risk set --account <id> --fixed-risk 10 --max-positions 3`.
+`set` replaces that scope's full policy; add `--strategy <definition-id>` for an
+additional strategy ceiling. Inspect with `paper risk show --account <id>`.
+Use `paper open ... --quantity risk --stop-price 90` for execution-time sizing,
+or a numeric quantity checked against the same budgets. Pyramiding is off by
+default. `--stop-price` is sizing geometry; protective stop execution follows in
+a separate M4 ticket.
+
+`millionaire kill-switch on` persists a global block on new entries. Use
+`kill-switch off` to allow them again and `kill-switch status` or `status` to
+inspect it. Pending entries recheck the switch and current policy at execution.
+Partial/full closes remain available. See the [risk contract](docs/m4-risk-report.md)
+for precedence, UTC daily reset, cooldown, exact sizing and failure behavior.

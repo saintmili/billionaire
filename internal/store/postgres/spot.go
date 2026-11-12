@@ -78,6 +78,16 @@ func (o *PaperOwner) SubmitSpotOrder(ctx context.Context, request paper.OrderReq
 		order.Status = "rejected"
 		order.Reason = reason
 	}
+	if order.Status == "pending" {
+		reason, err := entryAdmission(ctx, tx, order)
+		if err != nil {
+			return order, safeError(ctx, ErrUnavailable)
+		}
+		if reason != "" {
+			order.Status = "rejected"
+			order.Reason = reason
+		}
+	}
 	payload, err := json.Marshal(order)
 	if err != nil {
 		return order, errors.New("invalid order payload")
@@ -104,6 +114,7 @@ func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observat
 	observation.ObservedAt = observation.ObservedAt.UTC()
 	observation.AvailableAt = observation.AvailableAt.UTC()
 	gate.Now = gate.Now.UTC()
+	gate.RiskQuantity = ""
 	payload, err := json.Marshal(observation)
 	if err != nil {
 		return result, errors.New("invalid observation payload")
@@ -177,7 +188,23 @@ func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observat
 				}
 				position = &p
 			}
-			plan, err := paper.PlanSpotFill(order, observation, gate, balance, position)
+			orderGate := gate
+			riskReason := ""
+			if order.Request.Action == "open" && observation.ObservedAt.After(order.Request.At) && observation.AvailableAt.After(order.Request.At) && !observation.AvailableAt.After(gate.Now) && observation.Ready && gate.Now.Sub(observation.ObservedAt) <= gate.StaleAfter && gate.Enabled {
+				var riskErr error
+				orderGate, riskReason, riskErr = planRiskEntry(ctx, tx, order, observation, gate, balance)
+				if riskErr != nil {
+					return result, safeError(ctx, ErrUnavailable)
+				}
+			}
+			plan, err := paper.PlanSpotFill(order, observation, orderGate, balance, position)
+			if riskReason != "" {
+				plan = paper.Execution{Order: order}
+				plan.Order.Status = "rejected"
+				plan.Order.Reason = riskReason
+				err = nil
+			}
+
 			if err != nil {
 				return result, err
 			}
