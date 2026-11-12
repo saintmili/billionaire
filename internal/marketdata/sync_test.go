@@ -2,7 +2,10 @@ package marketdata_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -201,5 +204,77 @@ func TestFailedConsumerReplaysStoredUnacknowledgedClose(t *testing.T) {
 	}
 	if replayed != 1 {
 		t.Fatalf("unacknowledged close not replayed once: %d", replayed)
+	}
+}
+
+func TestFailedOlderCorrectionReplaysIndependentlyOfEndTime(t *testing.T) {
+	ctx := context.Background()
+	store, err := postgres.Open(ctx, testdb.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("../../testdata/market/m2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dataset fixture.Dataset
+	if json.Unmarshal(raw, &dataset) != nil {
+		t.Fatal("invalid test dataset")
+	}
+	next := dataset.Updates[2]
+	correction := dataset.Candles[59]
+	correction.Close = correction.High
+	correction.ObservedAt = next.ObservedAt.Add(10 * time.Second)
+	dataset.Updates = []domain.Candle{next, correction}
+	raw, err = json.Marshal(dataset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "correction.json")
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := fixture.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	syncer, err := marketdata.NewSynchronizer(provider, store, marketdata.SyncOptions{Now: provider.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	q := marketdata.Query{Instrument: correction.Instrument, Timeframe: "1m", From: from, To: from.Add(time.Hour)}
+	failure := errors.New("correction consumer unavailable")
+	failedID := ""
+	err = syncer.Run(ctx, q, func(event marketdata.Event) error {
+		if event.Candle != nil && event.Candle.OpenTime.Equal(correction.OpenTime) {
+			failedID = marketdata.EventID(*event.Candle)
+			return failure
+		}
+		return nil
+	})
+	if !errors.Is(err, failure) {
+		t.Fatalf("correction failure lost: %v", err)
+	}
+	state, err := store.FeedState(ctx, q.Instrument, q.Timeframe)
+	if err != nil || !state.LastDelivered.After(correction.EndTime) {
+		t.Fatal("test did not advance beyond the corrected candle")
+	}
+	replayed := 0
+	err = syncer.Run(ctx, q, func(event marketdata.Event) error {
+		if event.Candle != nil && marketdata.EventID(*event.Candle) == failedID {
+			replayed++
+			if event.Kind != "recovered_candle" || event.AllowsEntries {
+				t.Error("pending correction replay was not gated")
+			}
+		}
+		return nil
+	})
+	if err != nil || replayed != 1 {
+		t.Fatalf("older unacknowledged correction was lost: count=%d err=%v", replayed, err)
 	}
 }

@@ -31,21 +31,19 @@ func (s *Store) SaveInstrument(ctx context.Context, info marketdata.InstrumentIn
 	}
 	return nil
 }
-func (s *Store) SaveCandles(ctx context.Context, bars []domain.Candle) (int, error) {
+func validateCandles(bars []domain.Candle) error {
 	for _, c := range bars {
 		if err := c.Validate(); err != nil {
-			return 0, err
+			return err
 		}
 		start, end := c.Timeframe.Bounds(c.OpenTime)
 		if !c.Closed || c.Source != c.Instrument.Provider || c.ObservedAt.IsZero() || !start.Equal(c.OpenTime) || !end.Equal(c.EndTime) || c.ObservedAt.Before(c.EndTime) || marketdata.Stamp(c).Revision != c.Revision {
-			return 0, errors.New("storage requires stamped, aligned closed candles with canonical source and observation time")
+			return errors.New("storage requires stamped, aligned closed candles with canonical source and observation time")
 		}
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return 0, safeError(ctx, ErrUnavailable)
-	}
-	defer rollback(tx)
+	return nil
+}
+func writeCandles(ctx context.Context, tx pgx.Tx, bars []domain.Candle) (int, error) {
 	changed := 0
 	for _, c := range bars {
 		i := c.Instrument
@@ -92,10 +90,62 @@ func (s *Store) SaveCandles(ctx context.Context, bars []domain.Candle) (int, err
 			}
 		}
 	}
+	return changed, nil
+}
+func (s *Store) SaveCandles(ctx context.Context, bars []domain.Candle) (int, error) {
+	if err := validateCandles(bars); err != nil {
+		return 0, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, safeError(ctx, ErrUnavailable)
+	}
+	defer rollback(tx)
+	changed, err := writeCandles(ctx, tx, bars)
+	if err != nil {
+		return 0, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, safeError(ctx, ErrUnavailable)
 	}
 	return changed, nil
+}
+
+// SaveCandleEvent atomically records a canonical close/correction and its pending
+// synchronous delivery. A timestamp cursor alone cannot retain old corrections.
+// pending remains true on an uncertain commit so the caller retains it on exit.
+func (s *Store) SaveCandleEvent(ctx context.Context, c domain.Candle, state marketdata.FeedState) (changed int, pending bool, err error) {
+	if err := validateCandles([]domain.Candle{c}); err != nil {
+		return 0, false, err
+	}
+	if state.Instrument != c.Instrument || state.Timeframe != c.Timeframe || state.PendingClosed != nil {
+		return 0, false, errors.New("closed-event state does not match an idle delivery slot")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, false, safeError(ctx, ErrUnavailable)
+	}
+	defer rollback(tx)
+	changed, err = writeCandles(ctx, tx, []domain.Candle{c})
+	if err != nil {
+		return 0, false, err
+	}
+	pending = changed > 0 || c.EndTime.After(state.LastDelivered)
+	if pending {
+		state.PendingClosed = &c
+		payload, err := marshalFeedState(state)
+		if err != nil {
+			return 0, pending, err
+		}
+		i := state.Instrument
+		if _, err := tx.Exec(ctx, saveFeedSQL, i.Provider, i.Market, i.ID, state.Timeframe, payload); err != nil {
+			return 0, pending, safeError(ctx, ErrUnavailable)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, pending, safeError(ctx, ErrUnavailable)
+	}
+	return changed, pending, nil
 }
 func (s *Store) Candles(ctx context.Context, q marketdata.Query) ([]domain.Candle, error) {
 	if err := q.Validate(); err != nil {
@@ -134,20 +184,29 @@ func readCandles(ctx context.Context, rows pgx.Rows) ([]domain.Candle, error) {
 	}
 	return result, nil
 }
-func (s *Store) SaveFeedState(ctx context.Context, state marketdata.FeedState) error {
+
+const saveFeedSQL = `INSERT INTO millionaire.market_feed_state VALUES($1,$2,$3,$4,$5) ON CONFLICT(provider,market,instrument_id,timeframe) DO UPDATE SET payload=EXCLUDED.payload`
+
+func marshalFeedState(state marketdata.FeedState) ([]byte, error) {
 	if err := state.Instrument.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 	if _, err := domain.ParseTimeframe(string(state.Timeframe)); err != nil {
-		return err
+		return nil, err
 	}
 	payload, err := json.Marshal(state)
 	if err != nil {
-		return errors.New("invalid feed state")
+		return nil, errors.New("invalid feed state")
+	}
+	return payload, nil
+}
+func (s *Store) SaveFeedState(ctx context.Context, state marketdata.FeedState) error {
+	payload, err := marshalFeedState(state)
+	if err != nil {
+		return err
 	}
 	i := state.Instrument
-	_, err = s.pool.Exec(ctx, `INSERT INTO millionaire.market_feed_state VALUES($1,$2,$3,$4,$5) ON CONFLICT(provider,market,instrument_id,timeframe) DO UPDATE SET payload=EXCLUDED.payload`, i.Provider, i.Market, i.ID, state.Timeframe, payload)
-	if err != nil {
+	if _, err := s.pool.Exec(ctx, saveFeedSQL, i.Provider, i.Market, i.ID, state.Timeframe, payload); err != nil {
 		return safeError(ctx, ErrUnavailable)
 	}
 	return nil

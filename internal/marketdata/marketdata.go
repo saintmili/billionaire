@@ -72,6 +72,7 @@ type FeedState struct {
 	LastEvent     time.Time         `json:"last_event"`
 	LastClosed    time.Time         `json:"last_closed_end"`
 	LastDelivered time.Time         `json:"delivered_through"`
+	PendingClosed *domain.Candle    `json:"pending_closed_event,omitempty"`
 	Gaps          int               `json:"gap_count"`
 	Reason        string            `json:"reason"`
 }

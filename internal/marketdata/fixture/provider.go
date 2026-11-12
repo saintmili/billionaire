@@ -99,7 +99,7 @@ func (p *Provider) History(ctx context.Context, q marketdata.Query) ([]domain.Ca
 	seen := map[int64]domain.Candle{}
 	for _, set := range [][]domain.Candle{p.data.Candles, p.data.Updates} {
 		for _, c := range set {
-			if c.Instrument == q.Instrument && c.Timeframe == "1m" && c.Closed && !c.OpenTime.Before(q.From) && !c.EndTime.After(q.To) && !c.EndTime.After(now) {
+			if c.Instrument == q.Instrument && c.Timeframe == "1m" && c.Closed && !c.OpenTime.Before(q.From) && !c.EndTime.After(q.To) && !c.EndTime.After(now) && !c.ObservedAt.After(now) {
 				seen[c.OpenTime.UnixMilli()] = c
 			}
 		}

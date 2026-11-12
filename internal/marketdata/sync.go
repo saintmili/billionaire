@@ -14,6 +14,7 @@ import (
 type Repository interface {
 	SaveInstrument(context.Context, InstrumentInfo) error
 	SaveCandles(context.Context, []domain.Candle) (int, error)
+	SaveCandleEvent(context.Context, domain.Candle, FeedState) (int, bool, error)
 	Candles(context.Context, Query) ([]domain.Candle, error)
 	SaveFeedState(context.Context, FeedState) error
 	FeedState(context.Context, domain.Instrument, domain.Timeframe) (FeedState, error)
@@ -147,6 +148,13 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 		return err
 	}
 	publish := func(c *domain.Candle, kind string) error {
+		if c != nil && c.Closed && (state.PendingClosed == nil || EventID(*state.PendingClosed) != EventID(*c)) {
+			copy := *c
+			state.PendingClosed = &copy
+			if err := s.repository.SaveFeedState(ctx, state); err != nil {
+				return err
+			}
+		}
 		if c == nil {
 			if err := s.repository.SaveFeedState(ctx, state); err != nil {
 				return err
@@ -160,6 +168,9 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 		if c != nil {
 			if c.Closed && c.EndTime.After(state.LastDelivered) {
 				state.LastDelivered = c.EndTime
+			}
+			if c.Closed {
+				state.PendingClosed = nil
 			}
 			return s.repository.SaveFeedState(ctx, state)
 		}
@@ -215,6 +226,16 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 		state.Reason = "warming up or reconnecting"
 		if err := publish(nil, "feed"); err != nil {
 			return err
+		}
+		if state.PendingClosed != nil {
+			pending := *state.PendingClosed
+			if _, err := s.repository.SaveCandles(ctx, []domain.Candle{pending}); err != nil {
+				return err
+			}
+			state.Reason = "redelivering pending closed revision"
+			if err := publish(&pending, "recovered_candle"); err != nil {
+				return err
+			}
 		}
 		current := q
 		current.To, _ = q.Timeframe.Bounds(s.opts.Now())
@@ -315,7 +336,11 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 					}
 					duplicate := seen[c.OpenTime.UnixMilli()] == EventID(c)
 					if c.Closed {
-						changed, err := s.repository.SaveCandles(ctx, []domain.Candle{c})
+						changed, pending, err := s.repository.SaveCandleEvent(ctx, c, state)
+						if pending {
+							copy := c
+							state.PendingClosed = &copy
+						}
 						if err != nil {
 							return err
 						}

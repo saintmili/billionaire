@@ -66,7 +66,7 @@ Backfill uses cached candles and fetches only missing contiguous ranges unless
 `--refresh` is selected. Remaining missing candles produce counts and a nonzero
 exit; valid data already received remains durable. Watch warms up history before
 subscription and again before every reconnect. It repairs a detected jump in
-closed candles before emitting the later close. Recovered closes are delivered in order as `recovered_candle` events with automatic entries blocked. A separate `delivered_through` checkpoint advances only after successful synchronous consumption; unacknowledged stored closes replay on restart. Closed-event IDs ignore duplicate-observation timestamps, and callback-before-checkpoint crashes may replay, so later strategy consumers must deduplicate by event ID. Initial warm-up seeds history without emitting old candles. Reconnect attempts are bounded
+closed candles before emitting the later close. Recovered closes are delivered in order as `recovered_candle` events with automatic entries blocked. A separate `delivered_through` checkpoint advances only after successful synchronous consumption. Live canonical changes and a bounded pending closed-revision slot are committed in one PostgreSQL transaction; failed older corrections replay independently of their end time. Acknowledgment atomically clears that slot with the delivery checkpoint. Unacknowledged stored closes replay on restart. Closed-event IDs ignore duplicate-observation timestamps, and callback-before-checkpoint crashes may replay, so later strategy consumers must deduplicate by event ID. Initial warm-up seeds history without emitting old candles. Reconnect attempts are bounded
 per watch invocation, with exponential backoff/jitter and cancellation.
 
 Feed state contains connection status, last valid observation, contiguous closed
@@ -148,3 +148,15 @@ consumer failure. Equal-timestamp conflicting revisions are rejected explicitly.
 
 The optional CLI issue was addressed with separate backfill/watch/status
 constructors and handlers sharing provider/storage setup. Focused tests, the PostgreSQL-enabled full suite, race checks, vet and build passed again after these changes. Reviewer rechecks follow the fix commit.
+
+The Spec recheck identified a correction-specific case beyond the end-time
+cursor: a failed consumer for an older corrected candle. A new regression test
+reproduced that loss. The fix adds a bounded pending-revision slot to feed state,
+written atomically with a live canonical candle change, and drains it before
+chronological recovery. Consumer success clears the slot; uncertain commits keep
+the candidate pending. The test now passes for an older correction after a later
+close was acknowledged. The same test exposed and fixed fixture history revealing
+a correction before its observation clock. No SQL schema change was needed;
+feed state is already an application-owned JSON payload in the versioned schema.
+
+The PostgreSQL-enabled full suite, race checks for marketdata/store/CLI, vet and build passed again after the pending-correction fix.
