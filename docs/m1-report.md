@@ -99,3 +99,15 @@ locally verified image digest; update deliberately for maintenance releases.
 Go remains at the available M0-pinned 1.27.2 toolchain; the M0 security-patch
 refresh gate still applies before release. Bybit actual-host availability and
 StopLore licensing remain their documented later gates. M2 was not started.
+
+## Independent review
+
+The implementation at `40a7820` was reviewed against user-approved baseline
+`54997ba` by independent Standards and Spec agents. Standards reported zero
+findings. Spec reported one P3: generic YAML decoding errors omitted the offending
+field/line required by the configuration error contract. The fix extracts only
+location metadata, maps it to a field path, and omits decoder text containing
+submitted values. A regression test first failed, then passed for unknown keys,
+duplicate keys, sequence-vs-scalar errors and malformed field types. The full
+suite, vet and build were rerun successfully after the fix. Final review of the
+fix is recorded below.

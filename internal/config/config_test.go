@@ -74,3 +74,20 @@ func TestLoadRejectsPrivateSocketAndDuplicateInstrument(t *testing.T) {
 		t.Fatal("live mode override accepted")
 	}
 }
+
+func TestDecodeErrorsIdentifyFieldsWithoutEchoingValues(t *testing.T) {
+	for _, tc := range []struct{ from, to, field string }{
+		{"schema_version: 1", "schema_version: []", "schema_version"},
+		{"mode: paper", "mode: paper\n  api_key: sensitive-value", "app.api_key"},
+		{"mode: paper", "mode: paper\n  mode: sensitive-value", "app.mode"},
+		{"instruments:", "instruments: sensitive-value\n  unused:", "market_data.instruments"},
+	} {
+		_, err := config.Load(strings.NewReader(strings.Replace(configs.Example, tc.from, tc.to, 1)), func(string) string { return "" })
+		if err == nil || !strings.Contains(err.Error(), tc.field) || !strings.Contains(err.Error(), "line ") {
+			t.Errorf("expected field/line for %s, got %v", tc.field, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "sensitive-value") {
+			t.Fatal("submitted value disclosed")
+		}
+	}
+}
