@@ -292,8 +292,9 @@ func (r *Registry) Lookup(name string) (Strategy, error) {
 }
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
-	for _, name := range []string{"breakout", "support_resistance", "engulfing", "rules"} {
-		_ = r.Register(name, builtin{name})
-	}
+	_ = r.Register("breakout", breakoutStrategy{})
+	_ = r.Register("support_resistance", supportResistanceStrategy{})
+	_ = r.Register("engulfing", engulfingStrategy{})
+	_ = r.Register("rules", rulesStrategy{})
 	return r
 }

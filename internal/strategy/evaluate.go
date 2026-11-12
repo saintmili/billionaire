@@ -28,11 +28,13 @@ func Evaluate(registry *Registry, d Definition, s Snapshot) (Decision, error) {
 		return Decision{}, err
 	}
 	result, err := implementation.Evaluate(d, s)
-	if errors.Is(err, ErrWarmup) {
-		return Decision{Reason: ErrWarmup.Error()}, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrWarmup) {
 		return result, err
+	}
+	result.EntryReady = err == nil && result.Ready
+	if !result.EntryReady {
+		result.Entry = false
+		result.Reason = ErrWarmup.Error()
 	}
 	if result.Evidence == nil {
 		result.Evidence = map[string]string{}
@@ -40,23 +42,23 @@ func Evaluate(registry *Registry, d Definition, s Snapshot) (Decision, error) {
 	result.Evidence["observed_close"] = s.Event.Close.String()
 	if d.Entry != nil {
 		matches, err := evaluateRule(*d.Entry, d, s, result.Evidence, "entry")
-		if errors.Is(err, ErrWarmup) {
-			return Decision{Reason: ErrWarmup.Error()}, nil
-		}
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrWarmup) {
 			return result, err
 		}
-		result.Entry = result.Entry && matches
+		result.EntryReady = result.EntryReady && err == nil
+		result.Entry = result.EntryReady && result.Entry && matches
 	}
 	if d.Exit != nil {
 		matches, err := evaluateRule(*d.Exit, d, s, result.Evidence, "exit")
-		if errors.Is(err, ErrWarmup) {
-			return Decision{Reason: ErrWarmup.Error()}, nil
-		}
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrWarmup) {
 			return result, err
 		}
-		result.Exit = matches
+		result.ExitReady = err == nil
+		result.Exit = result.ExitReady && matches
+	}
+	result.Ready = result.EntryReady || result.ExitReady
+	if !result.Ready {
+		result.Reason = ErrWarmup.Error()
 	}
 	if result.Entry {
 		offset, _ := DecimalParam(d, "stop_offset", "0")

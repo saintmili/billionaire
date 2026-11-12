@@ -167,7 +167,7 @@ func (o *options) watchCommand() *cobra.Command {
 		}
 		return o.withSynchronizer(cmd.Context(), cfg, *f, request, func(ctx context.Context, syncer *marketdata.Synchronizer, store *postgres.Store) error {
 			registry := strategy.DefaultRegistry()
-			earliest, err := warmStrategies(ctx, store, syncer, request.query, request.now(), nil, registry)
+			earliest, err := strategy.WarmActive(ctx, store, syncer, request.query, request.now(), nil, registry)
 			if err != nil {
 				return err
 			}
@@ -180,7 +180,7 @@ func (o *options) watchCommand() *cobra.Command {
 					if err != nil {
 						return err
 					}
-					if _, err := warmStrategies(ctx, store, syncer, request.query, at, event.Candle, registry); err != nil {
+					if _, err := strategy.WarmActive(ctx, store, syncer, request.query, at, event.Candle, registry); err != nil {
 						return err
 					}
 				}
@@ -282,41 +282,4 @@ func (o *options) addProviderCommands(root *cobra.Command) {
 	}
 	provider.AddCommand(test)
 	root.AddCommand(provider)
-}
-
-func warmStrategies(ctx context.Context, store *postgres.Store, syncer *marketdata.Synchronizer, q marketdata.Query, at time.Time, primaryEvent *domain.Candle, registry *strategy.Registry) (time.Time, error) {
-	versions, err := store.ActiveStrategyVersions(ctx, q.Instrument, q.Timeframe)
-	if err != nil {
-		return time.Time{}, err
-	}
-	earliest := time.Time{}
-	for _, version := range versions {
-		queries, err := strategy.WarmupQueries(version.Definition, q.Instrument, at, registry)
-		if err != nil {
-			return earliest, err
-		}
-		for _, required := range queries {
-			if primaryEvent != nil && required.Query.Timeframe == q.Timeframe {
-				required.Query.To = primaryEvent.OpenTime
-				required.Query.From = required.Query.To
-				for range required.Count {
-					required.Query.From, _ = q.Timeframe.Bounds(required.Query.From.Add(-time.Nanosecond))
-				}
-			}
-			if required.Query.Timeframe == q.Timeframe && (earliest.IsZero() || required.Query.From.Before(earliest)) {
-				earliest = required.Query.From
-			}
-			cached, err := store.Candles(ctx, required.Query)
-			if err != nil {
-				return earliest, err
-			}
-			if len(cached) == required.Count {
-				continue
-			}
-			if _, err := syncer.Backfill(ctx, required.Query, false); err != nil {
-				return earliest, err
-			}
-		}
-	}
-	return earliest, nil
 }

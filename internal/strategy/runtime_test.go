@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/strategy"
 )
@@ -93,5 +94,44 @@ func TestRecoveryDeliveryClockPreservesChronologicalTransitions(t *testing.T) {
 	two, err := strategy.Plan(registry, version, instance, marketdata.Event{Kind: "recovered_candle", Candle: &second, AvailableAt: base.Add(3 * time.Hour)}, bars, one.State)
 	if err != nil || !two.Ready || two.State.EntryTrue {
 		t.Fatalf("reversed fetch timestamps skipped a chronological condition reset: %+v %v", two, err)
+	}
+}
+
+func TestUnavailableRulePreservesItsStateWithoutSuppressingOtherKind(t *testing.T) {
+	registry := strategy.DefaultRegistry()
+	bars := barsForBreakout(t)
+	for _, unavailable := range []string{"entry", "exit"} {
+		t.Run(unavailable, func(t *testing.T) {
+			d, err := strategy.Parse(strings.NewReader(breakoutYAML), registry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.Implementation = "rules"
+			d.Parameters = map[string]string{}
+			d.Timeframes = []domain.Timeframe{"1m", "4h"}
+			ready := &strategy.Rule{Op: "gt", Left: strategy.Value{Field: "close"}, Right: strategy.Value{Constant: constant("10")}}
+			missing := &strategy.Rule{Op: "gt", Left: strategy.Value{Field: "sma", Timeframe: "4h", Period: 2}, Right: strategy.Value{Constant: constant("10")}}
+			d.Entry, d.Exit = ready, missing
+			prior := strategy.State{ExitTrue: true}
+			want := "entry"
+			if unavailable == "entry" {
+				d.Entry, d.Exit = missing, ready
+				prior = strategy.State{EntryTrue: true}
+				want = "exit"
+			}
+			d, err = strategy.Prepare(d, registry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			version := strategy.Version{ID: strategy.ContentHash(d), Definition: d}
+			instance := strategy.Instance{ID: "independent", VersionID: version.ID, Instrument: bars[20].Instrument, Account: "demo", Action: strategy.AlertOnly, Enabled: true}
+			result, err := strategy.Plan(registry, version, instance, marketdata.Event{Kind: "candle", Candle: &bars[20]}, bars, prior)
+			if err != nil || len(result.Signals) != 1 || result.Signals[0].Kind != want {
+				t.Fatalf("unavailable %s suppressed ready %s: %+v %v", unavailable, want, result, err)
+			}
+			if !result.State.EntryTrue || !result.State.ExitTrue {
+				t.Fatalf("unavailable kind lost transition state: %+v", result.State)
+			}
+		})
 	}
 }

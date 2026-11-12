@@ -293,3 +293,54 @@ func TestStoredSnapshotsExcludeFutureHigherClosesAndCorrections(t *testing.T) {
 		t.Fatalf("future higher data leaked: %+v %v", result, err)
 	}
 }
+
+func TestRecoveryHistoryLimitKeepsPrecedingPrimaryWindow(t *testing.T) {
+	ctx := context.Background()
+	store, err := postgres.Open(ctx, testdb.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	registry := strategy.DefaultRegistry()
+	d := strategy.Definition{SchemaVersion: 1, ID: "long-recovery", Name: "long recovery", Implementation: "breakout", Parameters: map[string]string{"lookback": "5000"}}
+	version, err := store.AddStrategyVersion(ctx, d, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := domain.Instrument{Provider: "fixture", Market: domain.Spot, Base: "BTC", Quote: "USDT", ID: "BTCUSDT"}
+	parse := func(s string) domain.Decimal {
+		v, e := domain.ParseDecimal(s)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return v
+	}
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := make([]domain.Candle, 5002)
+	for n := range bars {
+		c := domain.Candle{Instrument: i, Timeframe: "1m", OpenTime: start.Add(time.Duration(n) * time.Minute), EndTime: start.Add(time.Duration(n+1) * time.Minute), Open: parse("9"), High: parse("10"), Low: parse("8"), Close: parse("9.5"), BaseVolume: parse("1"), Closed: true, Source: "fixture"}
+		if n == 5000 {
+			c.Close = parse("11")
+			c.High = parse("12")
+		}
+		c.ObservedAt = c.EndTime
+		bars[n] = marketdata.Stamp(c)
+	}
+	if _, err := store.SaveCandles(ctx, bars); err != nil {
+		t.Fatal(err)
+	}
+	instance := strategy.Instance{ID: "recovery-limit", VersionID: version.ID, Instrument: i, Account: "demo", Action: strategy.AlertOnly}
+	if err := store.AddStrategyInstance(ctx, instance); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetStrategyEnabled(ctx, instance.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.EvaluateStrategyEvent(ctx, instance.ID, marketdata.Event{Kind: "recovered_candle", Candle: &bars[5000], AvailableAt: bars[5001].ObservedAt}, registry)
+	if err != nil || !result.Ready || len(result.Signals) != 1 {
+		t.Fatalf("later recovery candle consumed preceding history limit: %+v %v", result, err)
+	}
+}

@@ -154,6 +154,11 @@ condition transitions.
 `go test ./...` passed with the disposable PostgreSQL database enabled. Race tests
 passed for strategy, PostgreSQL, CLI and all market-data packages. `go vet ./...`,
 `go build ./...`, `go mod verify` and `git diff --check` passed. Independent
-standards/spec review is pending. M2 live-host validation,
+the initial independent review found and prompted fixes for recovery-window truncation
+and entry/exit warm-up coupling. Regression tests reproduced both failures before
+the fixes. Primary history is now bounded before SQL LIMIT; unavailable entry/exit
+rules preserve their own state while the other kind remains eligible. Warm-up
+orchestration moved from CLI into the strategy service, and each built-in owns its
+validation/evaluation/history requirements. Final re-review is pending. M2 live-host validation,
 StopLore licensing and the supported-Go patch-refresh release gate remain pending
 as previously documented. M4 was not started.

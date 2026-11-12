@@ -9,27 +9,33 @@ import (
 	"github.com/saintmili/billionaire/internal/marketdata"
 )
 
-func (b builtin) Requirements(d Definition) (map[domain.Timeframe]int, error) {
+func (breakoutStrategy) Requirements(d Definition) (map[domain.Timeframe]int, error) {
+	n, err := IntParam(d, "lookback", 20, 1, 5000)
+	if err != nil {
+		return nil, err
+	}
+	return ruleRequirements(d, n+1), nil
+}
+func (supportResistanceStrategy) Requirements(d Definition) (map[domain.Timeframe]int, error) {
+	n, err := IntParam(d, "lookback", 50, 4, 5000)
+	if err != nil {
+		return nil, err
+	}
+	return ruleRequirements(d, n), nil
+}
+func (engulfingStrategy) Requirements(d Definition) (map[domain.Timeframe]int, error) {
+	return ruleRequirements(d, 2), nil
+}
+func (rulesStrategy) Requirements(d Definition) (map[domain.Timeframe]int, error) {
+	return ruleRequirements(d, 1), nil
+}
+
+func ruleRequirements(d Definition, primaryCount int) map[domain.Timeframe]int {
 	result := map[domain.Timeframe]int{}
 	for _, f := range d.Timeframes {
 		result[f] = 1
 	}
-	switch b.name {
-	case "breakout":
-		n, err := IntParam(d, "lookback", 20, 1, 5000)
-		if err != nil {
-			return nil, err
-		}
-		result[d.Primary] = n + 1
-	case "support_resistance":
-		n, err := IntParam(d, "lookback", 50, 4, 5000)
-		if err != nil {
-			return nil, err
-		}
-		result[d.Primary] = n
-	case "engulfing":
-		result[d.Primary] = 2
-	}
+	result[d.Primary] = primaryCount
 	var walk func(Rule)
 	walk = func(r Rule) {
 		extra := 0
@@ -69,7 +75,7 @@ func (b builtin) Requirements(d Definition) (map[domain.Timeframe]int, error) {
 	if d.Exit != nil {
 		walk(*d.Exit)
 	}
-	return result, nil
+	return result
 }
 
 type Warmup struct {

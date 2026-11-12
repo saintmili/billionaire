@@ -156,7 +156,7 @@ func (s *Store) StrategyInstances(ctx context.Context) ([]strategy.Instance, err
 	return result, nil
 }
 
-func strategyHistory(ctx context.Context, tx pgx.Tx, i domain.Instrument, frames []domain.Timeframe, at time.Time) ([]domain.Candle, error) {
+func strategyHistory(ctx context.Context, tx pgx.Tx, i domain.Instrument, frames []domain.Timeframe, at time.Time, event domain.Candle) ([]domain.Candle, error) {
 	history := []domain.Candle{}
 	for _, frame := range frames {
 		rows, err := tx.Query(ctx, `WITH candidates AS (
@@ -167,8 +167,9 @@ func strategyHistory(ctx context.Context, tx pgx.Tx, i domain.Instrument, frames
    WHERE source=$1 AND provider=$1 AND market=$2 AND instrument_id=$3 AND timeframe=$4
     AND (payload->>'observed_at')::timestamptz<=$5 AND (payload->>'end_time')::timestamptz<=$5
     AND payload->'instrument'->>'base'=$6 AND payload->'instrument'->>'quote'=$7
+    AND (timeframe<>$9 OR open_time<$10)
    ORDER BY open_time DESC,(payload->>'observed_at')::timestamptz DESC,revision
-  ) known ORDER BY open_time DESC LIMIT $8`, i.Provider, i.Market, i.ID, frame, at, i.Base, i.Quote, strategy.MaxBars)
+  ) known ORDER BY open_time DESC LIMIT $8`, i.Provider, i.Market, i.ID, frame, at, i.Base, i.Quote, strategy.MaxBars, event.Timeframe, event.OpenTime)
 		if err != nil {
 			return nil, safeError(ctx, ErrUnavailable)
 		}
@@ -233,7 +234,7 @@ func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event mark
 	if err != nil {
 		return empty, err
 	}
-	history, err := strategyHistory(ctx, tx, instance.Instrument, version.Definition.Timeframes, at)
+	history, err := strategyHistory(ctx, tx, instance.Instrument, version.Definition.Timeframes, at, *event.Candle)
 	if err != nil {
 		return empty, err
 	}

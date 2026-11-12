@@ -102,6 +102,9 @@ func Plan(registry *Registry, version Version, instance Instance, event marketda
 	}
 	cooldown, _ := time.ParseDuration(d.SignalCooldown)
 	for _, kind := range []string{"entry", "exit"} {
+		if (kind == "entry" && !decision.EntryReady) || (kind == "exit" && !decision.ExitReady) {
+			continue
+		}
 		condition, previous, candle, last := decision.Entry, prior.EntryTrue, prior.EntryCandle, prior.EntryEmission
 		if kind == "exit" {
 			condition = decision.Exit
