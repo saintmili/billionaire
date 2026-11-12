@@ -1,0 +1,230 @@
+# Millionaire technical design
+
+**Status:** Proposed technical baseline, pending M0 repository and provider verification. Examples, interfaces, package layout, and conceptual tables are illustrative rather than implemented contracts.
+
+This document owns implementation proposals and their existing rationale. Product requirements remain in [the specification](spec.md); milestone scope and gates live in [the roadmap](roadmap.md). M0 must verify external APIs and record significant settled trade-offs in `docs/adr/`. An unverified proposal is not an accepted ADR.
+
+## Storage decision: PostgreSQL
+
+Use **PostgreSQL as the only application database for MVP**. Use `pgx/v5`, versioned SQL migrations and `sqlc` where it reduces boilerplate. Ship `compose.yaml` for local development and deployment instructions for a VPS. Why not SQLite: SQLite is attractive for a single-binary/offline CLI but only allows one writer at a time, requires care with high-volume market writes, and may complicate shared journal persistence; this project anticipates continuous market ingestion, multiple CLI readers, later UI access, and already uses Go/PostgreSQL tooling. That is a trade-off, not a claim that SQLite is inadequate for a small single-process bot.
+
+Separate application tables from StopLore storage at the logical/schema boundary. Never couple to StopLore's internal tables or guess its schema. Verify whether the library accepts its own PostgreSQL storage, how lifecycle/fees/partial fills are represented, and whether it supports external correlation IDs. If necessary, maintain a Millionaire-owned journal-sync outbox and correlation table.
+
+**Do not build a second storage adapter in the MVP.** Document the repository interfaces sufficiently to permit SQLite later if needed, without creating unnecessary database abstractions.
+
+## Core architecture
+
+Use a modular monolith, ports-and-adapters style, with a single shared domain model, isolated application services and transport-independent business logic.
+
+```text
+CLI (Cobra) / future TUI / future HTTP API
+         |
+ Application services / control interface
+         |
+ MarketData -> Normalizer -> Candle Store -> Event Bus
+                                     |
+                     Strategy Runtime + Indicator Engine
+                                     |
+                     Signal Store + Signal Notifications
+                                     |
+                         Execution Policy
+                          /            \
+                    Alert only     Manual/Auto paper
+                                         |
+                                   Risk Manager
+                                         |
+                                  Paper Execution
+                                         |
+                             Ledger / Orders / Positions
+                                         |
+                              Journal Outbox + StopLore
+                                         |
+                         Analytics / Reports / Backtest
+
+Backtest: Historical Feed + Simulated Clock -> same strategy,
+         risk, execution and analytics interfaces.
+```
+
+Do not introduce Kafka/Redis/a message broker in MVP. A typed in-process event dispatcher plus durable DB checkpoints/outbox is enough. Do not scatter business logic throughout CLI commands.
+
+### Suggested Go package layout
+
+```text
+cmd/millionaire/main.go
+internal/app/               # Composition root and service wiring
+internal/config/            # YAML, environment overrides, validation
+internal/domain/            # Instrument, candle, signal, order, position, account
+internal/marketdata/        # Interfaces, normalization, history, stream
+internal/marketdata/bybit/  # Public Bybit spot+linear adapter (MVP)
+internal/marketdata/replay/ # Historical/fixture feed
+internal/candles/           # Interval aggregation, persistence, synchronization
+internal/indicator/         # Reusable pure calculations
+internal/strategy/          # Engine, registry, config DSL, version management
+internal/strategy/builtin/  # Breakout, S/R, price-action examples
+internal/signal/            # Signals, correlation IDs and suppression
+internal/risk/              # Position sizing, exposure and daily limits
+internal/paper/             # Simulated orders, fills, positions, margin
+internal/portfolio/         # Accounts, balances, immutable ledger
+internal/backtest/          # Replay, virtual clock, reproducible runs
+internal/analytics/         # Signal/trade/strategy/backtest metrics
+internal/notify/            # Dispatcher, terminal, desktop, Telegram
+internal/journal/           # StopLore adapter and durable sync/retry
+internal/store/postgres/    # Queries and repositories
+internal/control/           # Local process control, optional Unix socket
+internal/cli/               # Cobra commands and formatters
+migrations/
+configs/
+examples/strategies/
+testdata/market/
+docs/
+deploy/
+```
+
+Refine package names based on actual implementation needs; avoid premature 1:1 packages for trivial types. `domain`, `indicator`, risk math and strategy rule evaluation should be independently testable.
+
+### Core ports (illustrative, NOT guessed StopLore APIs)
+
+```go
+type MarketDataProvider interface {
+    Capabilities(ctx context.Context) (Capabilities, error)
+    HistoricalCandles(ctx context.Context, q CandleQuery) ([]Candle, error)
+    Stream(ctx context.Context, req StreamRequest) (<-chan MarketEvent, <-chan error)
+}
+
+type Strategy interface {
+    ID() string
+    Validate(params map[string]any) error
+    Evaluate(ctx context.Context, snapshot MarketSnapshot, state StrategyState) (Evaluation, error)
+}
+
+type ExecutionEngine interface {
+    Submit(ctx context.Context, intent OrderIntent) (ExecutionResult, error)
+    Adjust(ctx context.Context, req PositionAdjustment) error
+}
+
+type JournalSink interface {
+    Record(ctx context.Context, event JournalEvent) error
+}
+```
+
+The exact API should evolve with real code, including injectable clocks and deterministic event IDs. Market feeds, analytics, and StopLore never directly mutate paper trading state. Do not force the paper engine's internal event types onto StopLore; translate at the adapter boundary.
+
+## Notification architecture
+
+`Notification` contains event type, level, correlation ID, strategy/version, instrument, timeframe, price, UTC timestamp, reason, delivery targets and delivery state. Events: strategy signal, order opened, order rejected, SL/TP exit, liquidation, data stale/recovered, engine failures, backtest complete.
+
+MVP channels:
+- Terminal structured output; write logs to stderr to keep `--output json` clean.
+- Linux desktop via `notify-send` adapter (optional, no crash/headless failure).
+- Optional Telegram Bot API with chat ID and token read from environment or protected configuration; no token logging.
+
+Bounded retry with backoff for transient delivery failures, persistence and idempotent notification keys. Senders must not block strategy processing. Webhooks/email later, behind interface. Alert frequency policy is separate from signal emission and trade-entry policy.
+
+## Persistence model
+
+Initial conceptual tables (final migration design may consolidate):
+
+- `instruments`, `market_candles`, `market_sync_checkpoints`
+- `strategy_definitions`, `strategy_versions`, `strategy_instances`, `strategy_runtime_state`
+- `signals`, `signal_decisions`, `notification_outbox`, `notification_deliveries`
+- `paper_accounts`, `paper_orders`, `paper_fills`, `paper_positions`, `paper_position_events`, `paper_ledger_entries`
+- `risk_rejections`, `funding_rates`, `backtest_runs`, `backtest_trades`, `backtest_metrics`
+- `journal_outbox`, `journal_correlations`, `engine_checkpoints`
+
+Key invariants:
+
+1. Market candle uniqueness `(provider, market_type, instrument, timeframe, open_time)`.
+2. Strategy versions immutable after creation; instance references one version.
+3. Signals unique on deterministic `(strategy_instance, event_id, rule_id, signal_kind)`; distinguish genuinely new repeated-event signals.
+4. Paper fills unique per simulated execution ID; ledger entries append-only.
+5. Single transaction for fill + position + account ledger + journal-outbox enqueue.
+6. Outbox processors retry idempotently and expose permanently failed events for inspection.
+7. Strategy runtime checkpoints allow restart with no duplicate entry; gaps/backfills replay consistently.
+8. Appropriate indices for candle time-range lookups, signals by strategy/time, positions by account/status, and outbox delivery status.
+9. Configured retention for high-frequency market updates; candles/backtest manifests must not disappear while referenced by reproducible runs without explicit warning.
+
+## StopLore integration
+
+**Phase 0 verification required.** Access to the referenced repository's current exported API could not be confirmed in this planning session. Codex must inspect it before implementation. Do not rely on assumed package names, functions or storage behavior.
+
+Integration steps:
+
+1. Inspect `go.mod`, README/examples, storage interfaces, account/setups/plans, trade lifecycle, executions, fees/funding, analytics and transaction semantics.
+2. Write `docs/stoplore-integration.md`: mapping of Millionaire `PaperAccount`, `StrategyVersion`, `Signal`, `Order`, `Fill`, `Position`, fees, funding, partial close and SL/TP to **verified** StopLore types/methods.
+3. Decide exactly what constitutes a StopLore journal entry (e.g. opening a position vs recording a closing fill); avoid double counting individual fills as independent trades.
+4. Implement a narrow `JournalSink` adapter that uses the public API. Store source IDs/versions, journal IDs, sync state and failure metadata. Do not write directly to StopLore tables.
+5. Persist journal outbox event and financial transaction atomically in Millionaire; deliver asynchronously and idempotently. Retry without duplicating journal records; provide `journal sync`, `journal status`, `journal reconcile`.
+6. Integration-test opening, partial exits, final exit, fees/funding, restart/retry and failed journal delivery. If a StopLore feature is unsupported, implement a documented partial mapping and hold the feature behind a capability check.
+7. Prefer reusing StopLore's analytics for its supported trade metrics, and implement Millionaire-only signal/backtest metrics separately. Cross-check calculations to avoid disagreement.
+
+## Configuration example (illustrative schema; refine in milestone 1)
+
+```yaml
+app:
+  name: millionaire
+  timezone: UTC
+  mode: paper                 # only accepted mode in MVP
+  log_level: info
+storage:
+  driver: postgres
+  dsn_env: MILLIONAIRE_DATABASE_URL
+market_data:
+  provider: bybit
+  reconnect: true
+  stale_after: 60s
+  instruments:
+    - market: spot
+      symbol: BTC/USDT
+    - market: linear
+      symbol: ETH/USDT
+paper:
+  initial_balance: "10000"
+  quote_currency: USDT
+  default_fee_bps: "6"
+  default_slippage_bps: "3"
+  default_risk_pct: "1"
+  max_open_positions: 3
+  pyramiding: false
+notifications:
+  terminal: true
+  desktop: true
+  telegram:
+    enabled: false
+    token_env: MILLIONAIRE_TELEGRAM_BOT_TOKEN
+    chat_id_env: MILLIONAIRE_TELEGRAM_CHAT_ID
+journal:
+  enabled: true
+  adapter: stoplore
+```
+
+Do not assume example fees/slippage approximate any venue's real costs. Parse money and percentages as validated decimals. No secrets embedded in repository examples.
+
+A reference strategy file should encode `id: breakout-20`, `version`, `market`/`symbols`/`timeframes`, evaluation mode, emission mode, `lookback: 20`, `stop: breakout_candle_low_minus_offset`, `take_profit_rr: 2`, `action: auto_paper`, account ID and risk overrides. Codex should finalize schema only after implementing config validation and immutable version semantics.
+
+## Original baseline summary (technical choices pending M0)
+
+This table summarizes the original baseline for navigation; the detailed sections in this document and [the specification](spec.md) govern each topic. Technical choices still require M0 verification.
+
+| Topic | Requirement or proposed MVP default |
+|---|---|
+| Product | Go CLI named Millionaire |
+| Architecture | Modular monolith, single active runtime |
+| Database | PostgreSQL only; SQLite postponed |
+| Market connectivity | Public data APIs only, no authenticated exchange integration |
+| Default provider | Bybit V5 public spot + linear (subject to validation) |
+| Symbols | BTC/USDT and ETH/USDT configured manually |
+| Markets | Spot and USDT linear perpetual first; future markets extendable |
+| Strategy authoring | YAML common rules + compiled Go advanced strategies |
+| Initial examples | Breakout-20, swing S/R, engulfing price action |
+| Signal frequency | Both close and update evaluation; configurable repeated signals |
+| Trade action | Alert-only, manual paper, automatic paper |
+| Account model | Shared or strategy-specific paper account |
+| Trading constraints | No automated reversal; default pyramiding disabled |
+| Orders | Market execution MVP, limit order later |
+| Perpetual margin | Isolated, simplified and explicitly labeled |
+| Backtesting | MVP requirement; deterministic OHLCV close-model initially |
+| Analytics | Signal, trading, strategy and backtest categories |
+| Notifications | Terminal, Linux desktop, optional Telegram |
+| Journal | StopLore public API adapter after verification |
+| UI roadmap | CLI → TUI → web |
+| Future live trading | Not implemented and disabled in MVP |
