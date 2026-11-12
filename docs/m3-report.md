@@ -153,12 +153,19 @@ condition transitions.
 
 `go test ./...` passed with the disposable PostgreSQL database enabled. Race tests
 passed for strategy, PostgreSQL, CLI and all market-data packages. `go vet ./...`,
-`go build ./...`, `go mod verify` and `git diff --check` passed. Independent
-the initial independent review found and prompted fixes for recovery-window truncation
-and entry/exit warm-up coupling. Regression tests reproduced both failures before
-the fixes. Primary history is now bounded before SQL LIMIT; unavailable entry/exit
-rules preserve their own state while the other kind remains eligible. Warm-up
+`go build ./...`, `go mod verify` and `git diff --check` passed.
+
+Independent review against baseline `190c003` prompted fixes for recovery-window
+truncation, entry/exit warm-up coupling, and compiled-strategy exit readiness.
+Regression tests reproduced each failure before the fixes. Primary history is
+bounded before SQL LIMIT; unavailable entry/exit rules preserve their own state
+while the other kind remains eligible. Compiled strategies retain exit support
+without a YAML exit tree, including true/false/true transition resets. Warm-up
 orchestration moved from CLI into the strategy service, and each built-in owns its
-validation/evaluation/history requirements. Final re-review is pending. M2 live-host validation,
-StopLore licensing and the supported-Go patch-refresh release gate remain pending
-as previously documented. M4 was not started.
+validation/evaluation/history requirements. The full suite, race checks, vet and
+build passed again after the final code fix. Standards and spec re-reviews report
+no remaining actionable findings.
+
+M3 offline acceptance is complete. M2 live-host validation, StopLore licensing and
+the supported-Go patch-refresh release gate remain pending as previously documented.
+M4 was not started.
