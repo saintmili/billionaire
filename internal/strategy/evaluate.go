@@ -31,7 +31,12 @@ func Evaluate(registry *Registry, d Definition, s Snapshot) (Decision, error) {
 	if err != nil && !errors.Is(err, ErrWarmup) {
 		return result, err
 	}
-	result.EntryReady = err == nil && result.Ready
+	if result.Ready && !result.EntryReady && !result.ExitReady {
+		result.EntryReady, result.ExitReady = true, true
+	}
+	if err != nil {
+		result.EntryReady, result.ExitReady = false, false
+	}
 	if !result.EntryReady {
 		result.Entry = false
 		result.Reason = ErrWarmup.Error()

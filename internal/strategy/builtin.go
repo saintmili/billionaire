@@ -7,6 +7,8 @@ import (
 	"github.com/saintmili/billionaire/internal/domain"
 )
 
+// Decision may provide per-kind readiness. Ready alone marks both kinds ready
+// for compiled implementations; built-ins explicitly mark their entry readiness.
 type Decision struct {
 	Ready, Entry, Exit    bool
 	EntryReady, ExitReady bool
@@ -97,7 +99,7 @@ func (rulesStrategy) Validate(d Definition) error {
 	return nil
 }
 func (breakoutStrategy) Evaluate(d Definition, s Snapshot) (Decision, error) {
-	result := Decision{Ready: true, Reason: "breakout", Evidence: map[string]string{}}
+	result := Decision{Ready: true, EntryReady: true, Reason: "breakout", Evidence: map[string]string{}}
 	count, _ := IntParam(d, "lookback", 20, 1, 5000)
 	bars, err := s.Need(d.Primary, count+1)
 	if err != nil {
@@ -124,7 +126,7 @@ func (breakoutStrategy) Evaluate(d Definition, s Snapshot) (Decision, error) {
 	return result, nil
 }
 func (engulfingStrategy) Evaluate(d Definition, s Snapshot) (Decision, error) {
-	result := Decision{Ready: true, Reason: "engulfing", Evidence: map[string]string{}}
+	result := Decision{Ready: true, EntryReady: true, Reason: "engulfing", Evidence: map[string]string{}}
 	if !s.Event.Closed {
 		return result, nil
 	}
@@ -147,11 +149,11 @@ func (supportResistanceStrategy) Evaluate(d Definition, s Snapshot) (Decision, e
 	return supportResistance(d, s)
 }
 func (rulesStrategy) Evaluate(Definition, Snapshot) (Decision, error) {
-	return Decision{Ready: true, Entry: true, Reason: "rules"}, nil
+	return Decision{Ready: true, EntryReady: true, Entry: true, Reason: "rules"}, nil
 }
 
 func supportResistance(d Definition, s Snapshot) (Decision, error) {
-	result := Decision{Ready: true, Reason: "confirmed pivot zone", Evidence: map[string]string{}}
+	result := Decision{Ready: true, EntryReady: true, Reason: "confirmed pivot zone", Evidence: map[string]string{}}
 	lookback, _ := IntParam(d, "lookback", 50, 4, 5000)
 	left, _ := IntParam(d, "pivot_left", 2, 1, 100)
 	right, _ := IntParam(d, "pivot_right", 2, 1, 100)

@@ -135,3 +135,51 @@ func TestUnavailableRulePreservesItsStateWithoutSuppressingOtherKind(t *testing.
 		})
 	}
 }
+
+type exitOnlyStrategy struct{}
+
+func (exitOnlyStrategy) Validate(strategy.Definition) error { return nil }
+func (exitOnlyStrategy) Requirements(d strategy.Definition) (map[domain.Timeframe]int, error) {
+	return map[domain.Timeframe]int{d.Primary: 1}, nil
+}
+func (exitOnlyStrategy) Evaluate(_ strategy.Definition, s strategy.Snapshot) (strategy.Decision, error) {
+	ten, _ := domain.ParseDecimal("10")
+	return strategy.Decision{Ready: true, Exit: s.Event.Close.GreaterThan(ten), Reason: "compiled exit"}, nil
+}
+
+func TestRegisteredStrategyEmitsAndResetsExitWithoutDeclarativeTree(t *testing.T) {
+	registry := strategy.DefaultRegistry()
+	if err := registry.Register("exit_only", exitOnlyStrategy{}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := strategy.Parse(strings.NewReader(breakoutYAML), registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.Implementation = "exit_only"
+	d.Parameters = map[string]string{}
+	d, err = strategy.Prepare(d, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bars := barsForBreakout(t)
+	version := strategy.Version{ID: strategy.ContentHash(d), Definition: d}
+	instance := strategy.Instance{ID: "compiled", VersionID: version.ID, Instrument: bars[20].Instrument, Account: "demo", Action: strategy.AlertOnly, Enabled: true}
+	state := strategy.State{}
+	for n, want := range []int{1, 0, 1} {
+		event := bars[20]
+		if n == 1 {
+			event = bars[21]
+		}
+		event.ObservedAt = bars[21].EndTime.Add(time.Duration(n) * time.Second)
+		event = marketdata.Stamp(event)
+		result, err := strategy.Plan(registry, version, instance, marketdata.Event{Kind: "candle", Candle: &event}, bars, state)
+		if err != nil || len(result.Signals) != want {
+			t.Fatalf("compiled exit event%d: %+v %v", n, result, err)
+		}
+		if want == 1 && result.Signals[0].Kind != "exit" {
+			t.Fatal("wrong signal kind")
+		}
+		state = result.State
+	}
+}
