@@ -3,6 +3,8 @@ package domain
 import (
 	"errors"
 	"regexp"
+	"strconv"
+	"time"
 )
 
 type MarketType string
@@ -40,10 +42,63 @@ func (i Instrument) Validate() error {
 type Timeframe string
 
 func ParseTimeframe(text string) (Timeframe, error) {
-	switch text {
-	case "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w", "1M":
+	if text == "1M" || text == "1w" {
 		return Timeframe(text), nil
-	default:
-		return "", errors.New("unsupported timeframe: choose a documented native interval")
 	}
+	if len(text) < 2 {
+		return "", errors.New("timeframe must be positive minutes, hours, days, 1w or 1M")
+	}
+	n, err := strconv.Atoi(text[:len(text)-1])
+	if err != nil || n < 1 || strconv.Itoa(n) != text[:len(text)-1] {
+		return "", errors.New("invalid timeframe count")
+	}
+	unit := text[len(text)-1:]
+	minutes := 0
+	switch unit {
+	case "m":
+		if n <= 43200 {
+			minutes = n
+		}
+	case "h":
+		if n <= 720 {
+			minutes = n * 60
+		}
+	case "d":
+		if n <= 30 {
+			minutes = n * 1440
+		}
+	}
+	if minutes == 0 {
+		return "", errors.New("unsupported timeframe: use minutes/hours/days up to 30d, 1w or 1M")
+	}
+	return Timeframe(text), nil
+}
+
+// Bounds aligns fixed intervals to the UTC Unix epoch, weeks to Monday, and
+// calendar months to their actual UTC boundaries. Call ParseTimeframe first.
+func (f Timeframe) Bounds(at time.Time) (time.Time, time.Time) {
+	at = at.UTC()
+	if f == "1M" {
+		start := time.Date(at.Year(), at.Month(), 1, 0, 0, 0, 0, time.UTC)
+		return start, start.AddDate(0, 1, 0)
+	}
+	if f == "1w" {
+		day := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
+		start := day.AddDate(0, 0, -(int(day.Weekday())+6)%7)
+		return start, start.AddDate(0, 0, 7)
+	}
+	if _, err := ParseTimeframe(string(f)); err != nil {
+		return time.Time{}, time.Time{}
+	}
+	n, _ := strconv.Atoi(string(f[:len(f)-1]))
+	duration := time.Duration(n) * time.Minute
+	switch f[len(f)-1] {
+	case 'h':
+		duration = time.Duration(n) * time.Hour
+	case 'd':
+		duration = time.Duration(n) * 24 * time.Hour
+	}
+	seconds := int64(duration / time.Second)
+	start := time.Unix(at.Unix()-((at.Unix()%seconds+seconds)%seconds), 0).UTC()
+	return start, start.Add(duration)
 }

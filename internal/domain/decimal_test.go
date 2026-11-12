@@ -48,7 +48,7 @@ func TestInstrumentIdentityKeepsMarketsSeparate(t *testing.T) {
 	if err := linear.Validate(); err == nil {
 		t.Fatal("unsupported market accepted")
 	}
-	if _, err := domain.ParseTimeframe("17m"); err == nil {
+	if _, err := domain.ParseTimeframe("17s"); err == nil {
 		t.Fatal("unsupported interval accepted")
 	}
 }

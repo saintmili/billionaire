@@ -95,19 +95,28 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 }
 
 func (o *options) database(ctx context.Context, cfg config.Config, operation func(context.Context, *postgres.Store) error) error {
+	timeout, _ := time.ParseDuration(cfg.Storage.Timeout)
+	bounded, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return o.withDatabase(bounded, cfg, operation)
+}
+
+// withDatabase bounds connection setup but leaves long-running watch operations
+// under the caller's cancellation context rather than the short storage timeout.
+func (o *options) withDatabase(ctx context.Context, cfg config.Config, operation func(context.Context, *postgres.Store) error) error {
 	dsn, err := cfg.DatabaseURL(os.Getenv)
 	if err != nil {
 		return err
 	}
-	timeout, _ := time.ParseDuration(cfg.Storage.Timeout) // load already validates duration.
-	bounded, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	store, err := postgres.Open(bounded, dsn)
+	timeout, _ := time.ParseDuration(cfg.Storage.Timeout)
+	connecting, cancel := context.WithTimeout(ctx, timeout)
+	store, err := postgres.Open(connecting, dsn)
+	cancel()
 	if err != nil {
 		return err
 	}
 	defer store.Close()
-	return operation(bounded, store)
+	return operation(ctx, store)
 }
 
 func createConfig(path string) (bool, error) {

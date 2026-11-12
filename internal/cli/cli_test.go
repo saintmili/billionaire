@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,5 +138,65 @@ func TestUnavailableStatusDoesNotDiscloseDatabaseSecrets(t *testing.T) {
 	}
 	if state["database"] != "unavailable" || state["initialized"] != false {
 		t.Fatalf("misleading status: %v", state)
+	}
+}
+
+func TestMarketBackfillWatchAndStatusUseOfflineFixture(t *testing.T) {
+	dsn := testdb.New(t)
+	t.Setenv("MILLIONAIRE_DATABASE_URL", dsn)
+	path := filepath.Join(t.TempDir(), "millionaire.yaml")
+	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, logs bytes.Buffer
+	invoke := func(args ...string) error {
+		out.Reset()
+		logs.Reset()
+		return cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+	}
+	if err := invoke("init"); err != nil {
+		t.Fatal(err)
+	}
+	fixturePath := "../../testdata/market/m2.json"
+	for _, market := range []string{"spot", "linear"} {
+		for _, symbol := range []string{"BTC/USDT", "ETH/USDT"} {
+			for _, frame := range []string{"1m", "15m"} {
+				if err := invoke("market", "backfill", "--market", market, "--symbol", symbol, "--timeframe", frame, "--from", "2026-01-01T00:00:00Z", "--to", "2026-01-01T01:00:00Z", "--fixture", fixturePath); err != nil {
+					t.Fatal(err)
+				}
+				var result map[string]any
+				if json.Unmarshal(out.Bytes(), &result) != nil || result["missing"] != float64(0) {
+					t.Fatalf("invalid backfill result: %s", &out)
+				}
+			}
+		}
+	}
+	if err := invoke("market", "watch", "--fixture", fixturePath, "--lookback", "20"); err != nil {
+		t.Fatal(err)
+	}
+	decoder := json.NewDecoder(&out)
+	events := 0
+	for {
+		var event map[string]any
+		err := decoder.Decode(&event)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if event["kind"] == "candle" {
+			events++
+		}
+	}
+	if events != 2 {
+		t.Fatalf("watch emitted duplicate closed candles: %d", events)
+	}
+	if err := invoke("market", "status", "--fixture", fixturePath); err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if json.Unmarshal(out.Bytes(), &state) != nil || state["allows_auto_entries"] != false {
+		t.Fatalf("fixture completion claimed live health: %s", &out)
 	}
 }

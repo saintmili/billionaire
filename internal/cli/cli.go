@@ -60,6 +60,7 @@ func Execute(ctx context.Context, args []string, out, diagnostics io.Writer) err
 	root.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 	configuration.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 	opts.addStorageCommands(root)
+	opts.addMarketCommands(root)
 	err := root.ExecuteContext(ctx)
 	if err != nil {
 		logger.Error("command failed", "error", err.Error())

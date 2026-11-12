@@ -36,7 +36,7 @@ func TestLoadRejectsUnsafeOrInvalidConfiguration(t *testing.T) {
 		{"stale duration", "stale_after: 60s", "stale_after: 0s", "market_data.stale_after"},
 		{"market", "market: spot", "market: inverse", "market_data.instruments"},
 		{"symbol", "BTC/USDT", "BTC/USD", "market_data.instruments"},
-		{"timeframe", "[1m, 15m]", "[17m]", "market_data.instruments"},
+		{"timeframe", "[1m, 15m]", "[17s]", "market_data.instruments"},
 		{"balance", `initial_balance: "10000"`, `initial_balance: "NaN"`, "paper.initial_balance"},
 		{"quote", "quote_currency: USDT", "quote_currency: USD", "paper.quote_currency"},
 		{"unknown key", "mode: paper", "mode: paper\n  api_key: secret", "config"},

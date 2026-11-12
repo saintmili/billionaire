@@ -31,7 +31,7 @@ func TestMigrationsRoundTripAndRepeatSafely(t *testing.T) {
 		}
 	}
 	state, err = store.Status(ctx)
-	if err != nil || !state.Initialized || state.Version != 1 {
+	if err != nil || !state.Initialized || state.Version != postgres.LatestVersion {
 		t.Fatalf("initialized state: %+v %v", state, err)
 	}
 	store.Close()
@@ -44,7 +44,7 @@ func TestMigrationsRoundTripAndRepeatSafely(t *testing.T) {
 	if err != nil || !state.Initialized {
 		t.Fatalf("state lost after reopen: %+v %v", state, err)
 	}
-	for range 2 {
+	for range postgres.LatestVersion + 1 {
 		if err := store.Migrate(ctx, postgres.Down); err != nil {
 			t.Fatal(err)
 		}

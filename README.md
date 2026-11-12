@@ -1,8 +1,9 @@
 # Millionaire
 
-A Linux-first Go CLI for public-market monitoring and paper trading. M1 provides
-configuration, PostgreSQL initialization/migrations and storage status. Market
-feeds, strategies, accounts, execution, and the daemon are later milestones.
+A Linux-first Go CLI for public-market monitoring and paper trading. M2 provides
+configuration, PostgreSQL storage, public Bybit candles, historical backfill,
+streaming recovery and explicit offline fixtures. Strategies, accounts, execution,
+and the daemon are later milestones.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -59,7 +60,7 @@ entirely offline and does not require a database URL.
 The exact schema is in [configs/example.yaml](configs/example.yaml). Every field
 is required; unknown/duplicate YAML keys and multiple documents are rejected.
 Only paper mode, UTC, PostgreSQL, USDT, the Bybit provider, spot/linear instruments,
-and documented native intervals are accepted. Prices/balances use plain decimal
+and supported native or aggregatable intervals are accepted. Prices/balances use plain decimal
 strings, never binary floats. There are no exchange-credential fields. Additional
 market-data, strategy, paper-risk, notification and journal settings arrive with
 their implementing milestones.
@@ -94,8 +95,12 @@ latest or `down` at zero is harmless. A transaction-scoped advisory lock seriali
 migrations; SQL failures roll back and checksum/version mismatches are rejected.
 A lost commit acknowledgment requires checking status before retrying.
 
+Migration 2 adds instrument metadata, exact numeric closed candles, correction
+revisions, and feed/checkpoint state. Identical REST/socket closes share a key
+and cannot double insert. Older observations cannot overwrite newer values.
+
 The database user must be able to create the application schema and its objects.
-No StopLore tables are touched. No financial tables exist yet; later migrations
+No StopLore tables are touched. No account/ledger tables exist yet; later migrations
 must preserve exact numeric values and transactional ledger invariants.
 
 ## Checks
@@ -121,6 +126,61 @@ databases. They cover migration up/down/repeat/reopen, concurrent callers,
 cancellation, corrupt version metadata, rollback after failure, and CLI behavior.
 CI supplies an ephemeral PostgreSQL service and runs tests, vet and build.
 
+## Market data (M2)
+
+```sh
+./bin/millionaire provider list --output json
+# Explicit online capability/history check; no database needed:
+./bin/millionaire provider test --provider bybit
+./bin/millionaire market backfill --market linear --symbol ETH/USDT \
+  --timeframe 15m --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z
+./bin/millionaire market watch --market spot --symbol BTC/USDT --timeframe 1m
+./bin/millionaire market status --market spot --symbol BTC/USDT --timeframe 1m --output json
+```
+
+Run `init` after upgrading to apply migration 2. Backfill bounds are UTC-aligned,
+`from` inclusive and `to` exclusive; no forming/future candle is accepted.
+Cached ranges are reused; `--refresh` fetches corrections. Missing candles are
+reported and fail the command rather than being silently skipped. Provider
+metadata must identify trading spot or USDT linear perpetual instruments.
+
+Watch warms up `--lookback 20` intervals, subscribes, and REST-backfills on reconnect.
+`--retries 5` bounds reconnects per invocation (0..10). Ctrl-C/SIGTERM cancels it.
+`--output json` streams one JSON event per line; partial updates are ephemeral,
+closed candles and health/checkpoint state are durable. Synchronous callbacks
+apply backpressure without an unbounded or silently dropping queue. A storage or
+consumer failure stops watch for explicit restart and recovery.
+
+`market status` reports connection, last event/close, gaps and
+`allows_auto_entries`. This flag is a source-health prerequisite for the future
+risk gate; no M2 command submits an order. It expires dynamically when data stalls,
+a close is missing, or the source disconnects. Root `status` still checks storage.
+M6 will add the single-owner daemon and control interface.
+
+Native intervals are preferred. Supported whole minute/hour/day intervals up to
+30d (for example `2m`, `90m`), `1w` (Monday UTC), and `1M` (calendar month) can be
+aggregated from complete 1m history. Missing inputs fail aggregation. Derived live
+streams emit completed buckets only; use native intervals for partial updates.
+Requests are capped at 100,000 candles, including source 1m fallback ranges.
+The provider rate limit, HTTP/frame bounds, deadlines, and 30s clock-drift guard
+are documented in the [M2 report](docs/m2-report.md).
+
+An explicit, network-free provider uses separate `fixture` identities:
+
+```sh
+./bin/millionaire provider test --provider fixture --fixture testdata/market/m2.json
+./bin/millionaire market backfill --fixture testdata/market/m2.json \
+  --market spot --symbol BTC/USDT --timeframe 15m \
+  --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z --output json
+./bin/millionaire market watch --fixture testdata/market/m2.json --output json
+./bin/millionaire market status --fixture testdata/market/m2.json --output json
+```
+
+The fixture is synthetic and finite. It labels completion as disconnected and
+never substitutes for a failed live request. Bybit REST remains geographically
+blocked from this execution environment; actual-host REST and streaming checks
+are required before forward monitoring. Offline tests use local protocol servers.
+
 ## M0 candle reconnaissance
 
 ```sh
@@ -133,5 +193,5 @@ The offline fixture is synthetic, not captured exchange history. The spike is
 separate from the application and has no automatic fallback. Bybit REST returned
 geographic HTTP 403 during M0; WebSocket handshakes succeeded, but subscriptions
 were not tested. Actual-host connectivity remains a gate before monitoring.
-See the [M0 report](docs/m0-report.md), [M1 report](docs/m1-report.md),
+See the [M0 report](docs/m0-report.md), [M1 report](docs/m1-report.md), [M2 report](docs/m2-report.md),
 [StopLore map](docs/stoplore-integration.md), and [project documents](docs/README.md).

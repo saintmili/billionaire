@@ -19,6 +19,7 @@ type Candle struct {
 	BaseVolume Decimal    `json:"base_volume"`
 	Closed     bool       `json:"closed"`
 	Source     string     `json:"source"`
+	ObservedAt time.Time  `json:"observed_at"`
 	Revision   string     `json:"revision"`
 }
 
@@ -33,6 +34,10 @@ func (c Candle) Validate() error {
 	_, endOffset := c.EndTime.Zone()
 	if c.OpenTime.IsZero() || c.EndTime.IsZero() || openOffset != 0 || endOffset != 0 || !c.EndTime.After(c.OpenTime) {
 		return errors.New("candle requires UTC open_time and a later exclusive end_time")
+	}
+	aligned, end := c.Timeframe.Bounds(c.OpenTime)
+	if !aligned.Equal(c.OpenTime) || !end.Equal(c.EndTime) {
+		return errors.New("candle boundaries do not match its UTC timeframe")
 	}
 	if c.Source == "" || c.Revision == "" {
 		return errors.New("candle source and revision are required")
