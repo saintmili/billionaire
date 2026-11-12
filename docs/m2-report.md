@@ -160,3 +160,15 @@ a correction before its observation clock. No SQL schema change was needed;
 feed state is already an application-owned JSON payload in the versioned schema.
 
 The PostgreSQL-enabled full suite, race checks for marketdata/store/CLI, vet and build passed again after the pending-correction fix.
+
+### Final Standards result
+
+Zero outstanding findings. The original optional CLI dispatch smell was resolved;
+reviewers found no new standards issues in either follow-up fix.
+
+### Final Spec result
+
+The two initial P2 findings, including the older-correction replay case identified
+on recheck, are resolved. The Spec reviewer verified `7209773...3fbe3a3` and
+reported no new findings. Zero outstanding code/spec findings. Actual-host live
+validation remains a pending external milestone gate, as shown in the roadmap.
