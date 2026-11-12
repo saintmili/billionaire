@@ -68,11 +68,29 @@ func (s *Store) SaveCandles(ctx context.Context, bars []domain.Candle) (int, err
 		tag, err = tx.Exec(ctx, `INSERT INTO millionaire.market_candles(source,provider,market,instrument_id,timeframe,open_time,end_time,open,high,low,close,base_volume,revision,observed_at,payload)
    VALUES($1,$2,$3,$4,$5,$6,$7,$8::numeric,$9::numeric,$10::numeric,$11::numeric,$12::numeric,$13,$14,$15)
    ON CONFLICT(source,provider,market,instrument_id,timeframe,open_time) DO UPDATE SET end_time=EXCLUDED.end_time,open=EXCLUDED.open,high=EXCLUDED.high,low=EXCLUDED.low,close=EXCLUDED.close,base_volume=EXCLUDED.base_volume,revision=EXCLUDED.revision,observed_at=EXCLUDED.observed_at,payload=EXCLUDED.payload
-   WHERE market_candles.observed_at<=EXCLUDED.observed_at AND market_candles.revision<>EXCLUDED.revision`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime, c.EndTime, c.Open.String(), c.High.String(), c.Low.String(), c.Close.String(), c.BaseVolume.String(), c.Revision, c.ObservedAt, payload)
+   WHERE market_candles.observed_at<EXCLUDED.observed_at AND market_candles.revision<>EXCLUDED.revision`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime, c.EndTime, c.Open.String(), c.High.String(), c.Low.String(), c.Close.String(), c.BaseVolume.String(), c.Revision, c.ObservedAt, payload)
 		if err != nil {
 			return 0, safeError(ctx, ErrUnavailable)
 		}
 		changed += int(tag.RowsAffected())
+		// An identical observation is not a new candle event, but its timestamp is
+		// still an ordering watermark. Keep that update under the same row lock.
+		if tag.RowsAffected() == 0 {
+			var observed time.Time
+			var revision string
+			err := tx.QueryRow(ctx, `SELECT observed_at,revision FROM millionaire.market_candles WHERE source=$1 AND provider=$2 AND market=$3 AND instrument_id=$4 AND timeframe=$5 AND open_time=$6`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime).Scan(&observed, &revision)
+			if err != nil {
+				return 0, safeError(ctx, ErrUnavailable)
+			}
+			if observed.Equal(c.ObservedAt) && revision != c.Revision {
+				return 0, errors.New("conflicting candle revisions at the same observation time")
+			}
+			if revision == c.Revision && c.ObservedAt.After(observed) {
+				if _, err := tx.Exec(ctx, `UPDATE millionaire.market_candles SET observed_at=$7,payload=$8 WHERE source=$1 AND provider=$2 AND market=$3 AND instrument_id=$4 AND timeframe=$5 AND open_time=$6`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime, c.ObservedAt, payload); err != nil {
+					return 0, safeError(ctx, ErrUnavailable)
+				}
+			}
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, safeError(ctx, ErrUnavailable)

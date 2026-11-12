@@ -66,13 +66,14 @@ type Provider interface {
 }
 
 type FeedState struct {
-	Instrument domain.Instrument `json:"instrument"`
-	Timeframe  domain.Timeframe  `json:"timeframe"`
-	Connected  bool              `json:"connected"`
-	LastEvent  time.Time         `json:"last_event"`
-	LastClosed time.Time         `json:"last_closed_end"`
-	Gaps       int               `json:"gap_count"`
-	Reason     string            `json:"reason"`
+	Instrument    domain.Instrument `json:"instrument"`
+	Timeframe     domain.Timeframe  `json:"timeframe"`
+	Connected     bool              `json:"connected"`
+	LastEvent     time.Time         `json:"last_event"`
+	LastClosed    time.Time         `json:"last_closed_end"`
+	LastDelivered time.Time         `json:"delivered_through"`
+	Gaps          int               `json:"gap_count"`
+	Reason        string            `json:"reason"`
 }
 
 func (s FeedState) AllowsEntries(now time.Time, staleAfter time.Duration) bool {
@@ -92,5 +93,8 @@ func Stamp(c domain.Candle) domain.Candle {
 	return c
 }
 func EventID(c domain.Candle) string {
+	if c.Closed {
+		return c.Revision
+	}
 	return fmt.Sprintf("%s:%s", c.Revision, c.ObservedAt.UTC().Format(time.RFC3339Nano))
 }

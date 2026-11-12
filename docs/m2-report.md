@@ -50,8 +50,7 @@ storage. Stream `confirm` and inclusive millisecond ends normalize to the same
 canonical boundaries. REST and socket data share source `bybit`, instrument,
 timeframe and open time. Content hashes omit observation time, so identical
 closes do not become new revisions simply because they were fetched again.
-Different content retains a revision; older observations cannot replace a newer
-canonical value. Partial events retain distinct observation timestamps for later
+Different content retains a revision; identical content still advances its observation watermark without becoming a new candle event. Older observations cannot replace a newer canonical value, and conflicting revisions at the same observation timestamp fail explicitly. Partial events retain distinct observation timestamps for later
 strategy evaluation but are not persisted as closed candles.
 
 Native Bybit intervals are preferred. Other supported intervals fetch 1m history
@@ -67,7 +66,7 @@ Backfill uses cached candles and fetches only missing contiguous ranges unless
 `--refresh` is selected. Remaining missing candles produce counts and a nonzero
 exit; valid data already received remains durable. Watch warms up history before
 subscription and again before every reconnect. It repairs a detected jump in
-closed candles before emitting the later close. Reconnect attempts are bounded
+closed candles before emitting the later close. Recovered closes are delivered in order as `recovered_candle` events with automatic entries blocked. A separate `delivered_through` checkpoint advances only after successful synchronous consumption; unacknowledged stored closes replay on restart. Closed-event IDs ignore duplicate-observation timestamps, and callback-before-checkpoint crashes may replay, so later strategy consumers must deduplicate by event ID. Initial warm-up seeds history without emitting old candles. Reconnect attempts are bounded
 per watch invocation, with exponential backoff/jitter and cancellation.
 
 Feed state contains connection status, last valid observation, contiguous closed
@@ -133,3 +132,19 @@ explicit refresh or newer provider observation supplies a correction. A database
 or consumer failure stops watch explicitly; supervision and single-engine
 ownership belong to M6. StopLore licensing and the Go patch-refresh release gate
 remain as documented in M0/M1. M3 was not started.
+
+## Independent review and follow-up
+
+The implementation commit `20a4b63` was reviewed against approved baseline
+`d54b0c8` by independent Standards and Spec agents. Standards reported zero hard
+breaches and one optional repeated-dispatch smell in the CLI. Spec found two P2
+issues: identical observations failed to advance the correction-order watermark,
+and reconnect backfill persisted missed closes without delivering them to the
+consumer. Both received failing regression tests before fixes. The first now
+updates identical-observation timestamps under the same row lock without
+incrementing changed-candle counts. The second adds ordered recovery events,
+stable closed-event IDs, and an acknowledgment checkpoint with replay after a
+consumer failure. Equal-timestamp conflicting revisions are rejected explicitly.
+
+The optional CLI issue was addressed with separate backfill/watch/status
+constructors and handlers sharing provider/storage setup. Focused tests, the PostgreSQL-enabled full suite, race checks, vet and build passed again after these changes. Reviewer rechecks follow the fix commit.

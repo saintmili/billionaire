@@ -94,19 +94,35 @@ func TestReconnectBackfillsLostClosedCandlesBeforeResuming(t *testing.T) {
 		t.Fatal(err)
 	}
 	emitted := 0
+	recoveredEvents := 0
+	observedOpens := []time.Time{}
 	err = syncer.Run(ctx, q, func(event marketdata.Event) error {
 		if event.Candle != nil {
 			emitted++
-			if !event.AllowsEntries {
-				t.Error("recovered source remained blocked")
+			observedOpens = append(observedOpens, event.Candle.OpenTime)
+			if event.Kind == "recovered_candle" {
+				recoveredEvents++
+				if event.AllowsEntries {
+					t.Error("recovery event allowed new entries before source resubscription")
+				}
+			} else {
+				if !event.AllowsEntries {
+					t.Error("recovered source remained blocked")
+				}
+				cancel()
 			}
-			cancel()
 		}
 		return nil
 	})
-	if !errors.Is(err, context.Canceled) || sockets.Load() != 2 || !recovered.Load() || emitted != 1 {
-		t.Fatalf("reconnect: sockets=%d recovered=%v emitted=%d err=%v", sockets.Load(), recovered.Load(), emitted, err)
+	if !errors.Is(err, context.Canceled) || sockets.Load() != 2 || !recovered.Load() || emitted != 3 || recoveredEvents != 2 {
+		t.Fatalf("reconnect: sockets=%d recovered=%v emitted=%d recovered events=%d err=%v", sockets.Load(), recovered.Load(), emitted, recoveredEvents, err)
 	}
+	for n, at := range observedOpens {
+		if !at.Equal(start.Add(time.Duration(n+2) * time.Minute)) {
+			t.Fatal("recovered events were not delivered in order")
+		}
+	}
+
 	q.To = start.Add(5 * time.Minute)
 	bars, err := store.Candles(context.Background(), q)
 	if err != nil || len(bars) != 5 {

@@ -54,111 +54,158 @@ func (f marketFlags) identity(provider string) (domain.Instrument, domain.Timefr
 }
 func (o *options) addMarketCommands(root *cobra.Command) {
 	market := &cobra.Command{Use: "market", Short: "Backfill, watch and inspect public market data", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() }}
-	for _, name := range []string{"backfill", "watch", "status"} {
-		f := &marketFlags{}
-		command := &cobra.Command{Use: name, Short: map[string]string{"backfill": "Persist a closed-candle range (exclusive --to)", "watch": "Warm up, subscribe and recover public candle updates", "status": "Read persisted feed health and freshness"}[name], Args: cobra.NoArgs}
-		f.bind(command)
-		if name == "backfill" {
-			command.Flags().StringVar(&f.from, "from", "", "inclusive RFC3339 UTC boundary")
-			command.MarkFlagRequired("from")
-			command.Flags().StringVar(&f.to, "to", "", "exclusive RFC3339 UTC boundary")
-			command.MarkFlagRequired("to")
-			command.Flags().BoolVar(&f.refresh, "refresh", false, "refetch cached candles to record corrections")
-		}
-		if name == "watch" {
-			command.Flags().IntVar(&f.lookback, "lookback", 20, "closed intervals to warm up")
-			command.Flags().IntVar(&f.retries, "retries", 5, "bounded reconnect attempts, 0..10")
-		}
-		command.RunE = func(cmd *cobra.Command, args []string) error {
-			cfg, err := o.load()
-			if err != nil {
-				return err
-			}
-			providerName := "bybit"
-			if f.fixture != "" {
-				providerName = "fixture"
-			}
-			instrument, frame, err := f.identity(providerName)
-			if err != nil {
-				return err
-			}
-			ttl, _ := time.ParseDuration(cfg.MarketData.StaleAfter)
-			if name == "status" {
-				return o.withDatabase(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
-					state, err := store.FeedState(ctx, instrument, frame)
-					if err != nil {
-						return err
-					}
-					result := struct {
-						marketdata.FeedState
-						Allows bool `json:"allows_auto_entries"`
-					}{state, state.AllowsEntries(time.Now(), ttl)}
-					return o.write(result, fmt.Sprintf("Feed: %s, gaps: %d, automatic entries allowed: %v", state.Reason, state.Gaps, result.Allows))
-				})
-			}
-			provider, now, err := f.source(cfg)
-			if err != nil {
-				return err
-			}
-			q := marketdata.Query{Instrument: instrument, Timeframe: frame}
-			if name == "backfill" {
-				from, err := time.Parse(time.RFC3339, f.from)
-				if err != nil {
-					return errors.New("from must be an RFC3339 timestamp")
-				}
-				to, err := time.Parse(time.RFC3339, f.to)
-				if err != nil {
-					return errors.New("to must be an RFC3339 timestamp")
-				}
-				q.From = from.UTC()
-				q.To = to.UTC()
-				if q.To.After(now()) {
-					return errors.New("to must not include future or forming candles")
-				}
-			} else {
-				if f.lookback < 1 || f.lookback > 10000 || f.retries < 0 || f.retries > 10 {
-					return errors.New("lookback must be 1..10000 and retries 0..10")
-				}
-				q.To, _ = frame.Bounds(now())
-				q.From = q.To
-				for range f.lookback {
-					q.From, _ = frame.Bounds(q.From.Add(-time.Nanosecond))
-				}
-			}
-			if err := q.Validate(); err != nil {
-				return err
-			}
-			operation := func(ctx context.Context, store *postgres.Store) error {
-				state, err := store.Status(ctx)
-				if err != nil {
-					return err
-				}
-				if !state.Initialized {
-					return errors.New("storage requires migration; run millionaire init")
-				}
-				syncer, err := marketdata.NewSynchronizer(provider, store, marketdata.SyncOptions{Now: now, MaxRetries: f.retries, StaleAfter: ttl})
-				if err != nil {
-					return err
-				}
-				if name == "backfill" {
-					result, err := syncer.Backfill(ctx, q, f.refresh)
-					if outputErr := o.write(result, fmt.Sprintf("Candles: %d, changed: %d, missing: %d", result.Candles, result.Changed, result.Missing)); outputErr != nil {
-						return outputErr
-					}
-					return err
-				}
-				return syncer.Run(ctx, q, func(event marketdata.Event) error {
-					return o.write(event, fmt.Sprintf("%s: %s %s, gaps=%d, automatic entries allowed=%v", event.Kind, f.symbol, f.frame, event.Feed.Gaps, event.AllowsEntries))
-				})
-			}
-			if name == "watch" {
-				return o.withDatabase(cmd.Context(), cfg, operation)
-			}
-			return o.withDatabase(cmd.Context(), cfg, operation)
-		}
-		market.AddCommand(command)
-	}
+	market.AddCommand(o.backfillCommand(), o.watchCommand(), o.feedStatusCommand())
 	root.AddCommand(market)
+	o.addProviderCommands(root)
+}
+
+type marketRequest struct {
+	provider marketdata.Provider
+	now      func() time.Time
+	query    marketdata.Query
+}
+
+func (f marketFlags) prepare(cfg config.Config) (marketRequest, error) {
+	p, now, err := f.source(cfg)
+	if err != nil {
+		return marketRequest{}, err
+	}
+	name := "bybit"
+	if f.fixture != "" {
+		name = "fixture"
+	}
+	i, frame, err := f.identity(name)
+	return marketRequest{p, now, marketdata.Query{Instrument: i, Timeframe: frame}}, err
+}
+func (o *options) withSynchronizer(ctx context.Context, cfg config.Config, f marketFlags, request marketRequest, operation func(context.Context, *marketdata.Synchronizer) error) error {
+	return o.withDatabase(ctx, cfg, func(ctx context.Context, store *postgres.Store) error {
+		state, err := store.Status(ctx)
+		if err != nil {
+			return err
+		}
+		if !state.Initialized {
+			return errors.New("storage requires migration; run millionaire init")
+		}
+		ttl, _ := time.ParseDuration(cfg.MarketData.StaleAfter)
+		syncer, err := marketdata.NewSynchronizer(request.provider, store, marketdata.SyncOptions{Now: request.now, MaxRetries: f.retries, StaleAfter: ttl})
+		if err != nil {
+			return err
+		}
+		return operation(ctx, syncer)
+	})
+}
+func (o *options) backfillCommand() *cobra.Command {
+	f := &marketFlags{}
+	cmd := &cobra.Command{Use: "backfill", Short: "Persist a closed-candle range (exclusive --to)", Args: cobra.NoArgs}
+	f.bind(cmd)
+	cmd.Flags().StringVar(&f.from, "from", "", "inclusive RFC3339 UTC boundary")
+	cmd.MarkFlagRequired("from")
+	cmd.Flags().StringVar(&f.to, "to", "", "exclusive RFC3339 UTC boundary")
+	cmd.MarkFlagRequired("to")
+	cmd.Flags().BoolVar(&f.refresh, "refresh", false, "refetch cached candles to record corrections")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		cfg, err := o.load()
+		if err != nil {
+			return err
+		}
+		request, err := f.prepare(cfg)
+		if err != nil {
+			return err
+		}
+		from, err := time.Parse(time.RFC3339, f.from)
+		if err != nil {
+			return errors.New("from must be an RFC3339 timestamp")
+		}
+		to, err := time.Parse(time.RFC3339, f.to)
+		if err != nil {
+			return errors.New("to must be an RFC3339 timestamp")
+		}
+		request.query.From = from.UTC()
+		request.query.To = to.UTC()
+		if request.query.To.After(request.now()) {
+			return errors.New("to must not include future or forming candles")
+		}
+		if err := request.query.Validate(); err != nil {
+			return err
+		}
+		return o.withSynchronizer(cmd.Context(), cfg, *f, request, func(ctx context.Context, syncer *marketdata.Synchronizer) error {
+			result, err := syncer.Backfill(ctx, request.query, f.refresh)
+			if outputErr := o.write(result, fmt.Sprintf("Candles: %d, changed: %d, missing: %d", result.Candles, result.Changed, result.Missing)); outputErr != nil {
+				return outputErr
+			}
+			return err
+		})
+	}
+	return cmd
+}
+func (o *options) watchCommand() *cobra.Command {
+	f := &marketFlags{}
+	cmd := &cobra.Command{Use: "watch", Short: "Warm up, subscribe and recover public candle updates", Args: cobra.NoArgs}
+	f.bind(cmd)
+	cmd.Flags().IntVar(&f.lookback, "lookback", 20, "closed intervals to warm up")
+	cmd.Flags().IntVar(&f.retries, "retries", 5, "bounded reconnect attempts, 0..10")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		cfg, err := o.load()
+		if err != nil {
+			return err
+		}
+		request, err := f.prepare(cfg)
+		if err != nil {
+			return err
+		}
+		if f.lookback < 1 || f.lookback > 10000 || f.retries < 0 || f.retries > 10 {
+			return errors.New("lookback must be 1..10000 and retries 0..10")
+		}
+		request.query.To, _ = request.query.Timeframe.Bounds(request.now())
+		request.query.From = request.query.To
+		for range f.lookback {
+			request.query.From, _ = request.query.Timeframe.Bounds(request.query.From.Add(-time.Nanosecond))
+		}
+		if err := request.query.Validate(); err != nil {
+			return err
+		}
+		return o.withSynchronizer(cmd.Context(), cfg, *f, request, func(ctx context.Context, syncer *marketdata.Synchronizer) error {
+			return syncer.Run(ctx, request.query, func(event marketdata.Event) error {
+				return o.write(event, fmt.Sprintf("%s: %s %s, gaps=%d, automatic entries allowed=%v", event.Kind, f.symbol, f.frame, event.Feed.Gaps, event.AllowsEntries))
+			})
+		})
+	}
+	return cmd
+}
+func (o *options) feedStatusCommand() *cobra.Command {
+	f := &marketFlags{}
+	cmd := &cobra.Command{Use: "status", Short: "Read persisted feed health and freshness", Args: cobra.NoArgs}
+	f.bind(cmd)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		cfg, err := o.load()
+		if err != nil {
+			return err
+		}
+		name := "bybit"
+		if f.fixture != "" {
+			name = "fixture"
+		}
+		instrument, frame, err := f.identity(name)
+		if err != nil {
+			return err
+		}
+		ttl, _ := time.ParseDuration(cfg.MarketData.StaleAfter)
+		return o.withDatabase(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
+			state, err := store.FeedState(ctx, instrument, frame)
+			if err != nil {
+				return err
+			}
+			result := struct {
+				marketdata.FeedState
+				Allows bool `json:"allows_auto_entries"`
+			}{state, state.AllowsEntries(time.Now(), ttl)}
+			return o.write(result, fmt.Sprintf("Feed: %s, gaps: %d, automatic entries allowed: %v", state.Reason, state.Gaps, result.Allows))
+		})
+	}
+	return cmd
+}
+
+func (o *options) addProviderCommands(root *cobra.Command) {
 	provider := &cobra.Command{Use: "provider", Short: "Inspect public market-data providers", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() }}
 	provider.AddCommand(&cobra.Command{Use: "list", Short: "List available read-only providers", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		return o.write([]map[string]any{{"name": "bybit", "public_only": true, "markets": []string{"spot", "linear"}}, {"name": "fixture", "public_only": true, "selection": "--fixture PATH"}}, "bybit (public spot/linear)\nfixture (offline, --fixture PATH)")

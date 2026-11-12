@@ -147,7 +147,11 @@ metadata must identify trading spot or USDT linear perpetual instruments.
 Watch warms up `--lookback 20` intervals, subscribes, and REST-backfills on reconnect.
 `--retries 5` bounds reconnects per invocation (0..10). Ctrl-C/SIGTERM cancels it.
 `--output json` streams one JSON event per line; partial updates are ephemeral,
-closed candles and health/checkpoint state are durable. Synchronous callbacks
+closed candles and health/checkpoint state are durable. Recovered closes arrive
+in order as `recovered_candle` events with new entries blocked; `delivered_through`
+advances after successful consumption. Unacknowledged closes replay on restart.
+Consumers must deduplicate stable event IDs across callback/checkpoint crashes;
+initial history warm-up is not emitted as new observations. Synchronous callbacks
 apply backpressure without an unbounded or silently dropping queue. A storage or
 consumer failure stops watch for explicit restart and recovery.
 

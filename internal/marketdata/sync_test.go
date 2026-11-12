@@ -146,3 +146,60 @@ func TestDerivedStreamFreshnessUsesSourceUpdates(t *testing.T) {
 		t.Fatal("incomplete target bucket was emitted")
 	}
 }
+
+func TestFailedConsumerReplaysStoredUnacknowledgedClose(t *testing.T) {
+	ctx := context.Background()
+	store, err := postgres.Open(ctx, testdb.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := fixture.Open("../../testdata/market/m2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := provider.Instrument(ctx, domain.Spot, "BTC/USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	syncer, err := marketdata.NewSynchronizer(provider, store, marketdata.SyncOptions{Now: provider.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	q := marketdata.Query{Instrument: info.Instrument, Timeframe: "1m", From: start, To: start.Add(time.Hour)}
+	failure := errors.New("consumer unavailable")
+	failedID := ""
+	err = syncer.Run(ctx, q, func(event marketdata.Event) error {
+		if event.Candle != nil && event.Candle.Closed {
+			failedID = marketdata.EventID(*event.Candle)
+			return failure
+		}
+		return nil
+	})
+	if !errors.Is(err, failure) {
+		t.Fatalf("consumer failure lost: %v", err)
+	}
+	state, err := store.FeedState(ctx, q.Instrument, q.Timeframe)
+	if err != nil || !state.LastDelivered.Equal(q.To) {
+		t.Fatalf("failed delivery was acknowledged: %+v %v", state, err)
+	}
+	replayed := 0
+	if err := syncer.Run(ctx, q, func(event marketdata.Event) error {
+		if event.Candle != nil && event.Candle.Closed {
+			replayed++
+			if event.Kind != "recovered_candle" || event.AllowsEntries || marketdata.EventID(*event.Candle) != failedID {
+				t.Error("unacknowledged replay was not stable and gated")
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if replayed != 1 {
+		t.Fatalf("unacknowledged close not replayed once: %d", replayed)
+	}
+}

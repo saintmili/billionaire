@@ -147,11 +147,53 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 		return err
 	}
 	publish := func(c *domain.Candle, kind string) error {
-		if err := s.repository.SaveFeedState(ctx, state); err != nil {
+		if c == nil {
+			if err := s.repository.SaveFeedState(ctx, state); err != nil {
+				return err
+			}
+		}
+		if err := consume(Event{Kind: kind, Candle: c, Feed: state, AllowsEntries: state.AllowsEntries(s.opts.Now(), s.opts.StaleAfter)}); err != nil {
 			return err
 		}
-		return consume(Event{Kind: kind, Candle: c, Feed: state, AllowsEntries: state.AllowsEntries(s.opts.Now(), s.opts.StaleAfter)})
+		// Closed-event acknowledgment follows successful synchronous consumption.
+		// A crash between callback and checkpoint can replay; EventID stays stable.
+		if c != nil {
+			if c.Closed && c.EndTime.After(state.LastDelivered) {
+				state.LastDelivered = c.EndTime
+			}
+			return s.repository.SaveFeedState(ctx, state)
+		}
+		return nil
 	}
+	recoverCloses := func(from, to time.Time) error {
+		if !to.After(from) {
+			return nil
+		}
+		recovery := q
+		recovery.From = from
+		recovery.To = to
+		bars, err := s.repository.Candles(ctx, recovery)
+		if err != nil {
+			return err
+		}
+		next := from
+		for _, c := range bars {
+			if !c.OpenTime.Equal(next) {
+				return errors.New("recovered event range has a gap")
+			}
+			state.Connected = false
+			state.Reason = "delivering recovered closes"
+			if err := publish(&c, "recovered_candle"); err != nil {
+				return err
+			}
+			next = c.EndTime
+		}
+		if !next.Equal(to) {
+			return errors.New("recovered event range is incomplete")
+		}
+		return nil
+	}
+
 	// Always clear persisted connection ownership when this run exits, even if its
 	// context was canceled. A crashed process is additionally gated by freshness.
 	defer func() {
@@ -176,10 +218,24 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 		}
 		current := q
 		current.To, _ = q.Timeframe.Bounds(s.opts.Now())
+		if !state.LastDelivered.IsZero() && state.LastDelivered.Before(current.From) {
+			current.From = state.LastDelivered
+		}
 		result, err := s.Backfill(ctx, current, false)
 		state.Gaps = result.Missing
 		if err == nil {
 			state.LastClosed = current.To
+			if state.LastDelivered.IsZero() {
+				state.LastDelivered = current.To
+			} else {
+				if err := recoverCloses(state.LastDelivered, current.To); err != nil {
+					return err
+				}
+			}
+			state.Reason = "warm-up complete; awaiting live observation"
+			if err := publish(nil, "feed"); err != nil {
+				return err
+			}
 			var processErr error
 			err = s.provider.Stream(ctx, q, func(c domain.Candle) error {
 				process := func() error {
@@ -252,6 +308,10 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 						if err != nil {
 							return err
 						}
+						state.LastClosed = gap.To
+						if err := recoverCloses(state.LastDelivered, gap.To); err != nil {
+							return err
+						}
 					}
 					duplicate := seen[c.OpenTime.UnixMilli()] == EventID(c)
 					if c.Closed {
@@ -259,7 +319,7 @@ func (s *Synchronizer) Run(ctx context.Context, q Query, consume func(Event) err
 						if err != nil {
 							return err
 						}
-						duplicate = changed == 0
+						duplicate = changed == 0 && !c.EndTime.After(state.LastDelivered)
 						if c.EndTime.After(state.LastClosed) {
 							state.LastClosed = c.EndTime
 						}
