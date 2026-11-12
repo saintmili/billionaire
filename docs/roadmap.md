@@ -12,7 +12,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M1 — Project scaffolding and durable storage | Complete — [evidence](m1-report.md) |
 | M2 — Market data and historical synchronization | Implemented; offline checks pass; [live-host gate pending](m2-report.md) |
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
-| M4 — Paper accounts, orders, risk, and position lifecycle | Not started |
+| M4 — Paper accounts, orders, risk, and position lifecycle | In progress — [account slice (#1)](m4-accounts-report.md); remaining acceptance pending |
 | M5 — First-class backtesting and analytics | Not started |
 | M6 — Notifications and process operation | Not started |
 | M7 — StopLore journaling | Not started |
@@ -47,6 +47,15 @@ pass before forward monitoring is enabled; this exception does not waive it or
 mark M2 fully accepted. Stop at the M3 boundary.
 
 ## Implementation milestones
+
+### Sequencing exception: offline M4 work
+
+On 2026-11-12, the user approved the eight-ticket M4 breakdown and its offline
+sequencing exception. Proceed with fixture-driven paper-account and execution
+work against the verified M2/M3 PostgreSQL and event boundaries. Record acceptance
+per ticket; M4 remains incomplete until its combined acceptance gate passes.
+M2's actual-host REST/stream validation remains pending and must pass before live
+monitoring is enabled. This exception does not waive that gate. Stop at M4.
 
 ### M0 — Repository reconnaissance and technical design
 

@@ -14,6 +14,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/saintmili/billionaire/internal/domain"
+	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/yamlutil"
 )
 
@@ -180,9 +181,8 @@ func (c Config) Validate() error {
 			intervals[interval] = true
 		}
 	}
-	balance, err := domain.ParseDecimal(c.Paper.InitialBalance)
-	if err != nil || !balance.IsPositive() {
-		return errors.New("paper.initial_balance must be a positive plain decimal string")
+	if _, err := paper.ValidateInitialBalance(c.Paper.InitialBalance); err != nil {
+		return fmt.Errorf("paper.initial_balance: %w", err)
 	}
 	if c.Paper.QuoteCurrency != "USDT" {
 		return errors.New("paper.quote_currency must be USDT")

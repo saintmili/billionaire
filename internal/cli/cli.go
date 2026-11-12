@@ -62,6 +62,7 @@ func Execute(ctx context.Context, args []string, out, diagnostics io.Writer) err
 	opts.addStorageCommands(root)
 	opts.addMarketCommands(root)
 	opts.addStrategyCommands(root)
+	opts.addPaperCommands(root)
 	err := root.ExecuteContext(ctx)
 	if err != nil {
 		logger.Error("command failed", "error", err.Error())

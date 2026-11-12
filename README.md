@@ -2,8 +2,8 @@
 
 A Linux-first Go CLI for public-market monitoring and paper trading. M3 provides
 configuration, PostgreSQL storage, public candle synchronization, versioned
-strategies and recorded signals. Accounts, order execution, backtesting and the
-daemon are later milestones.
+strategies and recorded signals. M4 now adds durable paper accounts and an opening
+ledger; order execution, backtesting and the daemon remain upcoming work.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -100,8 +100,52 @@ revisions, and feed/checkpoint state. Identical REST/socket closes share a key
 and cannot double insert. Older observations cannot overwrite newer values.
 
 The database user must be able to create the application schema and its objects.
-No StopLore tables are touched. No account/ledger tables exist yet; later migrations
-must preserve exact numeric values and transactional ledger invariants.
+No StopLore tables are touched. Migration 4 adds paper accounts, an append-only
+ledger and a financial journal outbox. Accounts use exact NUMERIC(38,18) columns;
+account initialization, opening funds and the outbox event commit atomically.
+
+## Paper accounts (M4, ticket #1)
+
+Run `init` after upgrading to apply migration 4, then:
+
+```sh
+./bin/millionaire paper account create --name demo --balance 10000.125 --request-id demo-opening
+./bin/millionaire paper accounts --output json
+./bin/millionaire paper account show <account-id> --output json
+```
+
+`--balance` defaults to `paper.initial_balance` (including its environment override).
+Currency is USDT only. Balances must be positive, at most 1,000,000,000,000,000,000
+USDT, and have at most 18 fractional digits; excess precision is rejected rather
+than rounded. The same bounds apply during configuration validation. JSON uses
+strings for decimal values. Names are display labels, need not be unique, and
+contain 1–80 ASCII letters, digits, spaces, underscores, dots or hyphens, beginning
+with a letter or digit.
+
+A creation requires `--request-id`: 1–128 ASCII letters, digits, underscores, dots,
+colons or hyphens, beginning with a letter or digit. Preserve that ID when retrying
+an interrupted/uncertain creation. An identical request returns the same account
+without crediting it again; reusing the ID with different name, currency or initial
+balance fails. Equivalent decimal spellings are identical. A new ID creates a new
+account even if the name matches. Account IDs are stable hashes of request IDs.
+Inspection includes the immutable opening ledger entry. This slice has no orders,
+positions or execution engine, so the displayed balance is opening cash.
+
+Offline mutations acquire a database-wide PostgreSQL session advisory lock;
+a competing process fails with an ownership error and can retry after the owner
+finishes. Read-only inspection remains available. The owner uses its dedicated
+connection for every mutation and closes it on completion. PostgreSQL releases
+the lock on disconnect/process death (network failure detection may take longer);
+a lost owner cannot silently reconnect and continue writing. Application users
+must call `Close` on acquired owners. M6 will hold this ownership for the engine's
+lifetime and route CLI mutations through its private control socket. Account
+creation uses `storage.timeout`; errors are sanitized and uncertain commits instruct
+you to retry with the same request ID.
+
+An `account_opened` financial outbox event is recorded locally; it does not call
+StopLore or imply that StopLore supports an account event. Mapping/reconciliation
+and delivery belong to M7. M4 remains fixture-driven under its approved sequencing
+exception; M2 actual-host validation is still required before live monitoring.
 
 ## Checks
 
