@@ -31,7 +31,7 @@ func decodePaperRows[T any](rows pgx.Rows) ([]T, error) {
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (T, error) { return decodePaperRow[T](row) })
 }
 
-func (o *PaperOwner) SubmitSpotOrder(ctx context.Context, request paper.OrderRequest, info marketdata.InstrumentInfo, enabled bool) (paper.Order, error) {
+func (o *PaperOwner) SubmitOrder(ctx context.Context, request paper.OrderRequest, info marketdata.InstrumentInfo, enabled bool) (paper.Order, error) {
 	order, err := paper.PrepareOrder(request, info)
 	if err != nil {
 		return order, err
@@ -74,7 +74,7 @@ func (o *PaperOwner) SubmitSpotOrder(ctx context.Context, request paper.OrderReq
 		}
 		position = &p
 	}
-	if reason := paper.SpotOrderRejection(order, enabled, position); reason != "" {
+	if reason := paper.OrderRejection(order, enabled, position); reason != "" {
 		order.Status = "rejected"
 		order.Reason = reason
 	}
@@ -101,9 +101,9 @@ func (o *PaperOwner) SubmitSpotOrder(ctx context.Context, request paper.OrderReq
 	return order, nil
 }
 
-// ObserveSpot owns event replay and commits all decisions and financial changes
+// Observe owns event replay and commits all decisions and financial changes
 // for one delivered price together. A failed event remains safely retryable.
-func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observation, gate paper.ExecutionGate) (paper.ObservationResult, error) {
+func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation, gate paper.ExecutionGate) (paper.ObservationResult, error) {
 	result := paper.ObservationResult{ObservationID: observation.ID, Orders: []paper.Order{}}
 	if err := observation.Validate(); err != nil {
 		return result, err
@@ -195,7 +195,7 @@ func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observat
 			}
 			orderGate := gate
 			riskReason := ""
-			eligible, _ := paper.SpotObservationEligibility(order, observation, gate)
+			eligible, _ := paper.ObservationEligibility(order, observation, gate)
 			if order.Request.Action == "open" && eligible && gate.Enabled {
 				var riskErr error
 				orderGate, riskReason, riskErr = planRiskEntry(ctx, tx, order, observation, gate, balance)
@@ -203,7 +203,7 @@ func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observat
 					return result, safeError(ctx, ErrUnavailable)
 				}
 			}
-			plan, err := paper.PlanSpotFill(order, observation, orderGate, balance, position)
+			plan, err := paper.PlanFill(order, observation, orderGate, balance, position)
 			if riskReason != "" {
 				plan = paper.Execution{Order: order}
 				plan.Order.Status = "rejected"
@@ -215,7 +215,7 @@ func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observat
 				return result, err
 			}
 			if plan.Order.Status != "pending" {
-				if err := commitSpotPlan(ctx, tx, plan); err != nil {
+				if err := commitExecutionPlan(ctx, tx, plan); err != nil {
 					return result, safeError(ctx, ErrUnavailable)
 				}
 			}
@@ -235,7 +235,7 @@ func (o *PaperOwner) ObserveSpot(ctx context.Context, observation paper.Observat
 	return result, nil
 }
 
-func commitSpotPlan(ctx context.Context, tx pgx.Tx, plan paper.Execution) error {
+func commitExecutionPlan(ctx context.Context, tx pgx.Tx, plan paper.Execution) error {
 	orderPayload, err := json.Marshal(plan.Order)
 	if err != nil {
 		return err

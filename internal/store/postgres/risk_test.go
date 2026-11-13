@@ -19,7 +19,7 @@ func TestKillSwitchRejectsPendingEntriesAndSurvivesOwnerRestart(t *testing.T) {
 	ctx := context.Background()
 	store, owner, account, _ := newSpotTest(t)
 	request := spotRequest(account.ID, "pending")
-	if _, err := owner.SubmitSpotOrder(ctx, request, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, request, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetKillSwitch(ctx, true); err != nil {
@@ -32,7 +32,7 @@ func TestKillSwitchRejectsPendingEntriesAndSurvivesOwnerRestart(t *testing.T) {
 	}
 	defer owner.Close()
 	obs, gate := spotObservation(1)
-	result, err := owner.ObserveSpot(ctx, obs, gate)
+	result, err := owner.Observe(ctx, obs, gate)
 	if err != nil || len(result.Orders) != 1 || result.Orders[0].Reason != "kill switch active" {
 		t.Fatalf("%+v %v", result, err)
 	}
@@ -52,14 +52,14 @@ func TestExecutionRechecksAccountPolicyAndSizesAtActualPrice(t *testing.T) {
 	request := spotRequest(account.ID, "sized")
 	request.Quantity = "risk"
 	request.StopPrice = "90"
-	if _, err := owner.SubmitSpotOrder(ctx, request, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, request, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetRiskPolicy(ctx, account.ID, "", paper.RiskPolicy{FixedRisk: "10"}); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate := spotObservation(1)
-	result, err := owner.ObserveSpot(ctx, obs, gate)
+	result, err := owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Status != "filled" {
 		t.Fatalf("%+v %v", result, err)
 	}
@@ -67,7 +67,7 @@ func TestExecutionRechecksAccountPolicyAndSizesAtActualPrice(t *testing.T) {
 	if err != nil || len(fills) != 1 || fills[0].Quantity.String() != "1" {
 		t.Fatalf("%+v %v", fills, err)
 	}
-	retry, err := owner.SubmitSpotOrder(ctx, request, spotInfo(), true)
+	retry, err := owner.SubmitOrder(ctx, request, spotInfo(), true)
 	if err != nil || retry.Status != "filled" {
 		t.Fatalf("retry %+v %v", retry, err)
 	}
@@ -104,7 +104,7 @@ func TestRiskPoliciesSerializeSharedAccountStrategies(t *testing.T) {
 		wg.Go(func() {
 			r := spotRequest(account.ID, id)
 			r.StrategyID = id
-			_, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true)
+			_, err := owner.SubmitOrder(ctx, r, spotInfo(), true)
 			errs <- err
 		})
 	}
@@ -116,7 +116,7 @@ func TestRiskPoliciesSerializeSharedAccountStrategies(t *testing.T) {
 		}
 	}
 	obs, gate := spotObservation(1)
-	result, err := owner.ObserveSpot(ctx, obs, gate)
+	result, err := owner.Observe(ctx, obs, gate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestRiskPoliciesSerializeSharedAccountStrategies(t *testing.T) {
 		t.Fatalf("%+v %v", orders, err)
 	}
 	for _, r := range orders {
-		retry, err := owner.SubmitSpotOrder(ctx, r.Request, spotInfo(), true)
+		retry, err := owner.SubmitOrder(ctx, r.Request, spotInfo(), true)
 		if err != nil || retry.Status != r.Status {
 			t.Fatalf("%+v %v", retry, err)
 		}
@@ -148,11 +148,11 @@ func TestKillSwitchAllowsPartialAndFullCloses(t *testing.T) {
 	ctx := context.Background()
 	store, owner, account, _ := newSpotTest(t)
 	r := spotRequest(account.ID, "entry")
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, obs, gate); err != nil {
+	if _, err := owner.Observe(ctx, obs, gate); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetKillSwitch(ctx, true); err != nil {
@@ -168,13 +168,13 @@ func TestKillSwitchAllowsPartialAndFullCloses(t *testing.T) {
 		r.PositionID = positions[0].ID
 		r.Quantity = "1"
 		r.At = r.At.Add(time.Second)
-		order, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), false)
+		order, err := owner.SubmitOrder(ctx, r, spotInfo(), false)
 		if err != nil || order.Status != "pending" {
 			t.Fatalf("%+v %v", order, err)
 		}
 		obs, gate = spotObservation(i + 2)
 		gate.Enabled = false
-		result, err := owner.ObserveSpot(ctx, obs, gate)
+		result, err := owner.Observe(ctx, obs, gate)
 		if err != nil || result.Orders[0].Status != "filled" {
 			t.Fatalf("%+v %v", result, err)
 		}
@@ -192,20 +192,20 @@ func TestRiskCooldownAndDailyLossResetAtUTCMidnight(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := spotRequest(account.ID, "first")
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, obs, gate); err != nil {
+	if _, err := owner.Observe(ctx, obs, gate); err != nil {
 		t.Fatal(err)
 	}
 	r.RequestID = "blocked"
 	r.At = obs.AvailableAt
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate = spotObservation(2)
-	result, err := owner.ObserveSpot(ctx, obs, gate)
+	result, err := owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Reason != "daily loss limit reached" {
 		t.Fatalf("%+v %v", result, err)
 	}
@@ -214,11 +214,11 @@ func TestRiskCooldownAndDailyLossResetAtUTCMidnight(t *testing.T) {
 	}
 	r.RequestID = "cooldown"
 	r.At = obs.AvailableAt
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate = spotObservation(3)
-	result, err = owner.ObserveSpot(ctx, obs, gate)
+	result, err = owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Reason != "entry cooldown active" {
 		t.Fatalf("%+v %v", result, err)
 	}
@@ -228,14 +228,14 @@ func TestRiskCooldownAndDailyLossResetAtUTCMidnight(t *testing.T) {
 	next := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
 	r.RequestID = "new-day"
 	r.At = next.Add(-time.Second)
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs.ID = "midnight"
 	obs.ObservedAt = next
 	obs.AvailableAt = next
 	gate.Now = next
-	result, err = owner.ObserveSpot(ctx, obs, gate)
+	result, err = owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Status != "filled" {
 		t.Fatalf("%+v %v", result, err)
 	}
@@ -254,14 +254,14 @@ func TestKillSwitchRacesSerializeWithExecution(t *testing.T) {
 		r := spotRequest(account.ID, fmt.Sprintf("race-%d", index))
 		r.Quantity = "0.1"
 		r.At = r.At.Add(time.Duration(index*2) * time.Second)
-		if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+		if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 			t.Fatal(err)
 		}
 		obs, gate := spotObservation(index*2 + 1)
 		errs := make(chan error, 2)
 		var wg sync.WaitGroup
 		wg.Go(func() { errs <- store.SetKillSwitch(ctx, true) })
-		wg.Go(func() { _, err := owner.ObserveSpot(ctx, obs, gate); errs <- err })
+		wg.Go(func() { _, err := owner.Observe(ctx, obs, gate); errs <- err })
 		wg.Wait()
 		close(errs)
 		for err := range errs {
@@ -270,7 +270,7 @@ func TestKillSwitchRacesSerializeWithExecution(t *testing.T) {
 			}
 		}
 		r.RequestID = fmt.Sprintf("after-%d", index)
-		order, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true)
+		order, err := owner.SubmitOrder(ctx, r, spotInfo(), true)
 		if err != nil || order.Reason != "kill switch active" {
 			t.Fatalf("entry after switch completed: %+v %v", order, err)
 		}
@@ -298,11 +298,11 @@ func TestRiskInvalidGeometryAndMissingStatePersistRejections(t *testing.T) {
 			r := spotRequest(account.ID, "request")
 			r.Quantity = tt.quantity
 			r.StopPrice = tt.stop
-			if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+			if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 				t.Fatal(err)
 			}
 			obs, gate := spotObservation(1)
-			result, err := owner.ObserveSpot(ctx, obs, gate)
+			result, err := owner.Observe(ctx, obs, gate)
 			if err != nil || result.Orders[0].Reason != tt.reason {
 				t.Fatalf("%+v %v", result, err)
 			}
@@ -367,11 +367,11 @@ func TestSignalLinkedRiskRejectionRetainsSignalIdentity(t *testing.T) {
 	r.StrategyID = definition.ID
 	r.SignalID = evaluation.Signals[0].ID
 	r.StopPrice = "90"
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate := spotObservation(1)
-	result, err := owner.ObserveSpot(ctx, obs, gate)
+	result, err := owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Reason != "entry risk budget exceeded" || result.Orders[0].Request.SignalID != r.SignalID {
 		t.Fatalf("%+v %v", result, err)
 	}
@@ -381,18 +381,18 @@ func TestSignalLinkedRiskRejectionRetainsSignalIdentity(t *testing.T) {
 	}
 	r.RequestID = "before-signal"
 	r.At = evaluation.Signals[0].ObservedAt.Add(-time.Second)
-	earlier, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true)
+	earlier, err := owner.SubmitOrder(ctx, r, spotInfo(), true)
 	if err != nil || earlier.Reason != "intent precedes signal availability" {
 		t.Fatalf("earlier intent %+v %v", earlier, err)
 	}
 	r.RequestID = "valid-signal-entry"
 	r.At = obs.AvailableAt
 	r.Quantity = "0.5"
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate = spotObservation(2)
-	result, err = owner.ObserveSpot(ctx, obs, gate)
+	result, err = owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Status != "filled" {
 		t.Fatalf("entry %+v %v", result, err)
 	}
@@ -405,16 +405,16 @@ func TestSignalLinkedRiskRejectionRetainsSignalIdentity(t *testing.T) {
 	closeRequest.Action = "close"
 	closeRequest.PositionID = positions[0].ID
 	closeRequest.At = obs.AvailableAt
-	if _, err := owner.SubmitSpotOrder(ctx, closeRequest, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, closeRequest, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate = spotObservation(3)
-	if _, err := owner.ObserveSpot(ctx, obs, gate); err != nil {
+	if _, err := owner.Observe(ctx, obs, gate); err != nil {
 		t.Fatal(err)
 	}
 	r.RequestID = "reuse-signal"
 	r.At = obs.AvailableAt
-	reused, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true)
+	reused, err := owner.SubmitOrder(ctx, r, spotInfo(), true)
 	if err != nil || reused.Reason != "signal already filled" {
 		t.Fatalf("reused signal %+v %v", reused, err)
 	}
@@ -427,11 +427,11 @@ func TestSignalLinkedRiskRejectionRetainsSignalIdentity(t *testing.T) {
 	}
 	r.RequestID = "same-candle"
 	r.SignalID = next.Signals[0].ID
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate = spotObservation(4)
-	result, err = owner.ObserveSpot(ctx, obs, gate)
+	result, err = owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Reason != "entry already filled for signal candle" {
 		t.Fatalf("same candle %+v %v", result, err)
 	}
@@ -440,11 +440,11 @@ func TestSignalLinkedRiskRejectionRetainsSignalIdentity(t *testing.T) {
 	}
 	r.RequestID = "allowed-same-candle"
 	r.At = obs.AvailableAt
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate = spotObservation(5)
-	result, err = owner.ObserveSpot(ctx, obs, gate)
+	result, err = owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Status != "filled" {
 		t.Fatalf("allowed candle %+v %v", result, err)
 	}
@@ -455,11 +455,11 @@ func TestPercentageSizingRejectsStaleValuationOfOtherHoldings(t *testing.T) {
 	ctx := context.Background()
 	store, owner, account, _ := newSpotTest(t)
 	r := spotRequest(account.ID, "btc-entry")
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	obs, gate := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, obs, gate); err != nil {
+	if _, err := owner.Observe(ctx, obs, gate); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetRiskPolicy(ctx, account.ID, "", paper.RiskPolicy{PercentRisk: "1"}); err != nil {
@@ -473,7 +473,7 @@ func TestPercentageSizingRejectsStaleValuationOfOtherHoldings(t *testing.T) {
 	r.StopPrice = "90"
 	r.Quantity = "risk"
 	r.At = r.At.Add(time.Minute)
-	if _, err := owner.SubmitSpotOrder(ctx, r, info, true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, info, true); err != nil {
 		t.Fatal(err)
 	}
 	obs.ID = "eth-price"
@@ -481,7 +481,7 @@ func TestPercentageSizingRejectsStaleValuationOfOtherHoldings(t *testing.T) {
 	obs.ObservedAt = obs.ObservedAt.Add(2 * time.Minute)
 	obs.AvailableAt = obs.ObservedAt
 	gate.Now = obs.AvailableAt
-	result, err := owner.ObserveSpot(ctx, obs, gate)
+	result, err := owner.Observe(ctx, obs, gate)
 	if err != nil || result.Orders[0].Reason != "valuation source stale/unready" {
 		t.Fatalf("%+v %v", result, err)
 	}
@@ -503,13 +503,13 @@ func TestExecutionFailuresPersistReasonsWithoutFinancialChanges(t *testing.T) {
 			store, owner, account, _ := newSpotTest(t)
 			r := spotRequest(account.ID, "entry")
 			r.Quantity = tt.quantity
-			if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+			if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 				t.Fatal(err)
 			}
 			obs, gate := spotObservation(1)
 			obs.Ready = tt.ready
 			gate.Enabled = tt.enabled
-			result, err := owner.ObserveSpot(ctx, obs, gate)
+			result, err := owner.Observe(ctx, obs, gate)
 			if err != nil || result.Orders[0].Reason != tt.reason {
 				t.Fatalf("%+v %v", result, err)
 			}

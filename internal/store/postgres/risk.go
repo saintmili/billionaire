@@ -101,7 +101,7 @@ func entryAdmission(ctx context.Context, tx pgx.Tx, order paper.Order) (string, 
 		if err != nil {
 			return "", err
 		}
-		if signal.Kind != "entry" || signal.Direction != strategy.Long || signal.StrategyID != order.Request.StrategyID || instance.Account != order.Request.AccountID || signal.Instrument != order.Request.Instrument || !signal.SourceReady || (instance.Action != strategy.ManualPaper && instance.Action != strategy.AutoPaper) {
+		if signal.Kind != "entry" || string(signal.Direction) != order.Request.Side || signal.StrategyID != order.Request.StrategyID || instance.Account != order.Request.AccountID || signal.Instrument != order.Request.Instrument || !signal.SourceReady || (instance.Action != strategy.ManualPaper && instance.Action != strategy.AutoPaper) {
 			return "signal unavailable or incompatible with entry", nil
 		}
 		if order.Request.At.Before(signal.ObservedAt) {
@@ -208,34 +208,41 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 	}
 	equity := balance
 	marks := map[string]domain.Decimal{}
-	needsMarks := false
+	needsMarks := order.Request.Instrument.Market == domain.Linear
 	for _, scoped := range policies {
 		p := scoped.policy
 		needsMarks = needsMarks || p.PercentRisk != "" || p.MarginPercent != "" || p.SymbolExposure != ""
 	}
 	for _, p := range positions {
+		needsMarks = needsMarks || p.Instrument.Market == domain.Linear
+	}
+	observations, err := positionMarks(ctx, tx, positions, &observation)
+	if err != nil {
+		return gate, "", err
+	}
+	if needsMarks {
+		valuation := paper.ValueAccount(balance, positions, observations, gate.Now, gate.StaleAfter)
+		if valuation.Reason != "" {
+			return gate, valuation.Reason, nil
+		}
+		equity = *valuation.Equity
+		if !equity.IsPositive() || !valuation.FreeMargin.IsPositive() {
+			return gate, "insufficient equity/free margin", nil
+		}
+	}
+	for _, p := range positions {
 		mark := p.EntryPrice
-		if p.Instrument == observation.Instrument {
-			mark = observation.Price
-		} else if needsMarks {
-			last, e := decodePaperRow[paper.Observation](tx.QueryRow(ctx, `SELECT payload FROM millionaire.paper_price_events WHERE instrument_key=$1 AND accepted ORDER BY sequence DESC LIMIT 1`, instrumentKey(p.Instrument)))
-			if errors.Is(e, pgx.ErrNoRows) {
-				return gate, "valuation source unavailable", nil
-			}
-			if e != nil {
-				return gate, "", e
-			}
-			if !last.Ready || last.AvailableAt.After(gate.Now) || gate.Now.Sub(last.ObservedAt) > gate.StaleAfter {
-				return gate, "valuation source stale/unready", nil
-			}
-			mark = last.Price
+		if o, ok := observations[p.ID]; ok {
+			mark = o.Price
 		}
 		marks[p.ID] = mark.Mul(p.RemainingQuantity)
-		equity = equity.Add(marks[p.ID])
+		if !needsMarks {
+			equity = equity.Add(marks[p.ID])
+		}
 	}
 	entry := paper.ExecutablePrice(order, observation.Price)
 	stop, stopErr := paper.ExactValue(order.Request.StopPrice, true)
-	if order.Request.StopPrice != "" && (stopErr != nil || !entry.GreaterThan(stop) || !stop.Mod(order.Metadata.PriceStep).IsZero()) {
+	if order.Request.StopPrice != "" && (stopErr != nil || ((order.Request.Side == "long" && !entry.GreaterThan(stop)) || (order.Request.Side == "short" && !stop.GreaterThan(entry))) || !stop.Mod(order.Metadata.PriceStep).IsZero()) {
 		return gate, "invalid entry/stop distance or stop precision", nil
 	}
 	quantity, _ := paper.ExactValue(order.Request.Quantity, true)
@@ -244,7 +251,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		for _, scoped := range policies {
 			p := scoped.policy
 			if p.FixedRisk != "" || p.PercentRisk != "" {
-				q, why := paper.SizeEntry(p, equity, entry, stop, order.Metadata.QuantityStep)
+				q, why := paper.SizeDirectionalEntry(p, equity, entry, stop, order.Metadata.QuantityStep, order.Request.Side)
 				if why != "" {
 					return gate, why, nil
 				}
@@ -259,16 +266,32 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		}
 		gate.RiskQuantity = quantity.String()
 	}
+	if needsMarks {
+		valuation := paper.ValueAccount(balance, positions, observations, gate.Now, gate.StaleAfter)
+		capital := entry.Mul(quantity).RoundCeil(18)
+		if order.Request.Instrument.Market == domain.Linear {
+			capital = paper.RequiredMargin(capital, order.Request.Leverage)
+		}
+		feeRate, _ := paper.ExactValue(order.Request.FeeRate, false)
+		required := capital.Add(entry.Mul(quantity).Mul(feeRate).RoundCeil(18))
+		if required.GreaterThan(*valuation.FreeMargin) {
+			return gate, "insufficient free margin", nil
+		}
+	}
 	for _, policy := range policies {
 		p := policy.policy
 		strategyScoped := policy.strategyScoped
-		state := paper.RiskState{Equity: equity}
+		state := paper.RiskState{Equity: equity, Side: order.Request.Side}
 		for _, position := range positions {
 			if strategyScoped && position.StrategyID != order.Request.StrategyID {
 				continue
 			}
 			state.Positions++
-			state.Exposure = state.Exposure.Add(marks[position.ID])
+			if position.Instrument.Market == domain.Linear {
+				state.Exposure = state.Exposure.Add(position.ReservedMargin)
+			} else {
+				state.Exposure = state.Exposure.Add(marks[position.ID])
+			}
 			if position.Instrument == order.Request.Instrument {
 				state.SymbolPositions++
 				state.SymbolExposure = state.SymbolExposure.Add(marks[position.ID])
@@ -289,7 +312,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 			}
 			pnl := f.Fee.Neg()
 			if !opening {
-				pnl = pnl.Add(f.Notional.Sub(position.EntryPrice.Mul(f.Quantity)))
+				pnl = pnl.Add(position.PricePnL(f.Price, f.Quantity).RoundFloor(18))
 			}
 			state.DailyPnL = state.DailyPnL.Add(pnl)
 		}

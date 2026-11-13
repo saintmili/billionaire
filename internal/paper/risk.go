@@ -40,10 +40,14 @@ func (p RiskPolicy) Validate() error {
 	return nil
 }
 func SizeEntry(p RiskPolicy, equity, entry, stop, step domain.Decimal) (domain.Decimal, string) {
+	return SizeDirectionalEntry(p, equity, entry, stop, step, "long")
+}
+
+func SizeDirectionalEntry(p RiskPolicy, equity, entry, stop, step domain.Decimal, side string) (domain.Decimal, string) {
 	if p.Validate() != nil {
 		return domain.Decimal{}, "invalid risk policy"
 	}
-	if !entry.IsPositive() || !stop.IsPositive() || !entry.GreaterThan(stop) || !step.IsPositive() {
+	if !entry.IsPositive() || !stop.IsPositive() || !favorable(Position{Side: side}, entry, stop) || !step.IsPositive() {
 		return domain.Decimal{}, "invalid entry/stop distance"
 	}
 	budget := domain.Decimal{}
@@ -62,7 +66,7 @@ func SizeEntry(p RiskPolicy, equity, entry, stop, step domain.Decimal) (domain.D
 	if !budget.IsPositive() {
 		return domain.Decimal{}, "risk sizing policy unavailable"
 	}
-	steps, _ := budget.QuoRem(entry.Sub(stop).Mul(step), 0)
+	steps, _ := budget.QuoRem(entry.Sub(stop).Abs().Mul(step), 0)
 	q := steps.Mul(step)
 	if validateValue(q, true) != nil {
 		return domain.Decimal{}, "risk size below precision or outside supported bounds"
@@ -71,6 +75,7 @@ func SizeEntry(p RiskPolicy, equity, entry, stop, step domain.Decimal) (domain.D
 }
 
 type RiskState struct {
+	Side            string
 	Equity          domain.Decimal
 	Exposure        domain.Decimal
 	SymbolExposure  domain.Decimal
@@ -108,12 +113,16 @@ func EntryRiskReason(p RiskPolicy, state RiskState, quantity, entry, stop domain
 		if !state.Equity.IsPositive() {
 			return "equity unavailable for margin limit"
 		}
-		if state.Exposure.Add(notional).GreaterThan(state.Equity.Mul(decimal(p.MarginPercent)).Shift(-2)) {
+		if leverage < 1 {
+			return "invalid leverage"
+		}
+		capital := RequiredMargin(notional, leverage)
+		if state.Exposure.Add(capital).GreaterThan(state.Equity.Mul(decimal(p.MarginPercent)).Shift(-2)) {
 			return "margin usage exceeded"
 		}
 	}
 	if p.FixedRisk != "" || p.PercentRisk != "" {
-		max, reason := SizeEntry(p, state.Equity, entry, stop, decimal("0.000000000000000001"))
+		max, reason := SizeDirectionalEntry(p, state.Equity, entry, stop, decimal("0.000000000000000001"), state.Side)
 		if reason != "" {
 			return reason
 		}

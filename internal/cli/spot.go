@@ -68,7 +68,7 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			use = "close <position-id>"
 			args = cobra.ExactArgs(1)
 		}
-		cmd := &cobra.Command{Use: use, Short: "Submit an offline spot market intent (waits for a later observation)", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
+		cmd := &cobra.Command{Use: use, Short: "Submit an offline paper market intent (waits for a later observation)", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
 			timestamp, err := time.Parse(time.RFC3339Nano, at)
 			if err != nil {
 				return errors.New("at must be an explicit RFC3339 intent timestamp")
@@ -97,6 +97,8 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 					}
 					r.PositionID = position.ID
 					r.AccountID = position.AccountID
+					r.Side = position.Direction()
+					r.Leverage = position.EffectiveLeverage()
 					info = position.Metadata
 				}
 				r.Instrument = info.Instrument
@@ -105,7 +107,7 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 					return err
 				}
 				defer owner.Close()
-				order, err := owner.SubmitSpotOrder(ctx, r, info, spotEnabled(cfg, info))
+				order, err := owner.SubmitOrder(ctx, r, info, spotEnabled(cfg, info))
 				if err != nil {
 					return err
 				}
@@ -129,17 +131,17 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			_ = cmd.MarkFlagRequired(flag)
 		}
 		if action == "open" {
-			cmd.Flags().StringVar(&r.TargetPrice, "take-profit", "", "initial long target above fill price")
+			cmd.Flags().StringVar(&r.TargetPrice, "take-profit", "", "initial direction-appropriate target price")
 			cmd.Flags().StringVar(&r.TargetQuantity, "target-quantity", "", "one-time partial target quantity; default all remaining holdings")
 			cmd.Flags().StringVar(&r.TrailActivation, "trail-activation", "", "absolute trailing activation price")
 			cmd.Flags().StringVar(&r.TrailDistance, "trail-distance", "", "absolute trailing price distance")
-			cmd.Flags().StringVar(&r.StopPrice, "stop-price", "", "initial protective stop below fill price; also used for risk sizing")
+			cmd.Flags().StringVar(&r.StopPrice, "stop-price", "", "initial direction-appropriate protective stop; also used for risk sizing")
 			cmd.Flags().StringVar(&r.StrategyID, "strategy", "", "optional strategy definition scope")
 			cmd.Flags().StringVar(&r.SignalID, "signal", "", "optional originating signal ID")
 			cmd.Flags().StringVar(&r.AccountID, "account", "", "existing paper account ID")
-			cmd.Flags().StringVar(&r.Side, "side", "long", "spot holdings direction (long only)")
-			cmd.Flags().IntVar(&r.Leverage, "leverage", 1, "spot leverage (1 only)")
-			cmd.Flags().StringVar(&market, "market", "spot", "market (spot only in this slice)")
+			cmd.Flags().StringVar(&r.Side, "side", "long", "position direction: long or short (linear only)")
+			cmd.Flags().IntVar(&r.Leverage, "leverage", 1, "integer isolated linear leverage 1-100; spot requires 1")
+			cmd.Flags().StringVar(&market, "market", "spot", "market: spot or linear")
 			cmd.Flags().StringVar(&symbol, "symbol", "BTC/USDT", "BASE/USDT instrument")
 			cmd.Flags().StringVar(&fixturePath, "fixture", "", "offline JSON instrument metadata; observations are applied separately")
 			_ = cmd.MarkFlagRequired("account")
@@ -171,7 +173,7 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 				return err
 			}
 			defer owner.Close()
-			result, err := owner.ObserveSpot(ctx, fixture.Observation, paper.ExecutionGate{Now: now, StaleAfter: staleAfter, Enabled: spotEnabled(cfg, fixture.Metadata)})
+			result, err := owner.Observe(ctx, fixture.Observation, paper.ExecutionGate{Now: now, StaleAfter: staleAfter, Enabled: spotEnabled(cfg, fixture.Metadata)})
 			if err != nil {
 				return err
 			}
@@ -209,7 +211,7 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 					}
 					result = positions
 					for _, p := range positions {
-						lines = append(lines, fmt.Sprintf("%s %s %s remaining=%s realized_pnl=%s fees=%s", p.ID, p.Instrument.Base+"/"+p.Instrument.Quote, p.Status, p.RemainingQuantity.String(), p.RealizedPnL.String(), p.FeesPaid.String()))
+						lines = append(lines, fmt.Sprintf("%s %s %s %s leverage=%d margin=%s %s remaining=%s realized_pnl=%s fees=%s", p.ID, p.Instrument.Market, p.Instrument.Base+"/"+p.Instrument.Quote, p.Direction(), p.EffectiveLeverage(), p.ReservedMargin.String(), p.Status, p.RemainingQuantity.String(), p.RealizedPnL.String(), p.FeesPaid.String()))
 					}
 				case "orders":
 					orders, err := store.PaperOrders(ctx, accountID)

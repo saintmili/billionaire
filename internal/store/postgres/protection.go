@@ -54,7 +54,7 @@ func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observa
 			}
 			continue
 		}
-		request := paper.OrderRequest{RequestID: paper.Identity("protect", p.ID+":"+observation.ID), AccountID: p.AccountID, PositionID: p.ID, Action: "close", Instrument: p.Instrument, Side: "long", Leverage: 1, Quantity: decision.Quantity, At: p.Protection.UpdatedAt, FeeRate: p.Protection.FeeRate, SlippageBPS: p.Protection.SlippageBPS}
+		request := paper.OrderRequest{RequestID: paper.Identity("protect", p.ID+":"+observation.ID), AccountID: p.AccountID, PositionID: p.ID, Action: "close", Instrument: p.Instrument, Side: p.Direction(), Leverage: p.EffectiveLeverage(), Quantity: decision.Quantity, At: p.Protection.UpdatedAt, FeeRate: p.Protection.FeeRate, SlippageBPS: p.Protection.SlippageBPS}
 		order, err := paper.PrepareOrder(request, p.Metadata)
 		if err != nil {
 			return nil, err
@@ -77,7 +77,7 @@ func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observa
 		executable := observation
 		executable.Bar = nil
 		executable.Price = decision.Price
-		plan, err := paper.PlanSpotFill(order, executable, gate, balance, &p)
+		plan, err := paper.PlanFill(order, executable, gate, balance, &p)
 		if err != nil {
 			return nil, err
 		}
@@ -90,7 +90,7 @@ func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observa
 			// Rejected exits must not consume a partial target or trailing transition.
 			plan.Order.Reason = "protective " + decision.Reason + ": " + plan.Order.Reason
 		}
-		if err := commitSpotPlan(ctx, tx, plan); err != nil {
+		if err := commitExecutionPlan(ctx, tx, plan); err != nil {
 			return nil, err
 		}
 		orders = append(orders, plan.Order)

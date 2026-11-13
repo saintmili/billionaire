@@ -20,6 +20,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 - [M4 account slice report](m4-accounts-report.md): ticket #1 account/ledger, offline ownership and verification.
 - [M4 risk slice report](m4-risk-report.md): ticket #3 policy sizing, transactional limits, persistent kill switch and verification.
 - [M4 spot slice report](m4-spot-report.md): ticket #2 orders, fills, positions, fixture execution and verification.
+- [M4 linear slice report](m4-linear-report.md): ticket #4 long/short isolated collateral, settlement and valuation.
 - [M4 protection slice report](m4-protection-report.md): ticket #6 stops, targets, trailing state, candle ordering and atomic exits.
 - [Architecture decisions](adr/): accepted PostgreSQL, execution/journal separation and candle/replay decisions.
 - [Milestone checklist](milestone-checklist.md): sequenced follow-up work and acceptance gates.

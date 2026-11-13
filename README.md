@@ -483,3 +483,61 @@ a separate M4 ticket.
 inspect it. Pending entries recheck the switch and current policy at execution.
 Partial/full closes remain available. See the [risk contract](docs/m4-risk-report.md)
 for precedence, UTC daily reset, cooldown, exact sizing and failure behavior.
+
+## Isolated linear paper execution (M4, ticket #4)
+
+The existing offline `paper open`, `observe`, `close`, `positions`, `orders` and
+`fills` commands support USDT linear longs and shorts. The example configuration
+enables ETH/USDT linear. No exchange trading connection is used.
+
+```sh
+./bin/millionaire paper open --account <account-id> --market linear --symbol ETH/USDT \
+  --side short --leverage 5 --quantity 2 --request-id linear-short \
+  --fixture testdata/paper/linear-entry.json --at 2026-11-14T10:00:00Z
+./bin/millionaire paper observe --fixture testdata/paper/linear-entry.json --at 2026-11-14T10:00:01Z
+./bin/millionaire paper account show <account-id> --at 2026-11-14T10:00:01Z --output json
+./bin/millionaire paper positions --account <account-id>
+./bin/millionaire paper close <position-id> --quantity 0.5 --request-id linear-partial --at 2026-11-14T10:00:02Z
+./bin/millionaire paper observe --fixture testdata/paper/linear-partial.json --at 2026-11-14T10:00:03Z
+./bin/millionaire paper close <position-id> --quantity 1.5 --request-id linear-final --at 2026-11-14T10:00:04Z
+./bin/millionaire paper observe --fixture testdata/paper/linear-final.json --at 2026-11-14T10:00:05Z
+./bin/millionaire paper account show <account-id> --output json
+```
+
+On an otherwise empty 1000 USDT account, these prices (100, 110, 90) and default
+0.1% fees leave 1009.61 USDT for a short, or 989.61 for a long. Entry reserves
+40 USDT plus 0.20 fees. Close commands inherit position side/leverage; they never
+open a reverse position. Both directions use adverse tick/slippage rounding.
+
+Leverage is an integer from 1 to 100, a simulation bound rather than a claim about
+venue-specific leverage tiers; account/strategy limits can lower it. Spot still
+requires long/1×. Fixture precision/minimums are authoritative; unsupported or
+missing metadata fails validation. Pending intents reserve nothing; eligibility
+rechecks the shared risk gate and locks collateral transactionally. Short risk
+sizing requires a stop above entry. Stops, targets, trailing and adverse-first
+ambiguous candles use position direction, including exits while entries are paused.
+
+`account show` adds `valuation`: available cash, reserved margin, realized P&L
+including fees recognized so far, gross unrealized price P&L, equity and free
+margin. Linear equity is cash + reserved collateral + unrealized P&L; spot
+holdings add marked value to equity but cannot collateralize linear entries.
+Free margin is cash + linear unrealized P&L; an entry must fit both free margin
+and cash, so unrealized gains do not become spendable funds. Margin usage sums
+reserved linear collateral and marked spot capital; symbol exposure remains gross
+marked notional. Both account and strategy policies apply.
+
+Marks are the latest accepted ready offline observations, checked against
+`market_data.stale_after` at the valuation clock (`--at`, default current time).
+Unavailable/stale/future marks yield null equity/free-margin/unrealized values and
+an explicit reason; known cash, reserved margin and realized P&L remain visible.
+Entry checks requiring these marks reject. `--at` checks freshness of the current
+stored snapshot; it does not reconstruct historical account state.
+
+Funding and simplified liquidation are ticket #7. Until that slice is implemented,
+price losses are settled in full, without a fabricated loss cap or automatic
+liquidation; severe gaps can consume cash beyond the original reservation and
+produce a deficit. Collateral is reserved per position without automatic top-ups
+or cross-margin liquidation, but this intermediate slice is not a complete
+isolated-liquidation simulator. New entries fail on insufficient cash/equity/free
+margin; explicit/protective exits remain available. M4 acceptance and live
+monitoring remain gated. See [the linear report](docs/m4-linear-report.md).

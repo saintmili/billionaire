@@ -29,14 +29,14 @@ func TestSpotEntryWaitsForLaterPriceAndUsesConservativeCosts(t *testing.T) {
 	}
 	observation := paper.Observation{ID: "price-1", Instrument: info.Instrument, Source: "fixture", Price: amount("100"), ObservedAt: at, AvailableAt: at, Ready: true}
 	gate := paper.ExecutionGate{Now: at, StaleAfter: time.Minute, Enabled: true}
-	plan, err := paper.PlanSpotFill(order, observation, gate, amount("1000"), nil)
+	plan, err := paper.PlanFill(order, observation, gate, amount("1000"), nil)
 	if err != nil || plan.Order.Status != "pending" || plan.Fill != nil {
 		t.Fatalf("already-known price filled: %+v %v", plan, err)
 	}
 	observation.ObservedAt = at.Add(time.Second)
 	observation.AvailableAt = observation.ObservedAt
 	gate.Now = observation.AvailableAt
-	plan, err = paper.PlanSpotFill(order, observation, gate, amount("1000"), nil)
+	plan, err = paper.PlanFill(order, observation, gate, amount("1000"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestSpotCloseAllocatesCostAndReconcilesFees(t *testing.T) {
 	order, _ := paper.PrepareOrder(request, info)
 	observation := paper.Observation{ID: "p1", Instrument: info.Instrument, Source: "fixture", Price: amount("100"), ObservedAt: at.Add(time.Second), AvailableAt: at.Add(time.Second), Ready: true}
 	gate := paper.ExecutionGate{Now: observation.AvailableAt, StaleAfter: time.Minute, Enabled: true}
-	entry, err := paper.PlanSpotFill(order, observation, gate, amount("1000"), nil)
+	entry, err := paper.PlanFill(order, observation, gate, amount("1000"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestSpotCloseAllocatesCostAndReconcilesFees(t *testing.T) {
 	observation.ObservedAt = at.Add(3 * time.Second)
 	observation.AvailableAt = observation.ObservedAt
 	gate.Now = observation.AvailableAt
-	partial, err := paper.PlanSpotFill(closeOrder, observation, gate, amount("799.8"), entry.Position)
+	partial, err := paper.PlanFill(closeOrder, observation, gate, amount("799.8"), entry.Position)
 	if err != nil || partial.Fill.RealizedPnL.String() != "4.895" || partial.Position.RemainingQuantity.String() != "1.5" || partial.Position.RemainingCost.String() != "150.15" || partial.CashDelta.String() != "54.945" {
 		t.Fatalf("partial: %+v %v", partial, err)
 	}
@@ -86,7 +86,7 @@ func TestSpotCloseAllocatesCostAndReconcilesFees(t *testing.T) {
 	observation.ObservedAt = at.Add(5 * time.Second)
 	observation.AvailableAt = observation.ObservedAt
 	gate.Now = observation.AvailableAt
-	final, err := paper.PlanSpotFill(closeOrder, observation, gate, amount("854.745"), partial.Position)
+	final, err := paper.PlanFill(closeOrder, observation, gate, amount("854.745"), partial.Position)
 	if err != nil || final.Position.Status != "closed" || !final.Position.RemainingQuantity.IsZero() || !final.Position.RemainingCost.IsZero() || final.Position.RealizedPnL.String() != "-10.39" || final.Position.FeesPaid.String() != "0.39" || final.CashDelta.String() != "134.865" {
 		t.Fatalf("close: %+v %v", final, err)
 	}
@@ -130,7 +130,7 @@ func TestSpotPolicyRejectsUnsafeInputsAndExecution(t *testing.T) {
 			g.Now = g.Now.Add(test.delay)
 			o := observation
 			o.Ready = test.ready
-			plan, err := paper.PlanSpotFill(order, o, g, amount(test.balance), nil)
+			plan, err := paper.PlanFill(order, o, g, amount(test.balance), nil)
 			if err != nil || plan.Order.Status != "rejected" || plan.Order.Reason == "" || plan.Fill != nil || !plan.CashDelta.IsZero() {
 				t.Fatalf("unsafe execution: %+v %v", plan, err)
 			}
@@ -138,17 +138,17 @@ func TestSpotPolicyRejectsUnsafeInputsAndExecution(t *testing.T) {
 	}
 	request.Quantity = "0.001"
 	small, _ := paper.PrepareOrder(request, info)
-	plan, err := paper.PlanSpotFill(small, observation, gate, amount("1000"), nil)
+	plan, err := paper.PlanFill(small, observation, gate, amount("1000"), nil)
 	if err != nil || plan.Order.Status != "rejected" {
 		t.Fatalf("minimum notional: %+v %v", plan, err)
 	}
 	observation.Price = amount("100.001")
-	plan, err = paper.PlanSpotFill(order, observation, gate, amount("1000"), nil)
+	plan, err = paper.PlanFill(order, observation, gate, amount("1000"), nil)
 	if err != nil || plan.Fill.Price.String() != "100.01" {
 		t.Fatalf("buy tick rounding: %+v %v", plan, err)
 	}
 	gate.Now = gate.Now.Add(2 * time.Second)
-	plan, err = paper.PlanSpotFill(order, observation, gate, amount("1000"), nil)
+	plan, err = paper.PlanFill(order, observation, gate, amount("1000"), nil)
 	if err != nil || plan.Fill.LatencyMillis != 3000 {
 		t.Fatalf("processing latency: %+v %v", plan, err)
 	}

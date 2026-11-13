@@ -17,17 +17,17 @@ func TestProtectionPartialTargetPersistsAndStopClosesRemainder(t *testing.T) {
 	r.StopPrice = "90"
 	r.TargetPrice = "120"
 	r.TargetQuantity = "0.5"
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	o, g := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+	if _, err := owner.Observe(ctx, o, g); err != nil {
 		t.Fatal(err)
 	}
 	o, g = spotObservation(2)
 	o.Price = spotDecimal("120")
 	for range 2 {
-		result, err := owner.ObserveSpot(ctx, o, g)
+		result, err := owner.Observe(ctx, o, g)
 		if err != nil || len(result.Orders) != 1 || result.Orders[0].Status != "filled" {
 			t.Fatalf("target: %+v %v", result, err)
 		}
@@ -44,7 +44,7 @@ func TestProtectionPartialTargetPersistsAndStopClosesRemainder(t *testing.T) {
 	defer owner.Close()
 	o, g = spotObservation(3)
 	o.Price = spotDecimal("125")
-	if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+	if _, err := owner.Observe(ctx, o, g); err != nil {
 		t.Fatal(err)
 	}
 	o, g = spotObservation(4)
@@ -53,7 +53,7 @@ func TestProtectionPartialTargetPersistsAndStopClosesRemainder(t *testing.T) {
 	if err := store.SetKillSwitch(ctx, true); err != nil {
 		t.Fatal(err)
 	}
-	result, err := owner.ObserveSpot(ctx, o, g)
+	result, err := owner.Observe(ctx, o, g)
 	if err != nil || len(result.Orders) != 1 {
 		t.Fatalf("stop: %+v %v", result, err)
 	}
@@ -76,11 +76,11 @@ func TestProtectionRollbackAndConcurrentManualCloseCannotOverclose(t *testing.T)
 	store, owner, account, dsn := newSpotTest(t)
 	r := spotRequest(account.ID, "protected")
 	r.StopPrice = "90"
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	o, g := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+	if _, err := owner.Observe(ctx, o, g); err != nil {
 		t.Fatal(err)
 	}
 	positions, err := store.PaperPositions(ctx, account.ID)
@@ -92,7 +92,7 @@ func TestProtectionRollbackAndConcurrentManualCloseCannotOverclose(t *testing.T)
 	r.Action = "close"
 	r.PositionID = p.ID
 	r.At = o.AvailableAt
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	conn, err := pgx.Connect(ctx, dsn)
@@ -107,7 +107,7 @@ func TestProtectionRollbackAndConcurrentManualCloseCannotOverclose(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := owner.ObserveSpot(ctx, o, g); err == nil {
+		if _, err := owner.Observe(ctx, o, g); err == nil {
 			t.Fatalf("%s failure ignored", fault.table)
 		}
 		saved, err := store.PaperPosition(ctx, p.ID)
@@ -128,10 +128,10 @@ func TestProtectionRollbackAndConcurrentManualCloseCannotOverclose(t *testing.T)
 	}
 	errs := make(chan error, 2)
 	var wg sync.WaitGroup
-	wg.Go(func() { _, err := owner.ObserveSpot(ctx, o, g); errs <- err })
+	wg.Go(func() { _, err := owner.Observe(ctx, o, g); errs <- err })
 	wg.Go(func() {
 		r.RequestID = "competing"
-		_, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true)
+		_, err := owner.SubmitOrder(ctx, r, spotInfo(), true)
 		errs <- err
 	})
 	wg.Wait()
@@ -164,11 +164,11 @@ func TestAdjustmentPersistsConflictsAndRollsBackWithOutbox(t *testing.T) {
 	ctx := context.Background()
 	store, owner, account, dsn := newSpotTest(t)
 	r := spotRequest(account.ID, "entry")
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	o, g := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+	if _, err := owner.Observe(ctx, o, g); err != nil {
 		t.Fatal(err)
 	}
 	positions, err := store.PaperPositions(ctx, account.ID)
@@ -222,11 +222,11 @@ func TestProtectionCandleCollisionAndTrailingRestart(t *testing.T) {
 				r.TrailActivation = "110"
 				r.TrailDistance = "10"
 			}
-			if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+			if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 				t.Fatal(err)
 			}
 			o, g := spotObservation(1)
-			if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+			if _, err := owner.Observe(ctx, o, g); err != nil {
 				t.Fatal(err)
 			}
 			o, g = spotObservation(3)
@@ -236,7 +236,7 @@ func TestProtectionCandleCollisionAndTrailingRestart(t *testing.T) {
 			}
 			o.Price = spotDecimal("110")
 			o.Bar = &paper.PriceBar{Start: r.At.Add(2 * time.Second), End: o.ObservedAt, Open: spotDecimal("100"), High: spotDecimal("125"), Low: spotDecimal(low), Close: o.Price}
-			result, err := owner.ObserveSpot(ctx, o, g)
+			result, err := owner.Observe(ctx, o, g)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -273,7 +273,7 @@ func TestProtectionCandleCollisionAndTrailingRestart(t *testing.T) {
 				defer owner.Close()
 				o, g = spotObservation(4)
 				o.Price = spotDecimal("114")
-				if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+				if _, err := owner.Observe(ctx, o, g); err != nil {
 					t.Fatal(err)
 				}
 				fills, err := store.PaperFills(ctx, account.ID)
@@ -298,11 +298,11 @@ func TestProtectionUpgradeAllowsAdjustingLegacyPosition(t *testing.T) {
 	ctx := context.Background()
 	store, owner, account, dsn := newSpotTest(t)
 	r := spotRequest(account.ID, "entry")
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	o, g := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+	if _, err := owner.Observe(ctx, o, g); err != nil {
 		t.Fatal(err)
 	}
 	positions, err := store.PaperPositions(ctx, account.ID)
@@ -344,11 +344,11 @@ func TestTrailingUpdateRollsBackWhenJournalOutboxFails(t *testing.T) {
 	r := spotRequest(account.ID, "entry")
 	r.TrailActivation = "110"
 	r.TrailDistance = "10"
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	o, g := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+	if _, err := owner.Observe(ctx, o, g); err != nil {
 		t.Fatal(err)
 	}
 	positions, err := store.PaperPositions(ctx, account.ID)
@@ -366,7 +366,7 @@ func TestTrailingUpdateRollsBackWhenJournalOutboxFails(t *testing.T) {
 	}
 	o, g = spotObservation(2)
 	o.Price = spotDecimal("120")
-	if _, err := owner.ObserveSpot(ctx, o, g); err == nil {
+	if _, err := owner.Observe(ctx, o, g); err == nil {
 		t.Fatal("trailing outbox failure did not abort")
 	}
 	p, err := store.PaperPosition(ctx, id)
@@ -377,7 +377,7 @@ func TestTrailingUpdateRollsBackWhenJournalOutboxFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+		if _, err := owner.Observe(ctx, o, g); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -392,11 +392,11 @@ func TestProtectionRejectsUnusableObservationsWithoutLosingStop(t *testing.T) {
 	store, owner, account, _ := newSpotTest(t)
 	r := spotRequest(account.ID, "entry")
 	r.StopPrice = "90"
-	if _, err := owner.SubmitSpotOrder(ctx, r, spotInfo(), true); err != nil {
+	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
 		t.Fatal(err)
 	}
 	o, g := spotObservation(1)
-	if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+	if _, err := owner.Observe(ctx, o, g); err != nil {
 		t.Fatal(err)
 	}
 	for _, second := range []int{2, 3} {
@@ -407,14 +407,14 @@ func TestProtectionRejectsUnusableObservationsWithoutLosingStop(t *testing.T) {
 		} else {
 			g.Now = g.Now.Add(2 * time.Minute)
 		}
-		result, err := owner.ObserveSpot(ctx, o, g)
+		result, err := owner.Observe(ctx, o, g)
 		if err != nil || len(result.Orders) != 0 {
 			t.Fatalf("unusable: %+v %v", result, err)
 		}
 	}
 	o, g = spotObservation(4)
 	o.Price = spotDecimal("0")
-	if _, err := owner.ObserveSpot(ctx, o, g); err == nil {
+	if _, err := owner.Observe(ctx, o, g); err == nil {
 		t.Fatal("invalid price accepted")
 	}
 	positions, err := store.PaperPositions(ctx, account.ID)
@@ -422,7 +422,7 @@ func TestProtectionRejectsUnusableObservationsWithoutLosingStop(t *testing.T) {
 		t.Fatalf("unusable observation changed holdings: %+v %v", positions, err)
 	}
 	o.Price = spotDecimal("85")
-	if _, err := owner.ObserveSpot(ctx, o, g); err != nil {
+	if _, err := owner.Observe(ctx, o, g); err != nil {
 		t.Fatal(err)
 	}
 	positions, err = store.PaperPositions(ctx, account.ID)

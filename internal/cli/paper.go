@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/saintmili/billionaire/internal/config"
 	"github.com/saintmili/billionaire/internal/paper"
@@ -50,8 +51,22 @@ func (o *options) addPaperCommands(root *cobra.Command) {
 	_ = create.MarkFlagRequired("name")
 	_ = create.MarkFlagRequired("request-id")
 	account.AddCommand(create)
-	account.AddCommand(&cobra.Command{Use: "show <account-id>", Short: "Inspect balance and immutable ledger", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		return o.paperDatabase(cmd.Context(), func(ctx context.Context, store *postgres.Store) error {
+	var valuationAt string
+	show := &cobra.Command{Use: "show <account-id>", Short: "Inspect balance and immutable ledger", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		now := time.Now().UTC()
+		if valuationAt != "" {
+			var err error
+			now, err = time.Parse(time.RFC3339Nano, valuationAt)
+			if err != nil {
+				return errors.New("at must be an RFC3339 valuation timestamp")
+			}
+		}
+		cfg, err := o.load()
+		if err != nil {
+			return err
+		}
+		staleAfter, _ := time.ParseDuration(cfg.MarketData.StaleAfter)
+		return o.paperDatabaseWithConfig(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
 			a, err := store.PaperAccount(ctx, args[0])
 			if err != nil {
 				return err
@@ -60,17 +75,30 @@ func (o *options) addPaperCommands(root *cobra.Command) {
 			if err != nil {
 				return err
 			}
+			valuation, err := store.PaperAccountValuation(ctx, a.ID, now, staleAfter)
+			if err != nil {
+				return err
+			}
 			result := struct {
-				Account paper.Account       `json:"account"`
-				Ledger  []paper.LedgerEntry `json:"ledger"`
-			}{a, ledger}
+				Account   paper.Account          `json:"account"`
+				Ledger    []paper.LedgerEntry    `json:"ledger"`
+				Valuation paper.AccountValuation `json:"valuation"`
+			}{a, ledger, valuation}
 			text := accountText(a)
+			text += fmt.Sprintf("\navailable=%s reserved_margin=%s realized_pnl=%s", valuation.AvailableBalance, valuation.ReservedMargin, valuation.RealizedPnL)
+			if valuation.Equity != nil {
+				text += fmt.Sprintf("\nunrealized_pnl=%s equity=%s free_margin=%s", valuation.UnrealizedPnL, valuation.Equity, valuation.FreeMargin)
+			} else {
+				text += "\nvaluation unavailable: " + valuation.Reason
+			}
 			for _, e := range ledger {
 				text += fmt.Sprintf("\n%s: %s %s", e.Kind, e.Amount.String(), a.Currency)
 			}
 			return o.write(result, text)
 		})
-	}})
+	}}
+	show.Flags().StringVar(&valuationAt, "at", "", "RFC3339 valuation clock; defaults to current time")
+	account.AddCommand(show)
 	group.AddCommand(account)
 	group.AddCommand(&cobra.Command{Use: "accounts", Short: "List paper accounts and balances", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		return o.paperDatabase(cmd.Context(), func(ctx context.Context, store *postgres.Store) error {

@@ -45,7 +45,7 @@ type ProtectionDecision struct {
 	Gap       bool
 }
 
-// ValidateProtection checks exact ticks and long geometry. A zero reference
+// ValidateProtection checks exact ticks and directional geometry. A zero reference
 // permits syntax validation before an entry's actual execution price is known.
 func ValidateProtection(c ProtectionConfig, p Position, reference domain.Decimal) error {
 	if err := p.Metadata.Validate(); err != nil {
@@ -66,15 +66,15 @@ func ValidateProtection(c ProtectionConfig, p Position, reference domain.Decimal
 	if c.TrailDistance != "" && !decimal(c.TrailDistance).LessThan(decimal(c.TrailActivation)) {
 		return errors.New("trailing distance must be below activation price")
 	}
-	if c.StopPrice != "" && c.TargetPrice != "" && !decimal(c.StopPrice).LessThan(decimal(c.TargetPrice)) {
-		return errors.New("stop must be below target")
+	if c.StopPrice != "" && c.TargetPrice != "" && !favorable(p, decimal(c.TargetPrice), decimal(c.StopPrice)) {
+		return errors.New("stop and target have invalid directional geometry")
 	}
 	if reference.IsPositive() {
-		if c.StopPrice != "" && !decimal(c.StopPrice).LessThan(reference) {
-			return errors.New("long stop must be below reference price")
+		if c.StopPrice != "" && !favorable(p, reference, decimal(c.StopPrice)) {
+			return errors.New("stop must be adverse to reference price")
 		}
-		if c.TargetPrice != "" && !decimal(c.TargetPrice).GreaterThan(reference) {
-			return errors.New("long target must be above reference price")
+		if c.TargetPrice != "" && !favorable(p, decimal(c.TargetPrice), reference) {
+			return errors.New("target must be favorable to reference price")
 		}
 	}
 	if c.TargetQuantity != "" {
@@ -127,8 +127,12 @@ func EvaluateProtection(p Position, o Observation) (ProtectionDecision, error) {
 		}
 		open, high, low = o.Bar.Open, o.Bar.High, o.Bar.Low
 	}
-	stopHit := d.State.StopPrice != "" && low.LessThanOrEqual(decimal(d.State.StopPrice))
-	targetHit := !d.State.TargetDone && d.State.TargetPrice != "" && high.GreaterThanOrEqual(decimal(d.State.TargetPrice))
+	adverse, best := low, high
+	if p.Direction() == "short" {
+		adverse, best = high, low
+	}
+	stopHit := d.State.StopPrice != "" && !favorable(p, adverse, decimal(d.State.StopPrice))
+	targetHit := !d.State.TargetDone && d.State.TargetPrice != "" && !favorable(p, decimal(d.State.TargetPrice), best)
 	d.Ambiguous = stopHit && targetHit
 	if stopHit {
 		d.Reason = "stop_loss"
@@ -136,7 +140,7 @@ func EvaluateProtection(p Position, o Observation) (ProtectionDecision, error) {
 			d.Reason = "trailing_stop"
 		}
 		d.Price = decimal(d.State.StopPrice)
-		if open.LessThan(d.Price) {
+		if favorable(p, d.Price, open) {
 			d.Price = open
 			d.Gap = true
 		}
@@ -144,7 +148,7 @@ func EvaluateProtection(p Position, o Observation) (ProtectionDecision, error) {
 	} else if targetHit {
 		d.Reason = "take_profit"
 		d.Price = decimal(d.State.TargetPrice)
-		if open.GreaterThan(d.Price) {
+		if favorable(p, open, d.Price) {
 			d.Price = open
 			d.Gap = true
 		}
@@ -154,14 +158,21 @@ func EvaluateProtection(p Position, o Observation) (ProtectionDecision, error) {
 		}
 		d.State.TargetDone = true
 	}
-	if d.State.TrailActivation != "" && high.GreaterThanOrEqual(decimal(d.State.TrailActivation)) {
-		if d.State.HighWater == "" || high.GreaterThan(decimal(d.State.HighWater)) {
-			d.State.HighWater = high.String()
+	if d.State.TrailActivation != "" && !favorable(p, decimal(d.State.TrailActivation), best) {
+		if d.State.HighWater == "" || favorable(p, best, decimal(d.State.HighWater)) {
+			d.State.HighWater = best.String()
 		}
-		candidate := decimal(d.State.HighWater).Sub(decimal(d.State.TrailDistance))
-		steps, _ := candidate.QuoRem(p.Metadata.PriceStep, 0)
+		distance := decimal(d.State.TrailDistance)
+		if p.Direction() == "short" {
+			distance = distance.Neg()
+		}
+		candidate := decimal(d.State.HighWater).Sub(distance)
+		steps, remainder := candidate.QuoRem(p.Metadata.PriceStep, 0)
+		if p.Direction() == "short" && !remainder.IsZero() {
+			steps = steps.Add(decimal("1"))
+		}
 		candidate = steps.Mul(p.Metadata.PriceStep)
-		if d.State.StopPrice == "" || candidate.GreaterThan(decimal(d.State.StopPrice)) {
+		if d.State.StopPrice == "" || favorable(p, candidate, decimal(d.State.StopPrice)) {
 			d.State.StopPrice = candidate.String()
 			d.State.TrailingActive = true
 		}
@@ -233,4 +244,12 @@ func AdjustProtection(p Position, r ProtectionAdjustment, reference Observation)
 	state.UpdatedAt = r.At.UTC()
 	p.Protection = &state
 	return p, nil
+}
+
+// favorable reports whether a price is strictly better for the position direction.
+func favorable(p Position, price, reference domain.Decimal) bool {
+	if p.Direction() == "short" {
+		return price.LessThan(reference)
+	}
+	return price.GreaterThan(reference)
 }

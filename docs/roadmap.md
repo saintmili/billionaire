@@ -12,7 +12,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M1 — Project scaffolding and durable storage | Complete — [evidence](m1-report.md) |
 | M2 — Market data and historical synchronization | Implemented; offline checks pass; [live-host gate pending](m2-report.md) |
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
-| M4 — Paper accounts, orders, risk, and position lifecycle | In progress — [accounts (#1)](m4-accounts-report.md), [manual spot (#2)](m4-spot-report.md), [risk gate (#3)](m4-risk-report.md), [protection (#6)](m4-protection-report.md); remaining acceptance pending |
+| M4 — Paper accounts, orders, risk, and position lifecycle | In progress — [accounts (#1)](m4-accounts-report.md), [manual spot (#2)](m4-spot-report.md), [risk gate (#3)](m4-risk-report.md), [protection (#6)](m4-protection-report.md), [linear (#4)](m4-linear-report.md); remaining acceptance pending |
 | M5 — First-class backtesting and analytics | Not started |
 | M6 — Notifications and process operation | Not started |
 | M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
