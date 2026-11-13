@@ -54,17 +54,18 @@ creates a separate database. Go's build cache is under `/tmp/billionaire-go-cach
 - `go test ./...` with PostgreSQL enabled: passed.
 - `go vet ./...`, `go build ./...`, `git diff --check`: passed.
 - `go test -race ./internal/paper ./internal/store/postgres ./internal/cli`
-  with PostgreSQL enabled: passed before review; rerun after fixes pending.
+  with PostgreSQL enabled: passed after all review fixes.
 
-## Standards review
+## Standards
 
 The independent reviewer found no documented-standard breaches and one duplication
 smell: admission and settlement separately calculated collateral/fees with different
 rounding. Both now use `paper.CalculateFillAmounts`, including buy/sell notional
 rounding and collateral precision. A PostgreSQL regression admits a short with
-exactly sufficient collateral at the 18-place rounding boundary.
+exactly sufficient collateral at the 18-place rounding boundary. Re-review found
+no remaining material Standards findings.
 
-## Spec review
+## Spec
 
 The independent reviewer found one incorrect behavior: a fill’s immediate adverse
 slippage could make resulting free margin negative or breach a configured margin
@@ -76,7 +77,12 @@ margin. A targeted review of initial isolated solvency also confirmed that a new
 position must retain positive reserved collateral plus immediate unrealized P&L,
 independently of account cash. Admission rejects zero/negative initial isolated
 equity; long/short regressions cover both boundaries. Subsequent price-driven
-liquidation remains #7. Re-review and final post-fix checks pending.
+liquidation remains #7. Re-review confirmed both corrections and no residual
+material Spec findings. Full tests, vet, build and PostgreSQL race checks passed
+after the final guard; the disposable PostgreSQL container was removed.
+
+Review totals: Standards — one duplication finding addressed, none remaining;
+Spec — two admission findings addressed, none remaining.
 
 ## Limits and remaining gates
 
