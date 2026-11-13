@@ -52,7 +52,27 @@ Checks use disposable PostgreSQL 17 via `MILLIONAIRE_TEST_DATABASE_URL`; every t
 creates a separate database. Go's build cache is under `/tmp/billionaire-go-cache`.
 
 - `go test ./...` with PostgreSQL enabled: passed.
-- Vet, build, race checks and independent Standards/Spec review: pending below.
+- `go vet ./...`, `go build ./...`, `git diff --check`: passed.
+- `go test -race ./internal/paper ./internal/store/postgres ./internal/cli`
+  with PostgreSQL enabled: passed before review; rerun after fixes pending.
+
+## Standards review
+
+The independent reviewer found no documented-standard breaches and one duplication
+smell: admission and settlement separately calculated collateral/fees with different
+rounding. Both now use `paper.CalculateFillAmounts`, including buy/sell notional
+rounding and collateral precision. A PostgreSQL regression admits a short with
+exactly sufficient collateral at the 18-place rounding boundary.
+
+## Spec review
+
+The independent reviewer found one incorrect behavior: a fill’s immediate adverse
+slippage could make resulting free margin negative or breach a configured margin
+percentage despite passing admission against pre-fill equity. Linear admission
+now includes prospective price P&L and fees in projected free margin and the
+margin-limit equity denominator; risk sizing still uses current equity. Regression
+cases cover long/short deficits and a margin-policy breach with positive free
+margin. Re-review and final post-fix checks pending.
 
 ## Limits and remaining gates
 

@@ -75,6 +75,7 @@ func SizeDirectionalEntry(p RiskPolicy, equity, entry, stop, step domain.Decimal
 }
 
 type RiskState struct {
+	MarginEquity    *domain.Decimal // Resulting equity after modeled entry costs, when available.
 	Side            string
 	Equity          domain.Decimal
 	Exposure        domain.Decimal
@@ -110,14 +111,18 @@ func EntryRiskReason(p RiskPolicy, state RiskState, quantity, entry, stop domain
 		return "per-symbol exposure exceeded"
 	}
 	if p.MarginPercent != "" {
-		if !state.Equity.IsPositive() {
+		marginEquity := state.Equity
+		if state.MarginEquity != nil {
+			marginEquity = *state.MarginEquity
+		}
+		if !marginEquity.IsPositive() {
 			return "equity unavailable for margin limit"
 		}
 		if leverage < 1 {
 			return "invalid leverage"
 		}
-		capital := RequiredMargin(notional, leverage)
-		if state.Exposure.Add(capital).GreaterThan(state.Equity.Mul(decimal(p.MarginPercent)).Shift(-2)) {
+		capital := RequiredMargin(roundedNotional(entry, quantity, state.Side != "short"), leverage)
+		if state.Exposure.Add(capital).GreaterThan(marginEquity.Mul(decimal(p.MarginPercent)).Shift(-2)) {
 			return "margin usage exceeded"
 		}
 	}

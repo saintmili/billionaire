@@ -1,8 +1,9 @@
 package paper
 
 import (
-	"github.com/saintmili/billionaire/internal/domain"
 	"time"
+
+	"github.com/saintmili/billionaire/internal/domain"
 )
 
 // AccountValuation separates cash and reserved collateral from mark-dependent

@@ -3,10 +3,11 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/paper"
-	"time"
 )
 
 // PaperAccountValuation reads cash, positions and marks from one read-only snapshot.

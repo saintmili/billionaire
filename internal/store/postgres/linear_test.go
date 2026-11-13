@@ -202,6 +202,7 @@ func TestLinearPolicyLimitsAndExecutionTimeSizing(t *testing.T) {
 			r.Side = "short"
 			r.Leverage = 5
 			r.StopPrice = "110"
+			r.FeeRate = "0"
 			r.Quantity = test.quantity
 			if _, err := owner.SubmitOrder(ctx, r, info, true); err != nil {
 				t.Fatal(err)
@@ -312,5 +313,72 @@ func TestSpotAndLinearPricesStayDistinctAndStaleCollateralRejectsEntry(t *testin
 	result, err = owner.Observe(ctx, obs, gate)
 	if err != nil || len(result.Orders) != 1 || result.Orders[0].Status != "rejected" || result.Orders[0].Reason != "valuation source stale/unready" {
 		t.Fatalf("stale collateral: %+v %v", result, err)
+	}
+}
+
+func TestLinearShortExactCollateralUsesSameRoundingAsFill(t *testing.T) {
+	ctx := context.Background()
+	_, owner, _, _ := newSpotTest(t)
+	account, err := owner.CreateAccount(ctx, paper.CreateAccount{RequestID: "exact", Name: "exact", Currency: "USDT", InitialBalance: "5.005"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := spotInfo()
+	info.Instrument.Market = domain.Linear
+	info.PriceStep = spotDecimal("0.000000000000000001")
+	r := spotRequest(account.ID, "exact-short")
+	r.Instrument = info.Instrument
+	r.Side = "short"
+	r.Quantity = "0.001"
+	if _, err := owner.SubmitOrder(ctx, r, info, true); err != nil {
+		t.Fatal(err)
+	}
+	obs, gate := spotObservation(1)
+	obs.Instrument = info.Instrument
+	obs.Price = spotDecimal("5000.000000000000000001")
+	result, err := owner.Observe(ctx, obs, gate)
+	if err != nil || len(result.Orders) != 1 || result.Orders[0].Status != "filled" {
+		t.Fatalf("exact short rejected: %+v %v", result, err)
+	}
+}
+
+func TestLinearEntryRejectsImmediateSlippageMarginDeficit(t *testing.T) {
+	for _, test := range []struct {
+		name, side, quantity, limit, reason string
+		leverage                            int
+	}{
+		{"long free margin", "long", "90", "100", "insufficient projected free margin", 10},
+		{"short free margin", "short", "90", "100", "insufficient projected free margin", 10},
+		{"projected margin usage", "long", "10", "23", "margin usage exceeded", 5},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			store, owner, account, _ := newSpotTest(t)
+			if err := store.SetRiskPolicy(ctx, account.ID, "", paper.RiskPolicy{MarginPercent: test.limit}); err != nil {
+				t.Fatal(err)
+			}
+			info := spotInfo()
+			info.Instrument.Market = domain.Linear
+			r := spotRequest(account.ID, "slippage-deficit")
+			r.Instrument = info.Instrument
+			r.Side = test.side
+			r.Leverage = test.leverage
+			r.Quantity = test.quantity
+			r.SlippageBPS = "1000"
+			r.FeeRate = "0"
+			if _, err := owner.SubmitOrder(ctx, r, info, true); err != nil {
+				t.Fatal(err)
+			}
+			obs, gate := spotObservation(1)
+			obs.Instrument = info.Instrument
+			result, err := owner.Observe(ctx, obs, gate)
+			if err != nil || len(result.Orders) != 1 || result.Orders[0].Status != "rejected" || result.Orders[0].Reason != test.reason {
+				t.Fatalf("entry creates deficit: %+v %v", result, err)
+			}
+			fills, err := store.PaperFills(ctx, account.ID)
+			if err != nil || len(fills) != 0 {
+				t.Fatalf("deficit entry filled: %+v %v", fills, err)
+			}
+		})
 	}
 }

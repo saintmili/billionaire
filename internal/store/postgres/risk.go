@@ -207,6 +207,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		byID[p.ID] = p
 	}
 	equity := balance
+	var valuation paper.AccountValuation
 	marks := map[string]domain.Decimal{}
 	needsMarks := order.Request.Instrument.Market == domain.Linear
 	for _, scoped := range policies {
@@ -221,7 +222,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		return gate, "", err
 	}
 	if needsMarks {
-		valuation := paper.ValueAccount(balance, positions, observations, gate.Now, gate.StaleAfter)
+		valuation = paper.ValueAccount(balance, positions, observations, gate.Now, gate.StaleAfter)
 		if valuation.Reason != "" {
 			return gate, valuation.Reason, nil
 		}
@@ -266,22 +267,30 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		}
 		gate.RiskQuantity = quantity.String()
 	}
+	var marginEquity *domain.Decimal
 	if needsMarks {
-		valuation := paper.ValueAccount(balance, positions, observations, gate.Now, gate.StaleAfter)
-		capital := entry.Mul(quantity).RoundCeil(18)
-		if order.Request.Instrument.Market == domain.Linear {
-			capital = paper.RequiredMargin(capital, order.Request.Leverage)
+		amounts, err := paper.CalculateFillAmounts(order, entry, quantity)
+		if err != nil {
+			return gate, err.Error(), nil
 		}
-		feeRate, _ := paper.ExactValue(order.Request.FeeRate, false)
-		required := capital.Add(entry.Mul(quantity).Mul(feeRate).RoundCeil(18))
-		if required.GreaterThan(*valuation.FreeMargin) {
+		projectedFree := valuation.FreeMargin.Sub(amounts.Capital).Sub(amounts.Fee)
+		if order.Request.Instrument.Market == domain.Linear {
+			prospective := paper.Position{Side: order.Request.Side, EntryPrice: entry}
+			immediatePnL := prospective.PricePnL(observation.Price, quantity)
+			projectedFree = projectedFree.Add(immediatePnL)
+			resultingEquity := equity.Sub(amounts.Fee).Add(immediatePnL)
+			marginEquity = &resultingEquity
+			if !resultingEquity.IsPositive() || projectedFree.IsNegative() {
+				return gate, "insufficient projected free margin", nil
+			}
+		} else if projectedFree.IsNegative() {
 			return gate, "insufficient free margin", nil
 		}
 	}
 	for _, policy := range policies {
 		p := policy.policy
 		strategyScoped := policy.strategyScoped
-		state := paper.RiskState{Equity: equity, Side: order.Request.Side}
+		state := paper.RiskState{Equity: equity, Side: order.Request.Side, MarginEquity: marginEquity}
 		for _, position := range positions {
 			if strategyScoped && position.StrategyID != order.Request.StrategyID {
 				continue

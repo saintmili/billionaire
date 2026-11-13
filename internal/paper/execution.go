@@ -265,29 +265,18 @@ func PlanFill(order Order, observation Observation, gate ExecutionGate, balance 
 	if _, err := ExactValue(price.String(), true); err != nil {
 		return reject("invalid modeled fill price")
 	}
-	notional := price.Mul(quantity)
-	if order.IsBuy() {
-		notional = notional.RoundCeil(18)
-	} else {
-		notional = notional.RoundFloor(18)
+	amounts, err := CalculateFillAmounts(order, price, quantity)
+	if err != nil {
+		return reject(err.Error())
 	}
-	if _, err := ExactValue(notional.String(), true); err != nil {
-		return reject("fill notional exceeds supported bounds")
-	}
-	if notional.LessThan(order.Metadata.MinNotional) {
-		return reject("fill below minimum notional")
-	}
-	fee := notional.Mul(decimal(order.Request.FeeRate)).RoundCeil(18)
+	notional, fee := amounts.Notional, amounts.Fee
 	fill := Fill{ID: Identity("fill", order.ID), OrderID: order.ID, PositionID: Identity("position", order.ID), ObservationID: observation.ID, Quantity: quantity, Price: price, Notional: notional, Fee: fee, Source: observation.Source, ObservedAt: observation.ObservedAt, AvailableAt: observation.AvailableAt, ExecutedAt: gate.Now, LatencyMillis: gate.Now.Sub(order.Request.At).Milliseconds()}
 	if order.Request.Action == "open" {
 		config := order.Request.ProtectionConfig()
 		if err := ValidateProtection(config, Position{Side: order.Request.Side, Metadata: order.Metadata, RemainingQuantity: quantity}, price); err != nil {
 			return reject(err.Error())
 		}
-		capital := notional
-		if order.Request.Instrument.Market == domain.Linear {
-			capital = RequiredMargin(notional, order.Request.Leverage)
-		}
+		capital := amounts.Capital
 		total := capital.Add(fee)
 		if total.GreaterThan(balance) {
 			if order.Request.Instrument.Market == domain.Linear {
@@ -409,4 +398,34 @@ func RequiredMargin(notional domain.Decimal, leverage int) domain.Decimal {
 		steps = steps.Add(decimal("1"))
 	}
 	return steps.Shift(-18)
+}
+
+// FillAmounts is the shared monetary quote used for risk admission and settlement.
+type FillAmounts struct{ Notional, Fee, Capital domain.Decimal }
+
+func CalculateFillAmounts(order Order, price, quantity domain.Decimal) (FillAmounts, error) {
+	amounts := FillAmounts{Notional: roundedNotional(price, quantity, order.IsBuy())}
+	if _, err := ExactValue(amounts.Notional.String(), true); err != nil {
+		return amounts, errors.New("fill notional exceeds supported bounds")
+	}
+	if amounts.Notional.LessThan(order.Metadata.MinNotional) {
+		return amounts, errors.New("fill below minimum notional")
+	}
+	amounts.Fee = amounts.Notional.Mul(decimal(order.Request.FeeRate)).RoundCeil(18)
+	amounts.Capital = amounts.Notional
+	if order.Request.Instrument.Market == domain.Linear {
+		if order.Request.Leverage < 1 {
+			return amounts, errors.New("invalid leverage")
+		}
+		amounts.Capital = RequiredMargin(amounts.Notional, order.Request.Leverage)
+	}
+	return amounts, nil
+}
+
+func roundedNotional(price, quantity domain.Decimal, buy bool) domain.Decimal {
+	n := price.Mul(quantity)
+	if buy {
+		return n.RoundCeil(18)
+	}
+	return n.RoundFloor(18)
 }
