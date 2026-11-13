@@ -283,6 +283,9 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 			if !resultingEquity.IsPositive() || projectedFree.IsNegative() {
 				return gate, "insufficient projected free margin", nil
 			}
+			if !amounts.Capital.Add(immediatePnL).IsPositive() {
+				return gate, "insufficient projected isolated margin", nil
+			}
 		} else if projectedFree.IsNegative() {
 			return gate, "insufficient free margin", nil
 		}

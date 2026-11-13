@@ -344,12 +344,16 @@ func TestLinearShortExactCollateralUsesSameRoundingAsFill(t *testing.T) {
 
 func TestLinearEntryRejectsImmediateSlippageMarginDeficit(t *testing.T) {
 	for _, test := range []struct {
-		name, side, quantity, limit, reason string
-		leverage                            int
+		name, side, quantity, limit, reason, slippage string
+		leverage                                      int
 	}{
-		{"long free margin", "long", "90", "100", "insufficient projected free margin", 10},
-		{"short free margin", "short", "90", "100", "insufficient projected free margin", 10},
-		{"projected margin usage", "long", "10", "23", "margin usage exceeded", 5},
+		{"long free margin", "long", "90", "100", "insufficient projected free margin", "1000", 10},
+		{"short free margin", "short", "90", "100", "insufficient projected free margin", "1000", 10},
+		{"projected margin usage", "long", "10", "23", "margin usage exceeded", "1000", 5},
+		{"long isolated insolvency", "long", "10", "100", "insufficient projected isolated margin", "1000", 100},
+		{"short isolated insolvency", "short", "10", "100", "insufficient projected isolated margin", "1000", 100},
+		{"long zero isolated equity", "long", "2", "100", "insufficient projected isolated margin", "2500", 5},
+		{"short zero isolated equity", "short", "2", "100", "insufficient projected isolated margin", "2000", 4},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -364,7 +368,7 @@ func TestLinearEntryRejectsImmediateSlippageMarginDeficit(t *testing.T) {
 			r.Side = test.side
 			r.Leverage = test.leverage
 			r.Quantity = test.quantity
-			r.SlippageBPS = "1000"
+			r.SlippageBPS = test.slippage
 			r.FeeRate = "0"
 			if _, err := owner.SubmitOrder(ctx, r, info, true); err != nil {
 				t.Fatal(err)

@@ -72,7 +72,11 @@ percentage despite passing admission against pre-fill equity. Linear admission
 now includes prospective price P&L and fees in projected free margin and the
 margin-limit equity denominator; risk sizing still uses current equity. Regression
 cases cover long/short deficits and a margin-policy breach with positive free
-margin. Re-review and final post-fix checks pending.
+margin. A targeted review of initial isolated solvency also confirmed that a new
+position must retain positive reserved collateral plus immediate unrealized P&L,
+independently of account cash. Admission rejects zero/negative initial isolated
+equity; long/short regressions cover both boundaries. Subsequent price-driven
+liquidation remains #7. Re-review and final post-fix checks pending.
 
 ## Limits and remaining gates
 

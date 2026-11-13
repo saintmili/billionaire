@@ -524,7 +524,8 @@ holdings add marked value to equity but cannot collateralize linear entries.
 Free margin is cash + linear unrealized P&L; an entry must fit both free margin
 and cash, so unrealized gains do not become spendable funds. Linear entry checks
 also include the new fill’s immediate slippage/tick loss and fees in projected
-free margin and margin-limit equity. Margin usage sums
+free margin and margin-limit equity, and require positive isolated equity in the
+new position itself. Margin usage sums
 reserved linear collateral and marked spot capital; symbol exposure remains gross
 marked notional. Both account and strategy policies apply.
 
