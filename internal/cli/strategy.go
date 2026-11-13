@@ -138,6 +138,7 @@ func (o *options) addStrategyCommands(root *cobra.Command) {
 		}})
 	}
 	var eventPath string
+	var sourceReady bool
 	evaluate := &cobra.Command{Use: "evaluate INSTANCE", Short: "Evaluate one explicit offline candle event; records signals only", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		candle, err := readStrategyEvent(eventPath)
 		if err != nil {
@@ -147,14 +148,18 @@ func (o *options) addStrategyCommands(root *cobra.Command) {
 		if err != nil {
 			return err
 		}
+		if sourceReady && candle.Instrument.Provider != "fixture" {
+			return errors.New("source-ready offline evaluation requires fixture provider")
+		}
 		return o.database(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
-			result, err := store.EvaluateStrategyEvent(ctx, args[0], marketdata.Event{Kind: "offline_evaluation", Candle: &candle}, registry)
+			result, err := store.EvaluateStrategyEvent(ctx, args[0], marketdata.Event{Kind: "offline_evaluation", Candle: &candle, AllowsEntries: sourceReady}, registry)
 			if err != nil {
 				return err
 			}
 			return o.write(result, fmt.Sprintf("Ready: %v; signals: %d; reason: %s", result.Ready, len(result.Signals), result.Reason))
 		})
 	}}
+	evaluate.Flags().BoolVar(&sourceReady, "source-ready", false, "explicitly mark a fixture evaluation ready for offline paper entry")
 	evaluate.Flags().StringVar(&eventPath, "event", "", "canonical candle JSON file")
 	evaluate.MarkFlagRequired("event")
 	group.AddCommand(evaluate)

@@ -3,9 +3,6 @@ package postgres_test
 import (
 	"context"
 	"fmt"
-	"github.com/saintmili/billionaire/internal/domain"
-	"github.com/saintmili/billionaire/internal/marketdata"
-	"github.com/saintmili/billionaire/internal/marketdata/fixture"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/strategy"
 	"os"
@@ -321,134 +318,30 @@ func TestRiskInvalidGeometryAndMissingStatePersistRejections(t *testing.T) {
 func TestSignalLinkedRiskRejectionRetainsSignalIdentity(t *testing.T) {
 	ctx := context.Background()
 	store, owner, account, _ := newSpotTest(t)
-	raw, err := os.ReadFile("../../../examples/strategies/breakout.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	registry := strategy.DefaultRegistry()
-	definition, err := strategy.Parse(strings.NewReader(string(raw)), registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	definition.Emission = strategy.WhileTrue
-	definition.Evaluation = strategy.OnUpdate
-	version, err := store.AddStrategyVersion(ctx, definition, registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := fixture.Open("../../../testdata/market/m3.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	info, err := provider.Instrument(ctx, domain.Spot, "BTC/USDT")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bars, err := provider.History(ctx, marketdata.Query{Instrument: info.Instrument, Timeframe: "1m", From: provider.Now().Add(-22 * time.Minute), To: provider.Now()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.SaveCandles(ctx, bars); err != nil {
-		t.Fatal(err)
-	}
-	instance := strategy.Instance{ID: "risk-signal", VersionID: version.ID, Instrument: info.Instrument, Account: account.ID, Action: strategy.ManualPaper}
-	if err := store.AddStrategyInstance(ctx, instance); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.SetStrategyEnabled(ctx, instance.ID, true); err != nil {
-		t.Fatal(err)
-	}
-	candle := bars[20]
-	evaluation, err := store.EvaluateStrategyEvent(ctx, instance.ID, marketdata.Event{Kind: "candle", Candle: &candle, AllowsEntries: true}, registry)
-	if err != nil || len(evaluation.Signals) != 1 {
-		t.Fatalf("%+v %v", evaluation, err)
-	}
-	r := spotRequest(account.ID, "signal-entry")
-	r.StrategyID = definition.ID
-	r.SignalID = evaluation.Signals[0].ID
-	r.StopPrice = "90"
-	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
-		t.Fatal(err)
+	signal := signalFor(t, store, account.ID, strategy.ManualPaper, 0)
+	r := paper.SignalEntryRequest{SignalID: signal.ID, Approve: true, At: signal.ObservedAt, Quantity: "2"}
+	d, err := owner.DecideSignal(ctx, r, spotInfo(), true)
+	if err != nil || d.Order == nil {
+		t.Fatalf("intent: %+v %v", d, err)
 	}
 	obs, gate := spotObservation(1)
 	result, err := owner.Observe(ctx, obs, gate)
-	if err != nil || result.Orders[0].Reason != "entry risk budget exceeded" || result.Orders[0].Request.SignalID != r.SignalID {
-		t.Fatalf("%+v %v", result, err)
+	if err != nil || result.Orders[0].Reason != "entry risk budget exceeded" {
+		t.Fatalf("risk: %+v %v", result, err)
 	}
-	orders, err := store.PaperOrders(ctx, account.ID)
-	if err != nil || orders[0].Request.SignalID != r.SignalID || orders[0].Reason != "entry risk budget exceeded" {
-		t.Fatalf("%+v %v", orders, err)
+	decisions, err := store.SignalDecisions(ctx)
+	if err != nil || len(decisions) != 1 || decisions[0].Order.Request.SignalID != signal.ID || decisions[0].Order.Reason != "entry risk budget exceeded" {
+		t.Fatalf("decision: %+v %v", decisions, err)
 	}
-	r.RequestID = "before-signal"
-	r.At = evaluation.Signals[0].ObservedAt.Add(-time.Second)
-	earlier, err := owner.SubmitOrder(ctx, r, spotInfo(), true)
-	if err != nil || earlier.Reason != "intent precedes signal availability" {
-		t.Fatalf("earlier intent %+v %v", earlier, err)
+	signals, err := store.StrategySignals(ctx, strategy.SignalFilter{})
+	if err != nil || len(signals) != 1 || signals[0].ID != signal.ID {
+		t.Fatalf("signals: %+v %v", signals, err)
 	}
-	r.RequestID = "valid-signal-entry"
-	r.At = obs.AvailableAt
-	r.Quantity = "0.5"
-	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
-		t.Fatal(err)
+	// Risk rejections are final for this observation, including restart/retry.
+	retry, err := owner.DecideSignal(ctx, r, spotInfo(), true)
+	if err != nil || retry.Order.Status != "rejected" || retry.Order.ID != d.Order.ID {
+		t.Fatalf("retry: %+v %v", retry, err)
 	}
-	obs, gate = spotObservation(2)
-	result, err = owner.Observe(ctx, obs, gate)
-	if err != nil || result.Orders[0].Status != "filled" {
-		t.Fatalf("entry %+v %v", result, err)
-	}
-	positions, err := store.PaperPositions(ctx, account.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	closeRequest := r
-	closeRequest.RequestID = "signal-close"
-	closeRequest.Action = "close"
-	closeRequest.PositionID = positions[0].ID
-	closeRequest.At = obs.AvailableAt
-	if _, err := owner.SubmitOrder(ctx, closeRequest, spotInfo(), true); err != nil {
-		t.Fatal(err)
-	}
-	obs, gate = spotObservation(3)
-	if _, err := owner.Observe(ctx, obs, gate); err != nil {
-		t.Fatal(err)
-	}
-	r.RequestID = "reuse-signal"
-	r.At = obs.AvailableAt
-	reused, err := owner.SubmitOrder(ctx, r, spotInfo(), true)
-	if err != nil || reused.Reason != "signal already filled" {
-		t.Fatalf("reused signal %+v %v", reused, err)
-	}
-	candle.ObservedAt = candle.ObservedAt.Add(time.Second)
-	candle.BaseVolume = candle.BaseVolume.Add(spotDecimal("1"))
-	candle = marketdata.Stamp(candle)
-	next, err := store.EvaluateStrategyEvent(ctx, instance.ID, marketdata.Event{Kind: "candle", Candle: &candle, AllowsEntries: true}, registry)
-	if err != nil || len(next.Signals) != 1 {
-		t.Fatalf("second signal %+v %v", next, err)
-	}
-	r.RequestID = "same-candle"
-	r.SignalID = next.Signals[0].ID
-	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
-		t.Fatal(err)
-	}
-	obs, gate = spotObservation(4)
-	result, err = owner.Observe(ctx, obs, gate)
-	if err != nil || result.Orders[0].Reason != "entry already filled for signal candle" {
-		t.Fatalf("same candle %+v %v", result, err)
-	}
-	if err := store.SetRiskPolicy(ctx, account.ID, "", paper.RiskPolicy{Pyramiding: true}); err != nil {
-		t.Fatal(err)
-	}
-	r.RequestID = "allowed-same-candle"
-	r.At = obs.AvailableAt
-	if _, err := owner.SubmitOrder(ctx, r, spotInfo(), true); err != nil {
-		t.Fatal(err)
-	}
-	obs, gate = spotObservation(5)
-	result, err = owner.Observe(ctx, obs, gate)
-	if err != nil || result.Orders[0].Status != "filled" {
-		t.Fatalf("allowed candle %+v %v", result, err)
-	}
-
 }
 
 func TestPercentageSizingRejectsStaleValuationOfOtherHoldings(t *testing.T) {

@@ -219,7 +219,16 @@ func TestStrategyCLIRegistersEnablesEvaluatesAndInspectsSignals(t *testing.T) {
 	if err := invoke("strategy", "validate", "../../examples/strategies/breakout.yaml"); err != nil {
 		t.Fatal(err)
 	}
-	if err := invoke("strategy", "add", "../../examples/strategies/breakout.yaml", "--instance", "cli-breakout", "--provider", "fixture", "--market", "spot", "--symbol", "BTC/USDT", "--account", "demo"); err != nil {
+	if err := invoke("paper", "account", "create", "--name", "demo", "--request-id", "demo"); err != nil {
+		t.Fatal(err)
+	}
+	var account struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(out.Bytes(), &account) != nil {
+		t.Fatal("account output")
+	}
+	if err := invoke("strategy", "add", "../../examples/strategies/breakout.yaml", "--instance", "cli-breakout", "--provider", "fixture", "--market", "spot", "--symbol", "BTC/USDT", "--account", account.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := invoke("strategy", "enable", "cli-breakout"); err != nil {
@@ -263,7 +272,16 @@ func TestStrategyEvaluateCommandIsOfflineAndIdempotent(t *testing.T) {
 	if err := invoke("init"); err != nil {
 		t.Fatal(err)
 	}
-	add := []string{"strategy", "add", "../../examples/strategies/breakout.yaml", "--instance", "offline-demo", "--provider", "fixture", "--account", "demo"}
+	if err := invoke("paper", "account", "create", "--name", "demo", "--request-id", "demo"); err != nil {
+		t.Fatal(err)
+	}
+	var account struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(out.Bytes(), &account) != nil {
+		t.Fatal("account output")
+	}
+	add := []string{"strategy", "add", "../../examples/strategies/breakout.yaml", "--instance", "offline-demo", "--provider", "fixture", "--account", account.ID}
 	if err := invoke(add...); err != nil {
 		t.Fatal(err)
 	}

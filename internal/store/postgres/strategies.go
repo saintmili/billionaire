@@ -109,6 +109,9 @@ func (s *Store) AddStrategyInstance(ctx context.Context, instance strategy.Insta
 	if err := version.Definition.ValidateInstance(instance); err != nil {
 		return err
 	}
+	if _, err := s.PaperAccount(ctx, instance.Account); err != nil {
+		return errors.New("strategy instance requires an existing paper account")
+	}
 	payload, err := json.Marshal(instance)
 	if err != nil {
 		return errors.New("invalid strategy instance")
@@ -124,6 +127,16 @@ func (s *Store) AddStrategyInstance(ctx context.Context, instance strategy.Insta
 	return nil
 }
 func (s *Store) SetStrategyEnabled(ctx context.Context, id string, enabled bool) error {
+	if enabled {
+		instance, err := s.StrategyInstance(ctx, id)
+		if err != nil {
+			return err
+		}
+		if _, err := s.PaperAccount(ctx, instance.Account); err != nil {
+			return errors.New("strategy instance requires an existing paper account; recreate legacy placeholder bindings")
+		}
+	}
+
 	tag, err := s.pool.Exec(ctx, "UPDATE millionaire.strategy_instances SET enabled=$2 WHERE id=$1", id, enabled)
 	if err != nil {
 		return safeError(ctx, ErrUnavailable)

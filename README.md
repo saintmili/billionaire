@@ -390,13 +390,13 @@ are required before forward monitoring. Offline tests use local protocol servers
 
 ## Strategies and signals (M3)
 
-Run `init` after upgrading to apply migration 3. Strategy validation is offline;
+Run `init` after upgrading to apply pending migrations. Strategy validation is offline;
 registration and evaluation use PostgreSQL.
 
 ```sh
 ./bin/millionaire strategy validate examples/strategies/breakout.yaml --output json
 ./bin/millionaire strategy add examples/strategies/breakout.yaml \
-  --instance breakout-demo --provider fixture --market spot --symbol BTC/USDT --account demo
+  --instance breakout-demo --provider fixture --market spot --symbol BTC/USDT --account ACCOUNT_ID
 ./bin/millionaire strategy enable breakout-demo
 ./bin/millionaire market watch --fixture testdata/market/m3.json --output json
 ./bin/millionaire signals list --instance breakout-demo --output json
@@ -407,10 +407,10 @@ registration and evaluation use PostgreSQL.
 Unchanged YAML reuses the same content-hashed version; edited YAML creates the
 next immutable version. Instances pin their version/instrument/account/action and
 are created disabled. Use a new instance ID to change a binding; re-adding an
-existing binding preserves its enabled state. `account` is a validated reference
-for M4, not an account/balance created by these commands. `alert_only`,
-`manual_paper`, `auto_paper` and `risk_percent` are recorded metadata; M3 creates
-signals and does not execute orders.
+existing binding preserves its enabled state. Create a paper account first and
+substitute its returned ID for `ACCOUNT_ID`; strategy commands validate that
+binding without creating an account. Evaluation records action mode and risk
+hints on signals. Paper approval/consumption below performs execution separately.
 
 Market watch warms up enabled instances' required primary/higher-frame history
 and evaluates matching updates before acknowledging source delivery. It checks
@@ -423,7 +423,7 @@ For explicit offline evaluation, seed history and use a fresh enabled instance:
 
 ```sh
 ./bin/millionaire strategy add examples/strategies/breakout.yaml \
-  --instance offline-demo --provider fixture --account demo
+  --instance offline-demo --provider fixture --account ACCOUNT_ID
 ./bin/millionaire strategy enable offline-demo
 ./bin/millionaire market backfill --fixture testdata/market/m3.json \
   --from 2026-01-01T00:00:00Z --to 2026-01-01T00:22:00Z
@@ -544,3 +544,68 @@ or cross-margin liquidation, but this intermediate slice is not a complete
 isolated-liquidation simulator. New entries fail on insufficient cash/equity/free
 margin; explicit/protective exits remain available. M4 acceptance and live
 monitoring remain gated. See [the linear report](docs/m4-linear-report.md).
+
+### Offline signal approval and automatic entries (M4)
+
+New strategy instances must bind an existing paper account ID, including
+`alert_only` instances. Replace old placeholder bindings by creating a new
+instance; bindings remain immutable. Migration 8 adds durable signal decisions.
+Run `init` to migrate before using these commands.
+
+The following bounded fixture workflow uses an account created with
+`paper account create`; substitute its returned ID for `ACCOUNT_ID`:
+
+```sh
+./bin/millionaire strategy add examples/strategies/paper-entry.yaml \
+  --instance paper-entry-demo --provider fixture --account ACCOUNT_ID
+./bin/millionaire strategy enable paper-entry-demo
+./bin/millionaire strategy evaluate paper-entry-demo \
+  --event testdata/paper/signal-entry.json --source-ready --output json
+./bin/millionaire paper consume --fixture testdata/paper/spot-metadata.json \
+  --at 2026-11-12T10:00:00Z --limit 100 --output json
+./bin/millionaire signals list --instance paper-entry-demo --output json
+# Substitute the signal ID from the preceding output:
+./bin/millionaire paper approve SIGNAL_ID \
+  --fixture testdata/paper/spot-metadata.json --at 2026-11-12T10:00:00Z --output json
+./bin/millionaire paper observe --fixture testdata/paper/spot-entry.json \
+  --at 2026-11-12T10:00:01Z --output json
+./bin/millionaire paper decisions --output json
+```
+
+Use a fresh instance/account with `strategy add ... --action auto_paper` to make
+`paper consume` create the intent without approval. `alert_only` signals and exit
+rule signals are recorded as observations and never open or reverse positions.
+Manual signals wait for `paper approve`; `paper open` remains the standalone
+manual entry command and no longer accepts `--signal`.
+
+`strategy evaluate` defaults to an unready observation. `--source-ready` is an
+explicit fixture-only readiness assertion, enabling offline execution tests; it
+does not validate or enable a live feed. `market watch` still does not execute
+entries. No daemon or live monitoring is started by this workflow.
+
+`paper consume` reads at most 100 signals by default (1–1000 via `--limit`) for
+the fixture instrument, oldest first. Each decision and its optional intent commit
+atomically. Each command acquires the existing exclusive paper owner for its
+bounded operation, then releases it; concurrent owners fail explicitly. A crash
+between signals leaves completed decisions durable and remaining signals queued.
+Rerun consumption after restart; pending orders wait for `paper observe`. A new
+price is delivered separately, with both observation and availability strictly
+after the decision time. Never use the signal's proposed entry as a fill price.
+The existing fill model records the actual source, price and latency.
+
+Entry options on `consume`/`approve`: `--quantity risk` (default, sizing against
+current equity, stop and scoped policy), `--leverage 1`, `--fee-rate 0.001`, and
+`--slippage-bps 0`. Signal stop/target hints are frozen on the intent and validated
+against the actual fill price. Linear long/short uses the shared isolated-margin
+service; fixture metadata must match the signal instrument exactly.
+
+One signal owns one decision and at most one order. After a lost approval
+response, inspect `paper decisions` or retry with the same timestamp, entry
+options and metadata; conflicting approvals fail. Accepted means an intent was
+admitted: inspect the nested order status for pending, filled or rejected outcome.
+A risk rejection is final for that signal and retains its rationale; future
+distinct signals remain separately eligible for policy checks. Current account
+state, kill switch, instance enabled state, freshness, cooldown and exposure limits
+are checked again before fill. Failed writes roll back and remain retryable;
+recorded observations, fills, ledger and journal-outbox items retain existing
+atomic replay behavior. No StopLore delivery occurs in M4.

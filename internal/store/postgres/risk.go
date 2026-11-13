@@ -97,6 +97,13 @@ func entryAdmission(ctx context.Context, tx pgx.Tx, order paper.Order) (string, 
 		if err != nil {
 			return "", err
 		}
+		var active bool
+		if err := tx.QueryRow(ctx, "SELECT enabled FROM millionaire.strategy_instances WHERE id=$1 FOR SHARE", signal.InstanceID).Scan(&active); err != nil {
+			return "", err
+		}
+		if !active {
+			return "strategy instance disabled", nil
+		}
 		instance, err := decodePaperRow[strategy.Instance](tx.QueryRow(ctx, "SELECT binding FROM millionaire.strategy_instances WHERE id=$1", signal.InstanceID))
 		if err != nil {
 			return "", err

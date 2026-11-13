@@ -13,6 +13,7 @@ import (
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/marketdata/fixture"
+	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"github.com/saintmili/billionaire/internal/strategy"
 	"github.com/saintmili/billionaire/internal/testdb"
@@ -73,7 +74,7 @@ func TestStrategyVersionsAndRepeatedEventsAreTransactional(t *testing.T) {
 	if _, err := store.SaveCandles(ctx, bars); err != nil {
 		t.Fatal(err)
 	}
-	instance := strategy.Instance{ID: "breakout-demo", VersionID: version.ID, Instrument: info.Instrument, Account: "demo", Action: strategy.AlertOnly}
+	instance := strategy.Instance{ID: "breakout-demo", VersionID: version.ID, Instrument: info.Instrument, Account: strategyAccount(t, store), Action: strategy.AlertOnly}
 	if err := store.AddStrategyInstance(ctx, instance); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +171,7 @@ func TestStrategyVersionProtectionAndEvaluationRollback(t *testing.T) {
 	if _, err := store.SaveCandles(ctx, bars); err != nil {
 		t.Fatal(err)
 	}
-	i := strategy.Instance{ID: "rollback-demo", VersionID: version.ID, Instrument: info.Instrument, Account: "demo", Action: strategy.AlertOnly}
+	i := strategy.Instance{ID: "rollback-demo", VersionID: version.ID, Instrument: info.Instrument, Account: strategyAccount(t, store), Action: strategy.AlertOnly}
 	if err := store.AddStrategyInstance(ctx, i); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +282,7 @@ func TestStoredSnapshotsExcludeFutureHigherClosesAndCorrections(t *testing.T) {
 	if _, err := store.SaveCandles(ctx, []domain.Candle{future, correction}); err != nil {
 		t.Fatal(err)
 	}
-	i := strategy.Instance{ID: "snapshot-demo", VersionID: version.ID, Instrument: info.Instrument, Account: "demo", Action: strategy.AlertOnly}
+	i := strategy.Instance{ID: "snapshot-demo", VersionID: version.ID, Instrument: info.Instrument, Account: strategyAccount(t, store), Action: strategy.AlertOnly}
 	if err := store.AddStrategyInstance(ctx, i); err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +333,7 @@ func TestRecoveryHistoryLimitKeepsPrecedingPrimaryWindow(t *testing.T) {
 	if _, err := store.SaveCandles(ctx, bars); err != nil {
 		t.Fatal(err)
 	}
-	instance := strategy.Instance{ID: "recovery-limit", VersionID: version.ID, Instrument: i, Account: "demo", Action: strategy.AlertOnly}
+	instance := strategy.Instance{ID: "recovery-limit", VersionID: version.ID, Instrument: i, Account: strategyAccount(t, store), Action: strategy.AlertOnly}
 	if err := store.AddStrategyInstance(ctx, instance); err != nil {
 		t.Fatal(err)
 	}
@@ -343,4 +344,13 @@ func TestRecoveryHistoryLimitKeepsPrecedingPrimaryWindow(t *testing.T) {
 	if err != nil || !result.Ready || len(result.Signals) != 1 {
 		t.Fatalf("later recovery candle consumed preceding history limit: %+v %v", result, err)
 	}
+}
+
+func strategyAccount(t *testing.T, store *postgres.Store) string {
+	t.Helper()
+	a, err := store.CreatePaperAccount(context.Background(), paper.CreateAccount{RequestID: "strategy-demo", Name: "Strategy demo", Currency: "USDT", InitialBalance: "1000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a.ID
 }

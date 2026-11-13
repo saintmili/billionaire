@@ -32,6 +32,9 @@ func decodePaperRows[T any](rows pgx.Rows) ([]T, error) {
 }
 
 func (o *PaperOwner) SubmitOrder(ctx context.Context, request paper.OrderRequest, info marketdata.InstrumentInfo, enabled bool) (paper.Order, error) {
+	if request.SignalID != "" {
+		return paper.Order{}, errors.New("signal entries require DecideSignal with explicit approval or automatic consumption")
+	}
 	order, err := paper.PrepareOrder(request, info)
 	if err != nil {
 		return order, err
@@ -46,6 +49,17 @@ func (o *PaperOwner) SubmitOrder(ctx context.Context, request paper.OrderRequest
 		return order, safeError(ctx, ErrUnavailable)
 	}
 	defer rollback(tx)
+	order, err = submitOrder(ctx, tx, order, enabled)
+	if err != nil {
+		return order, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return order, safeError(ctx, errors.New("order commit outcome unknown; retry with the same request ID and intent time"))
+	}
+	return order, nil
+}
+
+func submitOrder(ctx context.Context, tx pgx.Tx, order paper.Order, enabled bool) (paper.Order, error) {
 	existing, err := decodePaperRow[paper.Order](tx.QueryRow(ctx, "SELECT payload FROM millionaire.paper_orders WHERE id=$1", order.ID))
 	if err == nil {
 		if !paper.SameOrder(existing, order) {
@@ -57,15 +71,15 @@ func (o *PaperOwner) SubmitOrder(ctx context.Context, request paper.OrderRequest
 		return order, safeError(ctx, ErrUnavailable)
 	}
 	var accountID string
-	if err := tx.QueryRow(ctx, "SELECT id FROM millionaire.paper_accounts WHERE id=$1 FOR UPDATE", request.AccountID).Scan(&accountID); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT id FROM millionaire.paper_accounts WHERE id=$1 FOR UPDATE", order.Request.AccountID).Scan(&accountID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return order, errors.New("paper account not found")
 		}
 		return order, safeError(ctx, ErrUnavailable)
 	}
 	var position *paper.Position
-	if request.Action == "close" {
-		p, err := decodePaperRow[paper.Position](tx.QueryRow(ctx, "SELECT payload FROM millionaire.paper_positions WHERE id=$1 FOR UPDATE", request.PositionID))
+	if order.Request.Action == "close" {
+		p, err := decodePaperRow[paper.Position](tx.QueryRow(ctx, "SELECT payload FROM millionaire.paper_positions WHERE id=$1 FOR UPDATE", order.Request.PositionID))
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return order, errors.New("paper position not found")
@@ -92,11 +106,8 @@ func (o *PaperOwner) SubmitOrder(ctx context.Context, request paper.OrderRequest
 	if err != nil {
 		return order, errors.New("invalid order payload")
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.paper_orders(id,account_id,instrument_key,intent_at,status,payload) VALUES($1,$2,$3,$4,$5,$6)`, order.ID, request.AccountID, instrumentKey(request.Instrument), request.At, order.Status, payload); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.paper_orders(id,account_id,instrument_key,intent_at,status,payload) VALUES($1,$2,$3,$4,$5,$6)`, order.ID, order.Request.AccountID, instrumentKey(order.Request.Instrument), order.Request.At, order.Status, payload); err != nil {
 		return order, safeError(ctx, ErrUnavailable)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return order, safeError(ctx, errors.New("order commit outcome unknown; retry with the same request ID and intent time"))
 	}
 	return order, nil
 }

@@ -1,0 +1,15 @@
+# Deterministic orchestration fixture only; not a recommended trading strategy.
+schema_version: 1
+id: paper-entry-demo
+name: Offline paper entry demonstration
+implementation: rules
+markets: [spot, linear]
+direction: long
+evaluation: on_candle_close
+emission: while_true
+action: manual_paper
+risk_percent: '1'
+entry:
+  op: gt
+  left: {field: close}
+  right: {constant: '0'}

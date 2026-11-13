@@ -118,6 +118,7 @@ func (o *options) addPaperCommands(root *cobra.Command) {
 	}})
 	group.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 	account.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
+	o.addSignalEntryCommands(group)
 	o.addSpotCommands(group)
 	o.addRiskCommands(root, group)
 	root.AddCommand(group)

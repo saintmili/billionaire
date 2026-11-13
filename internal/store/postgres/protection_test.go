@@ -311,8 +311,11 @@ func TestProtectionUpgradeAllowsAdjustingLegacyPosition(t *testing.T) {
 	}
 	id := positions[0].ID
 	owner.Close()
-	if err := store.Migrate(ctx, postgres.Down); err != nil {
-		t.Fatal(err)
+	// This fixture models version 6, before protection state was backfilled.
+	for version := postgres.LatestVersion; version > 6; version-- {
+		if err := store.Migrate(ctx, postgres.Down); err != nil {
+			t.Fatal(err)
+		}
 	}
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {

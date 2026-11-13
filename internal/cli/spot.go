@@ -137,7 +137,6 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			cmd.Flags().StringVar(&r.TrailDistance, "trail-distance", "", "absolute trailing price distance")
 			cmd.Flags().StringVar(&r.StopPrice, "stop-price", "", "initial direction-appropriate protective stop; also used for risk sizing")
 			cmd.Flags().StringVar(&r.StrategyID, "strategy", "", "optional strategy definition scope")
-			cmd.Flags().StringVar(&r.SignalID, "signal", "", "optional originating signal ID")
 			cmd.Flags().StringVar(&r.AccountID, "account", "", "existing paper account ID")
 			cmd.Flags().StringVar(&r.Side, "side", "long", "position direction: long or short (linear only)")
 			cmd.Flags().IntVar(&r.Leverage, "leverage", 1, "integer isolated linear leverage 1-100; spot requires 1")
