@@ -165,6 +165,13 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 		return result, safeError(ctx, ErrUnavailable)
 	}
 	accepted := errors.Is(err, pgx.ErrNoRows) || (!observation.ObservedAt.Before(last.ObservedAt) && !observation.AvailableAt.Before(last.AvailableAt))
+	fundingClock, fundingErr := decodePaperRow[paper.FundingEvent](tx.QueryRow(ctx, `SELECT payload FROM millionaire.paper_funding_events WHERE instrument_key=$1 ORDER BY effective_at DESC LIMIT 1`, key))
+	if fundingErr != nil && !errors.Is(fundingErr, pgx.ErrNoRows) {
+		return result, safeError(ctx, ErrUnavailable)
+	}
+	if fundingErr == nil && (observation.ObservedAt.Before(fundingClock.EffectiveAt) || observation.AvailableAt.Before(fundingClock.AvailableAt)) {
+		accepted = false
+	}
 	if !accepted {
 		result.Reason = "out-of-order observation skipped"
 	} else {

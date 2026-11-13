@@ -3,8 +3,9 @@
 A Linux-first Go CLI for public-market monitoring and paper trading. M3 provides
 configuration, PostgreSQL storage, public candle synchronization, versioned
 strategies and recorded signals. M4 now adds durable paper accounts and an opening
-ledger, plus offline manual spot orders and partial/full closes. Broader risk,
-linear execution, backtesting and the daemon remain upcoming work.
+ledger, offline spot/linear orders, risk controls, signal approval, protective exits,
+funding and approximate isolated liquidation. Backtesting and the daemon remain
+upcoming work; M4 combined acceptance remains pending.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -536,14 +537,68 @@ an explicit reason; known cash, reserved margin and realized P&L remain visible.
 Entry checks requiring these marks reject. `--at` checks freshness of the current
 stored snapshot; it does not reconstruct historical account state.
 
-Funding and simplified liquidation are ticket #7. Until that slice is implemented,
-price losses are settled in full, without a fabricated loss cap or automatic
-liquidation; severe gaps can consume cash beyond the original reservation and
-produce a deficit. Collateral is reserved per position without automatic top-ups
-or cross-margin liquidation, but this intermediate slice is not a complete
-isolated-liquidation simulator. New entries fail on insufficient cash/equity/free
-margin; explicit/protective exits remain available. M4 acceptance and live
-monitoring remain gated. See [the linear report](docs/m4-linear-report.md).
+Funding and approximate isolated liquidation are described below and in
+[the funding report](docs/m4-funding-report.md). M4 combined acceptance and live
+monitoring remain gated. See also [the linear report](docs/m4-linear-report.md).
+
+### Funding and approximate liquidation (M4, ticket #7)
+
+Run `init` to apply migration 9. After the linear entry observation above, before
+processing later prices, apply the illustrative funding interval:
+
+```sh
+./bin/millionaire paper funding apply --fixture testdata/paper/linear-funding.json --output json
+./bin/millionaire paper funding list --output json
+# Record a later expected interval with unavailable data explicitly:
+./bin/millionaire paper funding apply --fixture testdata/paper/linear-funding-missing.json --output json
+```
+
+Use the missing-interval example after finishing earlier price examples: it moves
+the instrument's event clock to 11:00 UTC. Replay an identical event to retrieve
+its original outcome; conflicting identity reuse, duplicate effective intervals,
+clock regression and retroactive funding fail. Supply intervals in increasing
+effective/availability order **before** observations and adjustments at that
+instant. Positions filled at that instant are excluded; positions held strictly
+before it receive funding on their remaining quantity. Already closed or advanced
+exposure cannot be retrospectively funded.
+
+Positive funding debits longs and credits shorts; negative rates reverse this.
+Payment is valuation price × remaining quantity × signed rate, rounded downward
+to 18 decimal places. It changes isolated collateral and realized funding P&L;
+a paired collateral-transfer ledger movement keeps available cash unchanged.
+Funding-triggered exits use the same transaction as funding and outbox enqueue.
+`funding list` retains rates, effective/available clocks, source, provenance,
+missing reasons, per-position payments/collateral changes and exit outcomes.
+`rate: null` requires a reason, persists a visible warning, and makes no synthetic
+zero-rate claim. No scheduler infers expected intervals: callers must supply
+missing intervals explicitly. An empty history means coverage is unknown.
+
+The service accepts normalized public or fixture events, with an explicit public
+valuation at the effective instant. The CLI accepts offline fixtures only. There
+is no automated historical funding fetch or public-provider coverage verification
+in this slice. A rate copied into a fixture remains illustrative unless its
+provenance records a verified source; results are never venue-realistic by default.
+
+Linear entries persist `--maintenance-rate` (default `0.005`) and
+`--liquidation-fee-rate` (default `0.005`); each is a fraction, both nonnegative,
+and their sum must be below 1. Signal entries use these same defaults. Liquidation
+is **approximate**: reserved collateral + gross unrealized price P&L at the
+observed price <= current notional × (maintenance + liquidation fee) triggers
+full closure. The price is the fixture/public observation, not a venue mark or
+risk-tier calculation. Funding changes collateral first. A completed candle uses
+its adverse extreme; a stop encountered before liquidation wins, while a gap
+opening through liquidation closes at the open. Liquidation precedes a target
+or a pending manual close when the observed path is ambiguous. Slippage/tick
+rounding remains adverse; liquidation uses its configured fee instead of the
+normal exit fee. Trailing changes take effect on the next event.
+
+Risk-reducing linear closes can execute below entry minimum notional after a
+price collapse. All linear closes cap losses at the collateral released for that exit. Excess
+price loss/cost is explicitly recorded as `isolated_deficit` (also exposed on
+fills and funding applications); available cash and other positions are not
+charged or topped up. This is a simplifying write-off, not venue insurance or
+bankruptcy settlement. Financial fills, margin, ledger, outcomes and outbox
+commit atomically. Stale/unready prices do not claim observed liquidation.
 
 ### Offline signal approval and automatic entries (M4)
 

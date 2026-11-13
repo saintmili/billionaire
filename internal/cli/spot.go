@@ -59,8 +59,10 @@ func spotEnabled(cfg config.Config, info marketdata.InstrumentInfo) bool {
 
 func (o *options) addSpotCommands(group *cobra.Command) {
 	o.addProtectionCommand(group)
+	o.addFundingCommands(group)
 	for _, action := range []string{"open", "close"} {
 		var r paper.OrderRequest
+		model := paper.DefaultLiquidationModel()
 		var fixturePath, at, market, symbol string
 		use := action
 		args := cobra.NoArgs
@@ -75,6 +77,9 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			}
 			r.At = timestamp
 			r.Action = action
+			if action == "open" && market == "linear" {
+				r.Liquidation = &model
+			}
 			cfg, err := o.load()
 			if err != nil {
 				return err
@@ -141,6 +146,8 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			cmd.Flags().StringVar(&r.Side, "side", "long", "position direction: long or short (linear only)")
 			cmd.Flags().IntVar(&r.Leverage, "leverage", 1, "integer isolated linear leverage 1-100; spot requires 1")
 			cmd.Flags().StringVar(&market, "market", "spot", "market: spot or linear")
+			cmd.Flags().StringVar(&model.MaintenanceRate, "maintenance-rate", model.MaintenanceRate, "approximate isolated maintenance fraction")
+			cmd.Flags().StringVar(&model.FeeRate, "liquidation-fee-rate", model.FeeRate, "approximate liquidation cost fraction")
 			cmd.Flags().StringVar(&symbol, "symbol", "BTC/USDT", "BASE/USDT instrument")
 			cmd.Flags().StringVar(&fixturePath, "fixture", "", "offline JSON instrument metadata; observations are applied separately")
 			_ = cmd.MarkFlagRequired("account")

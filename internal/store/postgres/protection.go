@@ -30,6 +30,13 @@ func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observa
 		if err != nil {
 			return nil, err
 		}
+		liquidation, err := paper.EvaluateLiquidation(p, observation, decision)
+		if err != nil {
+			return nil, err
+		}
+		if liquidation.Reason != "" {
+			decision = liquidation
+		}
 		if decision.State.UpdatedAt.IsZero() {
 			continue
 		}
@@ -55,6 +62,14 @@ func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observa
 			continue
 		}
 		request := paper.OrderRequest{RequestID: paper.Identity("protect", p.ID+":"+observation.ID), AccountID: p.AccountID, PositionID: p.ID, Action: "close", Instrument: p.Instrument, Side: p.Direction(), Leverage: p.EffectiveLeverage(), Quantity: decision.Quantity, At: p.Protection.UpdatedAt, FeeRate: p.Protection.FeeRate, SlippageBPS: p.Protection.SlippageBPS}
+		if decision.Reason == "liquidation_approximate" {
+			model := paper.DefaultLiquidationModel()
+			if p.Liquidation != nil {
+				model = *p.Liquidation
+			}
+			request.FeeRate = model.FeeRate
+			request.Liquidation = &model
+		}
 		order, err := paper.PrepareOrder(request, p.Metadata)
 		if err != nil {
 			return nil, err

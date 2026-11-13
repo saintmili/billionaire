@@ -23,6 +23,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 - [M4 signal entry slice report](m4-signals-report.md): ticket #5 approval, automatic decisions, durable intents and offline ownership.
 - [M4 linear slice report](m4-linear-report.md): ticket #4 long/short isolated collateral, settlement and valuation.
 - [M4 protection slice report](m4-protection-report.md): ticket #6 stops, targets, trailing state, candle ordering and atomic exits.
+- [M4 funding slice report](m4-funding-report.md): ticket #7 funding provenance/coverage, approximate liquidation, event ordering and verification.
 - [Architecture decisions](adr/): accepted PostgreSQL, execution/journal separation and candle/replay decisions.
 - [Milestone checklist](milestone-checklist.md): sequenced follow-up work and acceptance gates.
 - GitHub Issues: implementation tickets and dependency links, prepared through `/to-tickets` after M0 findings are available.

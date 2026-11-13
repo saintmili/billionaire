@@ -1,0 +1,16 @@
+{
+  "id": "eth-linear-funding-20261114-100002",
+  "instrument": {
+    "provider": "fixture",
+    "market": "linear",
+    "base": "ETH",
+    "quote": "USDT",
+    "instrument_id": "ETHUSDT"
+  },
+  "effective_at": "2026-11-14T10:00:02Z",
+  "available_at": "2026-11-14T10:00:02Z",
+  "source": "fixture",
+  "provenance": "Deterministic offline example; illustrative 1% funding, not venue data",
+  "rate": "0.01",
+  "price": "100"
+}

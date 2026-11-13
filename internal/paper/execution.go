@@ -12,6 +12,7 @@ import (
 )
 
 type OrderRequest struct {
+	Liquidation     *LiquidationModel `json:"liquidation,omitempty"`
 	StrategyID      string            `json:"strategy_id,omitempty"`
 	SignalID        string            `json:"signal_id,omitempty"`
 	TargetPrice     string            `json:"target_price,omitempty"`
@@ -59,26 +60,30 @@ type ExecutionGate struct {
 }
 
 type Fill struct {
-	ExitReason    string         `json:"exit_reason,omitempty"`
-	Ambiguous     bool           `json:"ambiguous,omitempty"`
-	Gap           bool           `json:"gap,omitempty"`
-	ID            string         `json:"id"`
-	OrderID       string         `json:"order_id"`
-	PositionID    string         `json:"position_id"`
-	ObservationID string         `json:"observation_id"`
-	Quantity      domain.Decimal `json:"quantity"`
-	Price         domain.Decimal `json:"price"`
-	Notional      domain.Decimal `json:"notional"`
-	Fee           domain.Decimal `json:"fee"`
-	RealizedPnL   domain.Decimal `json:"realized_pnl"`
-	Source        string         `json:"source"`
-	ObservedAt    time.Time      `json:"observed_at"`
-	AvailableAt   time.Time      `json:"available_at"`
-	ExecutedAt    time.Time      `json:"executed_at"`
-	LatencyMillis int64          `json:"latency_ms"`
+	IsolatedDeficit domain.Decimal `json:"isolated_deficit"`
+	ExitReason      string         `json:"exit_reason,omitempty"`
+	Ambiguous       bool           `json:"ambiguous,omitempty"`
+	Gap             bool           `json:"gap,omitempty"`
+	ID              string         `json:"id"`
+	OrderID         string         `json:"order_id"`
+	PositionID      string         `json:"position_id"`
+	ObservationID   string         `json:"observation_id"`
+	Quantity        domain.Decimal `json:"quantity"`
+	Price           domain.Decimal `json:"price"`
+	Notional        domain.Decimal `json:"notional"`
+	Fee             domain.Decimal `json:"fee"`
+	RealizedPnL     domain.Decimal `json:"realized_pnl"`
+	Source          string         `json:"source"`
+	ObservedAt      time.Time      `json:"observed_at"`
+	AvailableAt     time.Time      `json:"available_at"`
+	ExecutedAt      time.Time      `json:"executed_at"`
+	LatencyMillis   int64          `json:"latency_ms"`
 }
 
 type Position struct {
+	OpenedAt          time.Time                 `json:"opened_at"`
+	Liquidation       *LiquidationModel         `json:"liquidation,omitempty"`
+	FundingPnL        domain.Decimal            `json:"funding_pnl"`
 	Side              string                    `json:"side,omitempty"`
 	Leverage          int                       `json:"leverage,omitempty"`
 	ReservedMargin    domain.Decimal            `json:"reserved_margin"`
@@ -135,6 +140,15 @@ func validateValue(value domain.Decimal, positive bool) error {
 }
 
 func PrepareOrder(r OrderRequest, info marketdata.InstrumentInfo) (Order, error) {
+	if r.Instrument.Market == domain.Linear && r.Liquidation == nil {
+		m := DefaultLiquidationModel()
+		r.Liquidation = &m
+	}
+	if r.Liquidation != nil {
+		if err := r.Liquidation.Validate(); err != nil {
+			return Order{}, err
+		}
+	}
 	if !requestID.MatchString(r.RequestID) || r.AccountID == "" || len(r.AccountID) > 128 || r.At.IsZero() {
 		return Order{}, errors.New("valid request ID, account and intent timestamp are required")
 	}
@@ -285,10 +299,11 @@ func PlanFill(order Order, observation Observation, gate ExecutionGate, balance 
 			return reject("insufficient USDT funds")
 		}
 		result.CashDelta = total.Neg()
-		result.Position = &Position{Side: order.Request.Side, Leverage: order.Request.Leverage, StrategyID: order.Request.StrategyID, ID: fill.PositionID, AccountID: order.Request.AccountID, Instrument: order.Request.Instrument, Metadata: order.Metadata, Status: "open", InitialQuantity: quantity, RemainingQuantity: quantity, EntryPrice: price, RemainingCost: total, FeesPaid: fee}
+		result.Position = &Position{OpenedAt: observation.AvailableAt, Side: order.Request.Side, Leverage: order.Request.Leverage, StrategyID: order.Request.StrategyID, ID: fill.PositionID, AccountID: order.Request.AccountID, Instrument: order.Request.Instrument, Metadata: order.Metadata, Status: "open", InitialQuantity: quantity, RemainingQuantity: quantity, EntryPrice: price, RemainingCost: total, FeesPaid: fee}
 		result.Position.Protection = &ProtectionState{ProtectionConfig: config, UpdatedAt: observation.AvailableAt, FeeRate: order.Request.FeeRate, SlippageBPS: order.Request.SlippageBPS}
 		result.Movements = []Movement{{Kind: "spot_buy", Amount: capital.Neg()}, {Kind: "fee", Amount: fee.Neg()}}
 		if order.Request.Instrument.Market == domain.Linear {
+			result.Position.Liquidation = order.Request.Liquidation
 			result.Position.ReservedMargin = capital
 			result.Movements[0].Kind = "margin_reserve"
 			result.Position.RemainingCost = fee
@@ -327,6 +342,9 @@ func PlanFill(order Order, observation Observation, gate ExecutionGate, balance 
 	}
 	result.Order.Status = "filled"
 	result.Fill = &fill
+	if result.Position.Instrument.Market == domain.Linear && order.Request.Action == "close" {
+		CapIsolatedLoss(&result)
+	}
 	return result, nil
 }
 
@@ -408,7 +426,8 @@ func CalculateFillAmounts(order Order, price, quantity domain.Decimal) (FillAmou
 	if _, err := ExactValue(amounts.Notional.String(), true); err != nil {
 		return amounts, errors.New("fill notional exceeds supported bounds")
 	}
-	if amounts.Notional.LessThan(order.Metadata.MinNotional) {
+	// A risk-reducing linear close must remain possible after a price collapse.
+	if amounts.Notional.LessThan(order.Metadata.MinNotional) && !(order.Request.Instrument.Market == domain.Linear && order.Request.Action == "close") {
 		return amounts, errors.New("fill below minimum notional")
 	}
 	amounts.Fee = amounts.Notional.Mul(decimal(order.Request.FeeRate)).RoundCeil(18)

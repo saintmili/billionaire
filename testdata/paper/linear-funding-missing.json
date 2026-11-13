@@ -1,0 +1,17 @@
+{
+  "id": "eth-linear-funding-missing-20261114-110000",
+  "instrument": {
+    "provider": "fixture",
+    "market": "linear",
+    "base": "ETH",
+    "quote": "USDT",
+    "instrument_id": "ETHUSDT"
+  },
+  "effective_at": "2026-11-14T11:00:00Z",
+  "available_at": "2026-11-14T11:00:00Z",
+  "source": "fixture",
+  "provenance": "Explicit missing offline coverage; zero funding is not assumed",
+  "rate": null,
+  "price": "100",
+  "missing_reason": "Public historical rate unavailable in offline fixture"
+}
