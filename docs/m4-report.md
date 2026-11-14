@@ -93,6 +93,18 @@ defects described above, then passed with the minimal fixes. Repository CI's
 required test/vet/build commands also passed. M4 offline acceptance is complete;
 M2's live-host gate remains pending.
 
+## Integration review
+
+Independent Standards and Spec reviewers assessed
+`git diff 9ba1fc7...803ae8a` after the funding and acceptance slices were merged
+onto `integration/m4-completion`. Standards found no actionable documented-rule
+violations or material baseline smells. Spec found no actionable missing,
+incorrect or out-of-scope behavior against tickets #7/#8 and the accepted offline
+M4 contract. Both reviewers inspected the changes and accepted the executed test
+evidence above; they did not independently rerun PostgreSQL checks.
+
+Review totals: Standards — zero findings; Spec — zero findings.
+
 ## Offline operation and failure recovery
 
 The [README](../README.md) provides account, manual order, signal approval,
