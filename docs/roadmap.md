@@ -1,6 +1,6 @@
 # Millionaire roadmap
 
-**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending because access is geographically blocked here. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. See [M0 evidence and limitations](m0-report.md), the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
+**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending because access is geographically blocked here. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. M4 offline paper lifecycle and combined acceptance are complete under its approved sequencing exception; see the [M4 report](m4-report.md). Live monitoring remains disabled pending the M2 gate. See [M0 evidence and limitations](m0-report.md), the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
 
 Read [the specification](spec.md) for requirements and [technical design](design.md) for the proposed baseline. Track implementation tickets and their dependencies in GitHub Issues using [the tracker conventions](agents/issue-tracker.md).
 
@@ -12,7 +12,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M1 — Project scaffolding and durable storage | Complete — [evidence](m1-report.md) |
 | M2 — Market data and historical synchronization | Implemented; offline checks pass; [live-host gate pending](m2-report.md) |
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
-| M4 — Paper accounts, orders, risk, and position lifecycle | In progress — [accounts (#1)](m4-accounts-report.md), [manual spot (#2)](m4-spot-report.md), [risk gate (#3)](m4-risk-report.md), [protection (#6)](m4-protection-report.md), [linear (#4)](m4-linear-report.md), [signal entries (#5)](m4-signals-report.md); remaining acceptance pending |
+| M4 — Paper accounts, orders, risk, and position lifecycle | Complete under offline sequencing exception — [combined acceptance evidence](m4-report.md); M2 live-host gate remains pending |
 | M5 — First-class backtesting and analytics | Not started |
 | M6 — Notifications and process operation | Not started |
 | M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
@@ -58,7 +58,8 @@ On 2026-11-13, the user confirmed a private, single-user operational web app as 
 On 2026-11-12, the user approved the eight-ticket M4 breakdown and its offline
 sequencing exception. Proceed with fixture-driven paper-account and execution
 work against the verified M2/M3 PostgreSQL and event boundaries. Record acceptance
-per ticket; M4 remains incomplete until its combined acceptance gate passes.
+per ticket; the combined offline acceptance gate passed on 2026-11-14. See the
+[M4 report](m4-report.md).
 M2's actual-host REST/stream validation remains pending and must pass before live
 monitoring is enabled. This exception does not waive that gate. Stop at M4.
 

@@ -5,7 +5,8 @@ configuration, PostgreSQL storage, public candle synchronization, versioned
 strategies and recorded signals. M4 now adds durable paper accounts and an opening
 ledger, offline spot/linear orders, risk controls, signal approval, protective exits,
 funding and approximate isolated liquidation. Backtesting and the daemon remain
-upcoming work; M4 combined acceptance remains pending.
+upcoming work. [M4 offline acceptance is complete](docs/m4-report.md); M2 actual-host
+validation remains pending and live monitoring remains disabled.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -186,7 +187,7 @@ metadata for retries. Decimal spelling differences are normalized. Changing thos
 inputs under the same ID fails. A position close requires an explicit positive
 quantity; use its entire remaining quantity for a full close. Spot long holdings
 only: no borrowing, leverage other than 1, naked shorts, or implicit reversal.
-Each entry opens a separate position; portfolio/strategy risk limits follow in #3.
+Each entry opens a separate position subject to account and strategy risk limits.
 
 A fixture supplies `metadata` (the normalized InstrumentInfo shape) and, for
 `observe`, an `observation` with stable `id`, instrument, matching `source`, positive
@@ -476,8 +477,9 @@ Run `millionaire init` to apply migration 0006. Configure account limits with
 additional strategy ceiling. Inspect with `paper risk show --account <id>`.
 Use `paper open ... --quantity risk --stop-price 90` for execution-time sizing,
 or a numeric quantity checked against the same budgets. Pyramiding is off by
-default. `--stop-price` is sizing geometry; protective stop execution follows in
-a separate M4 ticket.
+default. `--stop-price` supplies sizing geometry and attaches an executable stop.
+Daily loss includes fees, settled price P&L and funding collateral changes for
+the effective UTC day; explicitly waived isolated deficits are excluded.
 
 `millionaire kill-switch on` persists a global block on new entries. Use
 `kill-switch off` to allow them again and `kill-switch status` or `status` to
@@ -584,7 +586,8 @@ Linear entries persist `--maintenance-rate` (default `0.005`) and
 and their sum must be below 1. Signal entries use these same defaults. Liquidation
 is **approximate**: reserved collateral + gross unrealized price P&L at the
 observed price <= current notional × (maintenance + liquidation fee) triggers
-full closure. The price is the fixture/public observation, not a venue mark or
+full closure. An entry already at this threshold after slippage is rejected
+before filling. The price is the fixture/public observation, not a venue mark or
 risk-tier calculation. Funding changes collateral first. A completed candle uses
 its adverse extreme; a stop encountered before liquidation wins, while a gap
 opening through liquidation closes at the open. Liquidation precedes a target
