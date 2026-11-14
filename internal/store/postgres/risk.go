@@ -201,6 +201,14 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 	if err != nil {
 		return gate, "", err
 	}
+	fundingRows, err := tx.Query(ctx, "SELECT result FROM millionaire.paper_funding_events")
+	if err != nil {
+		return gate, "", err
+	}
+	funding, err := decodePaperRows[paper.FundingResult](fundingRows)
+	if err != nil {
+		return gate, "", err
+	}
 	allPositionsRows, err := tx.Query(ctx, "SELECT payload FROM millionaire.paper_positions WHERE account_id=$1", order.Request.AccountID)
 	if err != nil {
 		return gate, "", err
@@ -342,9 +350,21 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 			}
 			pnl := f.Fee.Neg()
 			if !opening {
-				pnl = pnl.Add(position.PricePnL(f.Price, f.Quantity).RoundFloor(18))
+				pnl = pnl.Add(position.PricePnL(f.Price, f.Quantity).RoundFloor(18)).Add(f.IsolatedDeficit)
 			}
 			state.DailyPnL = state.DailyPnL.Add(pnl)
+		}
+		for _, interval := range funding {
+			if interval.Event.EffectiveAt.Before(day) || interval.Event.EffectiveAt.After(gate.Now) {
+				continue
+			}
+			for _, application := range interval.Applications {
+				position, belongs := byID[application.PositionID]
+				if !belongs || (strategyScoped && position.StrategyID != order.Request.StrategyID) {
+					continue
+				}
+				state.DailyPnL = state.DailyPnL.Add(application.CollateralDelta)
+			}
 		}
 		if why := paper.EntryRiskReason(p, state, quantity, entry, stop, order.Request.Leverage, gate.Now); why != "" {
 			return gate, why, nil
