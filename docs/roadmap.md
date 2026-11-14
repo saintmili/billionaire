@@ -93,6 +93,15 @@ monitoring is enabled. This exception does not waive that gate. Stop at M4.
 
 **Acceptance:** Ledger balances reconcile after entry, partial exits and closure; reprocessing event does not duplicate fills; insufficient margin, disabled market/short spot, risk breaches and stale data cause explicit rejection; no reverse order submitted; tests cover ambiguous SL/TP candles.
 
+### Sequencing exception: offline M5 work
+
+On 2026-11-14, the user invoked `/implement-spec` after M4 offline acceptance
+and publication of the approved M5 tickets (#17–#23). Proceed with historical
+and fixture-driven backtesting and analytics using the verified M2–M4
+boundaries. This work does not require a live market connection. M2's
+actual-host REST/stream validation remains pending and must pass before live
+monitoring is enabled. This exception does not waive that gate. Stop at M5.
+
 ### M5 — First-class backtesting and analytics
 
 **Tasks:** Historical replay service with virtual clock, reproducibility manifests, exact version/data hash, independent simulated accounts, report metrics, run comparison, CSV/JSON export, signal-success definitions, missed-data warnings.
