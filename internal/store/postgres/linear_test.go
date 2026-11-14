@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"fmt"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/paper"
 	"sync"
@@ -384,5 +385,43 @@ func TestLinearEntryRejectsImmediateSlippageMarginDeficit(t *testing.T) {
 				t.Fatalf("deficit entry filled: %+v %v", fills, err)
 			}
 		})
+	}
+}
+
+func TestLinearEntryRejectsImmediateLiquidationThreshold(t *testing.T) {
+	for _, side := range []string{"long", "short"} {
+		for _, custom := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/custom=%v", side, custom), func(t *testing.T) {
+				ctx := context.Background()
+				store, owner, account, _ := newSpotTest(t)
+				info := spotInfo()
+				info.Instrument.Market = domain.Linear
+				r := spotRequest(account.ID, "threshold")
+				r.Instrument = info.Instrument
+				r.Side = side
+				r.Leverage = 100
+				if custom {
+					r.Leverage = 5
+					r.Liquidation = &paper.LiquidationModel{MaintenanceRate: "0.1", FeeRate: "0.1"}
+				}
+				if _, err := owner.SubmitOrder(ctx, r, info, true); err != nil {
+					t.Fatal(err)
+				}
+				obs, gate := spotObservation(1)
+				obs.Instrument = info.Instrument
+				result, err := owner.Observe(ctx, obs, gate)
+				if err != nil || len(result.Orders) != 1 || result.Orders[0].Status != "rejected" || result.Orders[0].Reason != "projected isolated liquidation threshold reached" {
+					t.Fatalf("entry at liquidation threshold: %+v %v", result, err)
+				}
+				fills, err := store.PaperFills(ctx, account.ID)
+				if err != nil || len(fills) != 0 {
+					t.Fatalf("fills %+v %v", fills, err)
+				}
+				a, err := store.PaperAccount(ctx, account.ID)
+				if err != nil || a.Balance.String() != "1000" {
+					t.Fatalf("cash %+v %v", a, err)
+				}
+			})
+		}
 	}
 }

@@ -293,6 +293,17 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 			if !amounts.Capital.Add(immediatePnL).IsPositive() {
 				return gate, "insufficient projected isolated margin", nil
 			}
+			prospective.Status = "open"
+			prospective.Instrument = order.Request.Instrument
+			prospective.RemainingQuantity = quantity
+			prospective.ReservedMargin = amounts.Capital
+			model := paper.DefaultLiquidationModel()
+			if order.Request.Liquidation != nil {
+				model = *order.Request.Liquidation
+			}
+			if paper.LiquidationRequired(prospective, observation.Price, model) {
+				return gate, "projected isolated liquidation threshold reached", nil
+			}
 		} else if projectedFree.IsNegative() {
 			return gate, "insufficient free margin", nil
 		}
