@@ -196,13 +196,14 @@ func TestM4SignalFundingGapLiquidationBeatsQueuedClose(t *testing.T) {
 			close := spotRequest(a.ID, "competing-close")
 			close.Instrument = signal.Instrument
 			close.Side = side
+			close.Leverage = 5
 			close.Action = "close"
 			close.PositionID = paper.Identity("position", order.ID)
 			close.At = r.At.Add(3 * time.Second)
 			info := spotInfo()
 			info.Instrument = signal.Instrument
-			if _, err := o.SubmitOrder(ctx, close, info, false); err != nil {
-				t.Fatal(err)
+			if pending, err := o.SubmitOrder(ctx, close, info, false); err != nil || pending.Status != "pending" {
+				t.Fatalf("queued close %+v %v", pending, err)
 			}
 			price, deficit, fee := "50", "62.5", "0.5"
 			if side == "short" {
