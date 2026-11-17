@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/paper"
@@ -48,21 +49,22 @@ type Manifest struct {
 	EndPolicy           string `json:"end_policy"`
 }
 type Report struct {
-	ID        string                 `json:"id"`
-	AccountID string                 `json:"account_id,omitempty"`
-	Scope     string                 `json:"scope"`
-	Status    string                 `json:"status"`
-	Error     string                 `json:"error,omitempty"`
-	Manifest  Manifest               `json:"manifest"`
-	Config    Config                 `json:"config"`
-	Signals   []strategy.Signal      `json:"signals"`
-	Decisions []paper.SignalDecision `json:"decisions"`
-	Orders    []paper.Order          `json:"orders"`
-	Fills     []paper.Fill           `json:"fills"`
-	Positions []paper.Position       `json:"positions"`
-	Balance   domain.Decimal         `json:"final_cash_balance"`
-	Ledger    []paper.LedgerEntry    `json:"ledger"`
-	Warnings  []string               `json:"warnings"`
+	Equity    []analytics.EquityPoint `json:"equity"`
+	ID        string                  `json:"id"`
+	AccountID string                  `json:"account_id,omitempty"`
+	Scope     string                  `json:"scope"`
+	Status    string                  `json:"status"`
+	Error     string                  `json:"error,omitempty"`
+	Manifest  Manifest                `json:"manifest"`
+	Config    Config                  `json:"config"`
+	Signals   []strategy.Signal       `json:"signals"`
+	Decisions []paper.SignalDecision  `json:"decisions"`
+	Orders    []paper.Order           `json:"orders"`
+	Fills     []paper.Fill            `json:"fills"`
+	Positions []paper.Position        `json:"positions"`
+	Balance   domain.Decimal          `json:"final_cash_balance"`
+	Ledger    []paper.LedgerEntry     `json:"ledger"`
+	Warnings  []string                `json:"warnings"`
 }
 
 func Hash(v any) string { b, _ := json.Marshal(v); return fmt.Sprintf("%x", sha256.Sum256(b)) }
