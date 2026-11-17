@@ -45,30 +45,18 @@ func (o *options) signalReportCommand(backtest bool) *cobra.Command {
 				}
 			}
 		} else {
-			if scope != "backtest" && scope != "forward-paper" {
-				return errors.New("--scope must explicitly select backtest or forward-paper")
-			}
-			if scope == "backtest" && run == "" {
-				return errors.New("backtest scope requires --run")
-			}
-			if scope == "forward-paper" && (run != "" || f.AccountID == "") {
-				return errors.New("forward-paper scope requires --account and excludes --run")
+			if err := validateReportScope(scope, run, f.AccountID); err != nil {
+				return err
 			}
 			if err := rule.Validate(); err != nil {
 				return err
 			}
 			var e error
-			if from != "" {
-				f.From, e = time.Parse(time.RFC3339, from)
-				if e != nil {
-					return errors.New("--from must be RFC3339")
-				}
+			if f.From, e = optionalReportDate(from, "--from"); e != nil {
+				return e
 			}
-			if to != "" {
-				f.To, e = time.Parse(time.RFC3339, to)
-				if e != nil {
-					return errors.New("--to must be RFC3339")
-				}
+			if f.To, e = optionalReportDate(to, "--to"); e != nil {
+				return e
 			}
 			if frame != "" {
 				f.Timeframe, e = domain.ParseTimeframe(frame)
@@ -76,12 +64,8 @@ func (o *options) signalReportCommand(backtest bool) *cobra.Command {
 					return e
 				}
 			}
-			if provider != "" || market != "" || symbol != "" {
-				i, _, e := (marketFlags{provider: provider, market: market, symbol: symbol, frame: "1m"}).identity(provider)
-				if e != nil {
-					return e
-				}
-				f.Instrument = &i
+			if f.Instrument, e = optionalReportInstrument(provider, market, symbol); e != nil {
+				return e
 			}
 			if e = f.Validate(); e != nil {
 				return e

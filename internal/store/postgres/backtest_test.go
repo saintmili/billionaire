@@ -1,7 +1,9 @@
 package postgres_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -502,5 +504,121 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 	saved, err := s.BacktestReport(ctx, r.ID)
 	if err != nil || saved.Manifest.DatasetHash != r.Manifest.DatasetHash || len(saved.Fills) != 2 {
 		t.Fatal("saved result unavailable", err)
+	}
+}
+
+// Seed a large decision history at the database boundary rather than replaying
+// thousands of candles. All observations below use the public run/report APIs.
+func TestBacktestRetainsDecisionsBeyondInteractiveLimit(t *testing.T) {
+	ctx := context.Background()
+	dsn := testdb.New(t)
+	s, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close(ctx)
+	_, err = admin.Exec(ctx, `
+ CREATE FUNCTION public.seed_large_decision_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+ BEGIN
+   IF pg_trigger_depth() > 1 THEN RETURN NEW; END IF;
+   EXECUTE format('INSERT INTO %I.strategy_evaluations(instance_id,event_id,observed_at,event,result)
+     SELECT e.instance_id,''fixture-''||n,e.observed_at,e.event,e.result FROM %I.strategy_evaluations e
+     JOIN %I.strategy_signals s ON s.instance_id=e.instance_id AND s.event_id=e.event_id
+     CROSS JOIN generate_series(1,10000) n WHERE s.id=$1', TG_TABLE_SCHEMA,TG_TABLE_SCHEMA,TG_TABLE_SCHEMA) USING NEW.signal_id;
+   EXECUTE format('INSERT INTO %I.strategy_signals(id,instance_id,event_id,kind,direction,observed_at,payload)
+     SELECT ''zz-fixture-''||lpad(n::text,5,''0''),s.instance_id,''fixture-''||n,s.kind,s.direction,s.observed_at,
+       jsonb_set(s.payload,''{id}'',to_jsonb(''zz-fixture-''||lpad(n::text,5,''0'')))
+     FROM %I.strategy_signals s CROSS JOIN generate_series(1,10000) n WHERE s.id=$1',TG_TABLE_SCHEMA,TG_TABLE_SCHEMA) USING NEW.signal_id;
+   EXECUTE format('INSERT INTO %I.signal_decisions(signal_id,status,payload)
+     SELECT ''zz-fixture-''||lpad(n::text,5,''0''),CASE WHEN n=10000 THEN ''rejected'' ELSE ''observed'' END,
+       jsonb_build_object(''signal_id'',''zz-fixture-''||lpad(n::text,5,''0''),
+       ''status'',CASE WHEN n=10000 THEN ''rejected'' ELSE ''observed'' END,''reason'',''large-history-fixture'')
+     FROM generate_series(1,10000) n',TG_TABLE_SCHEMA);
+   RETURN NEW;
+ END $$;
+ CREATE FUNCTION public.install_large_decision_fixture() RETURNS event_trigger LANGUAGE plpgsql AS $$
+ DECLARE command record;
+ BEGIN
+   FOR command IN SELECT * FROM pg_event_trigger_ddl_commands() LOOP
+     IF command.object_type='table' AND command.schema_name LIKE 'bt_%'
+       AND command.object_identity=format('%I.signal_decisions',command.schema_name)
+       AND NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid=command.objid AND tgname='large_decision_fixture') THEN
+       EXECUTE format('CREATE TRIGGER large_decision_fixture AFTER INSERT ON %I.signal_decisions
+         FOR EACH ROW EXECUTE FUNCTION public.seed_large_decision_fixture()',command.schema_name);
+     END IF;
+   END LOOP;
+ END $$;
+ CREATE EVENT TRIGGER install_large_decision_fixture ON ddl_command_end WHEN TAG IN ('CREATE TABLE')
+ EXECUTE FUNCTION public.install_large_decision_fixture();`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open("../../../examples/strategies/breakout.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	d, err := strategy.Parse(f, strategy.DefaultRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.AddStrategyVersion(ctx, d, strategy.DefaultRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := fixture.Open("../../../testdata/market/m3.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := provider.Instrument(ctx, domain.Spot, "BTC/USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	to := provider.Now()
+	bars, err := provider.History(ctx, marketdata.Query{Instrument: info.Instrument, Timeframe: "1m", From: to.Add(-22 * time.Minute), To: to})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := s.RunBacktest(ctx, backtest.Config{VersionID: v.ID, Instrument: info, From: to.Add(-2 * time.Minute), To: to, Timeframes: []domain.Timeframe{"1m"}, Seed: 7, InitialCapital: "10000", FeeRate: "0.001", SlippageBPS: "0"}, bars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != "completed" || len(report.Decisions) != 10001 {
+		t.Fatalf("completed run must retain all 10001 decisions: status=%s decisions=%d", report.Status, len(report.Decisions))
+	}
+	saved, err := s.BacktestReport(ctx, report.ID)
+	if err != nil || len(saved.Decisions) != 10001 {
+		t.Fatalf("saved decisions=%d err=%v", len(saved.Decisions), err)
+	}
+	snapshot, err := s.BacktestSnapshot(ctx, report.ID)
+	if err != nil || snapshot.EvidenceStatus != "verified" || snapshot.RejectedDecisions == nil || *snapshot.RejectedDecisions != 1 {
+		t.Fatalf("late rejection evidence: %+v err=%v", snapshot.RejectedDecisions, err)
+	}
+	for _, format := range []string{"json", "csv"} {
+		var out bytes.Buffer
+		if err := backtest.WriteExport(&out, format, "report", snapshot); err != nil {
+			t.Fatal(err)
+		}
+		// Both export encodings carry the full retained report and rejection count.
+		if !bytes.Contains(out.Bytes(), []byte("zz-fixture-10000")) {
+			t.Fatalf("%s export lost late decision", format)
+		}
+		if format == "json" {
+			var exported backtest.Export
+			if err := json.Unmarshal(out.Bytes(), &exported); err != nil {
+				t.Fatal(err)
+			}
+			if len(exported.Context.Report.Decisions) != 10001 || exported.Context.RejectedDecisions == nil || *exported.Context.RejectedDecisions != 1 {
+				t.Fatal("export lost decision evidence")
+			}
+		}
 	}
 }
