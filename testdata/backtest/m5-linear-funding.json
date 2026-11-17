@@ -1,0 +1,13 @@
+{
+  "expected_intervals": ["2026-01-01T00:22:00Z"],
+  "events": [{
+    "id": "m5-linear-funding-0022",
+    "instrument": {"provider": "fixture", "market": "linear", "base": "BTC", "quote": "USDT", "instrument_id": "BTCUSDT"},
+    "effective_at": "2026-01-01T00:22:00Z",
+    "available_at": "2026-01-01T00:22:00Z",
+    "source": "fixture",
+    "provenance": "Deterministic test mark at the settlement boundary; no venue history claim",
+    "rate": "0.01",
+    "price": "9"
+  }]
+}

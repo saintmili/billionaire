@@ -92,6 +92,13 @@ func TestBacktestLinearPartialTargetThenFundingRetainsExposure(t *testing.T) {
 	if r.Balance.String() != "8486.2" || r.Positions[0].ReservedMargin.String() != "2628" || r.Positions[0].RemainingQuantity.String() != "600" {
 		t.Fatalf("cash and reserved collateral: cash%s position%+v", r.Balance, r.Positions)
 	}
+	total := domain.Decimal{}
+	for _, entry := range r.Ledger {
+		total = total.Add(entry.Amount)
+	}
+	if !total.Equal(r.Balance) {
+		t.Fatalf("partial/funding ledger mismatch %s != %s", total, r.Balance)
+	}
 	if r.FundingCoverage.Status != "complete" {
 		t.Fatal(r.FundingCoverage)
 	}
@@ -317,5 +324,44 @@ func TestBacktestLinearFreezesLiquidationModel(t *testing.T) {
 	}
 	if in.Config.Liquidation != cfg.Liquidation || r.FundingCoverage.Liquidation != cfg.Liquidation || *r.Positions[0].Liquidation != cfg.Liquidation {
 		t.Fatalf("model must flow through shared order and freeze: %+v", r)
+	}
+}
+
+func TestBacktestLinearFundingCannotUseForwardOwner(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	ctx := context.Background()
+	a, e := s.CreatePaperAccount(ctx, paper.CreateAccount{RequestID: "forward-linear", Name: "Forward", Currency: "USDT", InitialBalance: "1234"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	owner, e := s.AcquirePaperOwner(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer owner.Close()
+	if _, e = owner.ApplyReplayFunding(ctx, cfg.Funding.Events[0]); e == nil {
+		t.Fatal("forward owner accepted replay funding")
+	}
+	if e = s.SetKillSwitch(ctx, true); e != nil {
+		t.Fatal(e)
+	}
+	r, e := s.RunBacktest(ctx, cfg, bars)
+	if e != nil {
+		t.Fatal(e)
+	}
+	accounts, e := s.PaperAccounts(ctx)
+	if e != nil || len(accounts) != 1 || accounts[0].ID != a.ID || accounts[0].Balance.String() != "1234" {
+		t.Fatalf("forward account mutated: %+v %v", accounts, e)
+	}
+	funding, e := s.PaperFunding(ctx)
+	if e != nil || len(funding) != 0 {
+		t.Fatal("forward funding mutated", e)
+	}
+	ledgerTotal := domain.Decimal{}
+	for _, entry := range r.Ledger {
+		ledgerTotal = ledgerTotal.Add(entry.Amount)
+	}
+	if !ledgerTotal.Equal(r.Balance) {
+		t.Fatalf("cash ledger does not reconcile: %s != %s", ledgerTotal, r.Balance)
 	}
 }

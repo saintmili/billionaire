@@ -42,7 +42,7 @@ type Order struct {
 }
 
 type Observation struct {
-	// Phase orders replay opening after the previous close at a shared boundary.
+	// Phase orders isolated replay intervals, funding points and actual opens.
 	Phase       string            `json:"phase,omitempty"`
 	Bar         *PriceBar         `json:"bar,omitempty"`
 	ID          string            `json:"id"`
@@ -55,7 +55,8 @@ type Observation struct {
 }
 
 type ExecutionGate struct {
-	// ReplayNextOpen opts into equal-boundary opens inside an isolated replay only.
+	// ReplayNextOpen permits equal-boundary actual opens and funding protective
+	// closes inside an isolated replay only.
 	ReplayNextOpen bool
 	// ReplayProtectionOnly settles protective exits without consuming pending intents.
 	ReplayProtectionOnly bool

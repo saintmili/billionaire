@@ -113,7 +113,7 @@ func NewManifest(in Inputs) Manifest {
 		m.Model = "linear-isolated-ohlcv-interval-funding-point-v1"
 		m.Clock += "; completed primary intervals settle before funding at their exclusive end; funding precedes decisions and open points; intrainterval and delayed funding unsupported"
 	}
-	m.Clock += "; publications after range end retained as provenance only; ordering v2: availability, publish all frames, primary interval protection, primary evaluation, next actual open; timeframe/open/revision tie break"
+	m.Clock += "; publications after range end retained as provenance only; ordering v3: availability, publish all frames, primary interval protection, funding point, close point/evaluation, next actual open; timeframe/open/revision tie break"
 	m.ReproducibilityHash = Hash(m)
 	return m
 }
@@ -154,7 +154,10 @@ func (c Config) Validate(v strategy.Version) error {
 	if _, err := paper.ExactValue(c.InitialCapital, true); err != nil {
 		return err
 	}
-	if c.Instrument.Instrument.Market == domain.Linear || c.Liquidation != (paper.LiquidationModel{}) {
+	if c.Instrument.Instrument.Market != domain.Linear && c.Liquidation != (paper.LiquidationModel{}) {
+		return errors.New("liquidation parameters require linear market")
+	}
+	if c.Instrument.Instrument.Market == domain.Linear {
 		if err := c.EffectiveLiquidation().Validate(); err != nil {
 			return err
 		}

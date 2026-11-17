@@ -117,7 +117,7 @@ func EvaluateProtection(p Position, o Observation) (ProtectionDecision, error) {
 		return d, nil
 	}
 	d.State = *p.Protection
-	if !ProtectionClockEligible(o, d.State.UpdatedAt) {
+	if !protectionClockEligible(o, d.State.UpdatedAt) {
 		return d, nil
 	}
 	open, high, low := o.Price, o.Price, o.Price
@@ -254,10 +254,10 @@ func favorable(p Position, price, reference domain.Decimal) bool {
 	return price.GreaterThan(reference)
 }
 
-// ProtectionClockEligible permits only the explicit funding point phase to follow
+// protectionClockEligible permits explicit funding/open point phases to follow
 // an already settled interval at its exclusive end. Ordinary observations retain
 // strict monotonic clocks and every bar retains its overlap check.
-func ProtectionClockEligible(o Observation, updated time.Time) bool {
+func protectionClockEligible(o Observation, updated time.Time) bool {
 	if o.Phase == "funding_after_interval" || o.Phase == "next_open" {
 		return !o.ObservedAt.Before(updated) && !o.AvailableAt.Before(updated)
 	}
