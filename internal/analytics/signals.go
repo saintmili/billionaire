@@ -64,12 +64,16 @@ type SignalOutcome struct {
 	ObservedBars int    `json:"observed_bars"`
 }
 type SignalReport struct {
-	Scope    string          `json:"scope"`
-	Filter   SignalFilter    `json:"filter"`
-	Rule     SuccessRule     `json:"success_rule"`
-	Groups   []SignalGroup   `json:"groups"`
-	Outcomes []SignalOutcome `json:"outcomes"`
-	Warnings []string        `json:"warnings"`
+	ID           string          `json:"id"`
+	RunID        string          `json:"run_id,omitempty"`
+	Through      time.Time       `json:"observations_through"`
+	EvidenceHash string          `json:"evidence_hash"`
+	Scope        string          `json:"scope"`
+	Filter       SignalFilter    `json:"filter"`
+	Rule         SuccessRule     `json:"success_rule"`
+	Groups       []SignalGroup   `json:"groups"`
+	Outcomes     []SignalOutcome `json:"outcomes"`
+	Warnings     []string        `json:"warnings"`
 }
 
 func Signals(in SignalInput, f SignalFilter, rule SuccessRule) (SignalReport, error) {
