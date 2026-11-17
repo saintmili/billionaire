@@ -105,8 +105,8 @@ func (c Config) Validate(v strategy.Version) error {
 	if err := c.Instrument.Validate(); err != nil {
 		return err
 	}
-	if c.Instrument.Instrument.Market != domain.Spot || v.Definition.Direction != strategy.Long || v.Definition.Evaluation != strategy.OnClose {
-		return errors.New("historical OHLCV supports spot long on_candle_close only; update-mode requires recorded intrabar updates and is unsupported")
+	if (c.Instrument.Instrument.Market != domain.Spot && c.Instrument.Instrument.Market != domain.Linear) || (c.Instrument.Instrument.Market == domain.Spot && v.Definition.Direction != strategy.Long) || v.Definition.Evaluation != strategy.OnClose {
+		return errors.New("historical OHLCV supports spot long or isolated linear long/short on_candle_close only; update-mode requires recorded intrabar updates and is unsupported")
 	}
 	if c.ClockMode != "" && c.ClockMode != "close" && c.ClockMode != "recorded-close" {
 		return errors.New("unsupported historical clock mode")
