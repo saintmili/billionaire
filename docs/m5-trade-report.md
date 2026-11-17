@@ -112,6 +112,20 @@ ledger values, persisted equity, immutable-version filters, and unchanged ledger
 and cash after repeated reads. CLI tests exercise both scopes, filters, exact
 JSON decimals, persisted equity and invalid inputs.
 
-Verification commands and results are recorded after the final branch checks.
+Checks passed with `GOCACHE=/tmp/billionaire-gocache` and the authorized disposable
+local PostgreSQL server configured through `MILLIONAIRE_TEST_DATABASE_URL`:
+
+```sh
+go test ./... -count=1
+go vet ./...
+go test -race ./internal/analytics ./internal/store/postgres ./internal/cli \
+  -run 'TestTradeReport|TestOpenTradeReport|TestBacktest|TestM4SignalLinearJourney|TestPartialExits|TestEquity|TestVersionFilter|TestLossBreakeven|TestNoTrades' -count=1
+```
+
+The full PostgreSQL suite passed in approximately 49 seconds; focused race
+checks passed for all three packages. The financial-precision regression also
+verifies that an unsettled 36-place price-times-quantity product cannot offset
+an actually charged entry fee; remaining spot cost uses settled fill notional
+and the engine's 18-place allocation.
 No live monitoring or authenticated exchange operation is enabled. M2's
 actual-host gate and the remaining M5 tickets/combined acceptance remain open.

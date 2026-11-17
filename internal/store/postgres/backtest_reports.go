@@ -54,7 +54,10 @@ func (s *Store) CaptureBacktestEquity(ctx context.Context, accountID string, at 
 	if err != nil {
 		return point, err
 	}
-	return point, tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return point, safeError(ctx, ErrUnavailable)
+	}
+	return point, nil
 }
 func accountEquity(ctx context.Context, tx pgx.Tx, accountID string, at time.Time, stale time.Duration) (analytics.EquityPoint, []paper.Position, domain.Decimal, error) {
 	point := analytics.EquityPoint{At: at.UTC()}
@@ -189,5 +192,8 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 		return r, err
 	}
 	r.Warnings = append(r.Warnings, "Historical forward-paper equity was not retained; only the current read-time valuation is available")
-	return r, tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return r, safeError(ctx, ErrUnavailable)
+	}
+	return r, nil
 }

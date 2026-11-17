@@ -87,3 +87,13 @@ func TestLossBreakevenAndIsolatedWriteoffHaveDefinedDenominators(t *testing.T) {
 		t.Fatalf("writeoff %+v %v", r, e)
 	}
 }
+func TestOpenEntryCostsUseSettledNotionalAtFinancialPrecision(t *testing.T) {
+	// Price*quantity has 36 places but the engine settles notional to 18.
+	// The unsettled fraction is not an offset to the charged .001 fee.
+	p := paper.Position{ID: "p", Status: "open", Instrument: domain.Instrument{Market: domain.Spot}, EntryPrice: d("0.333333333333333333"), InitialQuantity: d("0.333333333333333333"), RemainingQuantity: d("0.333333333333333333"), RemainingCost: d("0.11211111111111111"), FeesPaid: d("0.001")}
+	in := analytics.Input{Scope: "backtest", Positions: []paper.Position{p}, Orders: []paper.Order{{ID: "o", Request: paper.OrderRequest{Action: "open"}}}, Fills: []paper.Fill{{OrderID: "o", PositionID: "p", Quantity: d("0.333333333333333333"), Notional: d("0.11111111111111111"), Fee: d("0.001")}}}
+	r, e := analytics.Trades(in, analytics.Filter{})
+	if e != nil || r.NetPnL.String() != "-0.001" || r.GrossPnL.String() != "0" {
+		t.Fatalf("settled costs %+v %v", r, e)
+	}
+}

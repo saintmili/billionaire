@@ -153,7 +153,7 @@ func Trades(in Input, f Filter) (Report, error) {
 		// Open-position realized P&L does not yet allocate remaining entry fees.
 		remainingFee := p.RemainingCost
 		if p.Instrument.Market == domain.Spot {
-			remainingFee = remainingFee.Sub(p.EntryPrice.Mul(p.RemainingQuantity))
+			remainingFee = remainingFee.Sub(remainingSpotPrincipal(p, in.Fills, orders))
 		}
 		if p.Status == "open" {
 			t.NetPnL = t.NetPnL.Sub(remainingFee)
@@ -187,6 +187,8 @@ func Trades(in Input, f Filter) (Report, error) {
 			r.ClosedTrades++
 			if !last.IsZero() {
 				t.ClosedAt = &last
+			}
+			if !last.IsZero() && !p.OpenedAt.IsZero() && !last.Before(p.OpenedAt) {
 				t.HoldingSeconds = ptr(decimal.NewFromInt(last.Sub(p.OpenedAt).Nanoseconds()).Shift(-9))
 				holding = holding.Add(*t.HoldingSeconds)
 				holdingKnown++
@@ -340,4 +342,43 @@ func excursions(t *Trade, p paper.Position, bars []domain.Candle) {
 		t.MFE = ptr(mfe)
 		t.ExcursionBasis = "OHLC fully-held-bar bounds; initial quantity, excluding exit bar; partial-size/path/order unknown"
 	}
+}
+
+// remainingSpotPrincipal follows the engine's proportional 18-place cost
+// allocation over settled notionals. Recomputing price*remaining quantity would
+// count unsettled sub-atto products as fees or gains.
+func remainingSpotPrincipal(p paper.Position, fills []paper.Fill, orders map[string]paper.Order) domain.Decimal {
+	principal := p.EntryPrice.Mul(p.RemainingQuantity).RoundFloor(18)
+	ordered := []paper.Fill{}
+	for _, f := range fills {
+		if f.PositionID == p.ID {
+			ordered = append(ordered, f)
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].ExecutedAt.Before(ordered[j].ExecutedAt) })
+	quantity := domain.Decimal{}
+	found := false
+	for _, f := range ordered {
+		action := orders[f.OrderID].Request.Action
+		if action == "open" && f.Notional.IsPositive() && f.Quantity.IsPositive() {
+			principal = f.Notional
+			quantity = f.Quantity
+			found = true
+			continue
+		}
+		if !found || action != "close" {
+			continue
+		}
+		if f.Quantity.Equal(quantity) {
+			principal = domain.Decimal{}
+			quantity = domain.Decimal{}
+			continue
+		}
+		if quantity.IsPositive() {
+			allocated := principal.Mul(f.Quantity).DivRound(quantity, 18)
+			principal = principal.Sub(allocated)
+			quantity = quantity.Sub(f.Quantity)
+		}
+	}
+	return principal
 }
