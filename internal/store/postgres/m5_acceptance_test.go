@@ -3,7 +3,10 @@ package postgres_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/saintmili/billionaire/internal/store/postgres"
+	"github.com/saintmili/billionaire/internal/testdb"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,6 +63,9 @@ func TestM5ReplayAndReportsCannotWriteForwardState(t *testing.T) {
 		if _, e = conn.Exec(ctx, `CREATE TRIGGER m5_deny BEFORE INSERT OR UPDATE OR DELETE ON millionaire.`+table+` FOR EACH STATEMENT EXECUTE FUNCTION millionaire.m5_deny()`); e != nil {
 			t.Fatal(table, e)
 		}
+	}
+	if e = s.SetKillSwitch(ctx, false); e == nil {
+		t.Fatal("forward fault guard did not reject control mutation")
 	}
 	for _, market := range []domain.MarketType{domain.Linear, domain.Spot} {
 		c := cfg
@@ -204,5 +210,73 @@ func TestM5ReplayMatchesCompatibleNormalPaperEconomics(t *testing.T) {
 	duplicate, e := s.EvaluateStrategyEvent(ctx, binding.ID, event, strategy.DefaultRegistry())
 	if e != nil || duplicate.Reason != "duplicate event" || len(duplicate.Signals) != 0 || backtest.Hash(duplicate.State) != backtest.Hash(evaluation.State) {
 		t.Fatalf("runtime/dedup changed %+v %v", duplicate, e)
+	}
+}
+
+func TestM5FinalReportFailureStaysIncompleteAfterRestartAndRecoversFromFrozenInputs(t *testing.T) {
+	ctx := context.Background()
+	s, cfg, bars := linearReplay(t)
+	// Open a second public Store to represent a fresh process after the write fault.
+	// The test helper's store intentionally exposes no private schema/pool.
+	dsn := testdb.New(t)
+	primary, e := postgres.Open(ctx, dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer primary.Close()
+	if e = primary.Migrate(ctx, postgres.Up); e != nil {
+		t.Fatal(e)
+	}
+	v, e := s.StrategyVersion(ctx, cfg.VersionID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = primary.AddStrategyVersion(ctx, v.Definition, strategy.DefaultRegistry()); e != nil {
+		t.Fatal(e)
+	}
+	conn, e := pgx.Connect(ctx, dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer conn.Close(ctx)
+	if _, e = conn.Exec(ctx, `CREATE FUNCTION millionaire.m5_fail_completion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'final write fault'; END; $$; CREATE TRIGGER m5_fail_completion BEFORE UPDATE ON millionaire.backtest_runs FOR EACH ROW WHEN (NEW.status='completed') EXECUTE FUNCTION millionaire.m5_fail_completion()`); e != nil {
+		t.Fatal(e)
+	}
+	attempted, e := primary.RunBacktest(ctx, cfg, bars)
+	if e == nil || !strings.Contains(e.Error(), "status may remain running") || attempted.ID == "" {
+		t.Fatalf("final write uncertainty %+v %v", attempted, e)
+	}
+	primary.Close()
+	restarted, e := postgres.Open(ctx, dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer restarted.Close()
+	saved, e := restarted.BacktestReport(ctx, attempted.ID)
+	if e != nil || saved.Status != "running" {
+		t.Fatalf("restart concealed incomplete run %+v %v", saved, e)
+	}
+	snapshot, e := restarted.BacktestSnapshot(ctx, attempted.ID)
+	if e != nil || snapshot.Metrics != nil || snapshot.EvidenceStatus != "run_running" {
+		t.Fatalf("unfinished performance invented %+v %v", snapshot, e)
+	}
+	frozen, e := restarted.BacktestInputs(ctx, attempted.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = conn.Exec(ctx, `DROP TRIGGER m5_fail_completion ON millionaire.backtest_runs; DROP FUNCTION millionaire.m5_fail_completion()`); e != nil {
+		t.Fatal(e)
+	}
+	recovered, e := restarted.RunFrozenBacktest(ctx, frozen)
+	if e != nil || recovered.Status != "completed" || recovered.ID == attempted.ID || recovered.Manifest != attempted.Manifest || recovered.Balance.String() != "9882.1" {
+		t.Fatalf("fresh recovery %+v %v", recovered, e)
+	}
+	original, e := restarted.BacktestReport(ctx, attempted.ID)
+	if e != nil || original.Status != "running" {
+		t.Fatal("recovery rewrote original incomplete audit", e)
+	}
+	comparison, e := restarted.CompareBacktests(ctx, attempted.ID, recovered.ID)
+	if e != nil || comparison.DirectlyComparable || comparison.Left.Metrics != nil || comparison.Right.Metrics.ClosedTrades != 1 {
+		t.Fatalf("recovery comparison %+v %v", comparison, e)
 	}
 }
