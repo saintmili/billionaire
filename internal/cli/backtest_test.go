@@ -78,6 +78,10 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 		if json.Unmarshal(output, &metrics) != nil || metrics.Scope != "backtest" || metrics.RunID != r.ID || metrics.ClosedTrades != 1 || metrics.NetPnL.String() != "-117.9" || metrics.Fees.String() != "17.9" {
 			t.Fatalf("trade JSON %s", output)
 		}
+
+		if len(metrics.Equity) < 4 || metrics.Return == nil || metrics.Return.String() != "-0.01179" || metrics.MaximumDrawdown.String() != "117.9" {
+			t.Fatalf("trade equity JSON %s", output)
+		}
 	}
 	b, e = invoke("backtest", "trades", r.ID, "--account", r.AccountID, "--strategy-version", added.Version.ID, "--provider", "fixture", "--market", "spot", "--symbol", "BTC/USDT", "--from", "2026-01-01T00:21:00Z", "--to", "2026-01-01T00:22:00Z")
 	var filtered analytics.Report

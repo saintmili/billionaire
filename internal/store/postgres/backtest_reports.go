@@ -159,7 +159,7 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
-	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.strategy_signals")
+	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE id IN (SELECT payload->'request'->>'signal_id' FROM millionaire.paper_orders WHERE account_id=$1)", f.AccountID)
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
@@ -167,7 +167,24 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 	if err != nil {
 		return analytics.Report{}, ErrSchema
 	}
-	r, err := analytics.Trades(analytics.Input{CashBalance: &cash, Signals: signals, Scope: "forward-paper", Positions: positions, Orders: orders, Fills: fills, Ledger: ledger, Equity: []analytics.EquityPoint{point}, InitialCapital: &capital}, f)
+
+	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.paper_price_events WHERE accepted AND available_at<=$1 AND instrument_key IN (SELECT instrument_key FROM millionaire.paper_orders WHERE account_id=$2) ORDER BY sequence", at, f.AccountID)
+	if err != nil {
+		return analytics.Report{}, safeError(ctx, ErrUnavailable)
+	}
+	observations, err := decodePaperRows[paper.Observation](rows)
+	if err != nil {
+		return analytics.Report{}, ErrSchema
+	}
+	bars := []domain.Candle{}
+	for _, observation := range observations {
+		b := observation.Bar
+		if b == nil || b.End.After(at) {
+			continue
+		}
+		bars = append(bars, domain.Candle{Instrument: observation.Instrument, OpenTime: b.Start, EndTime: b.End, High: b.High, Low: b.Low, Open: b.Open, Close: b.Close})
+	}
+	r, err := analytics.Trades(analytics.Input{Candles: bars, CashBalance: &cash, Signals: signals, Scope: "forward-paper", Positions: positions, Orders: orders, Fills: fills, Ledger: ledger, Equity: []analytics.EquityPoint{point}, InitialCapital: &capital}, f)
 	if err != nil {
 		return r, err
 	}

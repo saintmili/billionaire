@@ -84,6 +84,16 @@ func TestOpenTradeReportLabelsStaleValuationAndExposure(t *testing.T) {
 	if r.OpenPositions != 1 || r.ClosedTrades != 0 || r.NetPnL.String() != "-0.2" || r.Equity[0].Equity.String() != "999.8" || r.Equity[0].Exposure.String() != "200" {
 		t.Fatalf("open: %+v", r)
 	}
+
+	obs, gate = spotObservation(3)
+	obs.Bar = &paper.PriceBar{Start: gate.Now.Add(-time.Second), End: gate.Now, Open: spotDecimal("100"), Close: spotDecimal("100"), High: spotDecimal("120"), Low: spotDecimal("90")}
+	if _, e = owner.Observe(ctx, obs, gate); e != nil {
+		t.Fatal(e)
+	}
+	observed, e := s.PaperTrades(ctx, analytics.Filter{AccountID: a.ID}, gate.Now, time.Minute)
+	if e != nil || observed.Trades[0].MAE == nil || observed.Trades[0].MAE.String() != "-20" || observed.Trades[0].MFE.String() != "40" {
+		t.Fatalf("retained forward observation bounds %+v %v", observed, e)
+	}
 	stale, e := s.PaperTrades(ctx, analytics.Filter{AccountID: a.ID}, gate.Now.Add(2*time.Minute), time.Minute)
 	if e != nil || stale.Return != nil || stale.Equity[0].Equity != nil || stale.Equity[0].Exposure != nil || stale.ValuationStatus != "incomplete" {
 		t.Fatalf("stale: %+v %v", stale, e)

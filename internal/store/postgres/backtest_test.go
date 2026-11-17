@@ -103,6 +103,22 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 		if metrics.Scope != "backtest" || metrics.RunID != r.ID || metrics.ClosedTrades != 1 || metrics.GrossPnL.String() != "-100" || metrics.NetPnL.String() != "-117.9" || metrics.Fees.String() != "17.9" || metrics.LedgerTotal.String() != "9882.1" || metrics.LedgerCashReconciled == nil || !*metrics.LedgerCashReconciled {
 			t.Fatalf("persisted trades: %+v", metrics)
 		}
+
+		if len(metrics.Equity) < 4 || metrics.Return == nil || metrics.Return.String() != "-0.01179" || metrics.MaximumDrawdown.String() != "117.9" || metrics.MaximumDrawdownFraction.String() != "0.01179" || metrics.ValuationStatus != "complete" {
+			t.Fatalf("persisted equity %+v", metrics)
+		}
+		hasExposure := false
+		for _, point := range metrics.Equity {
+			if point.Exposure != nil && point.Exposure.String() == "9000" {
+				hasExposure = true
+				if point.Leverage == nil {
+					t.Fatal("missing observed leverage")
+				}
+			}
+		}
+		if !hasExposure {
+			t.Fatal("no event-time entry exposure")
+		}
 		filtered, e := s.BacktestTrades(ctx, r.ID, analytics.Filter{StrategyVersion: v.ID})
 		if e != nil || filtered.ClosedTrades != 1 || filtered.Trades[0].StrategyVersion != v.ID || len(filtered.Equity) != 0 {
 			t.Fatalf("version filtered metrics: %+v %v", filtered, e)

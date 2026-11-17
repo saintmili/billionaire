@@ -671,3 +671,10 @@ atomic replay behavior. No StopLore delivery occurs in M4.
 For isolated spot fixture replay, saved reports and frozen-input reruns, see the
 [M5 spot backtest guide](docs/m5-spot-backtest-report.md). Start with
 `millionaire backtest run --help`; this offline slice does not enable live monitoring.
+
+Trade performance is available through `millionaire backtest trades RUN-ID
+--output json` or `millionaire report trades --scope forward-paper --account
+ACCOUNT-ID --output json`. Both support immutable strategy version, instrument
+and opening-date filters. See [trade metrics and equity](docs/m5-trade-report.md)
+for exact metric boundaries, partial exits, ledger reconciliation and unavailable
+valuation labels.

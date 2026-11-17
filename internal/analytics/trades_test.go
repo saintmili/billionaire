@@ -71,3 +71,19 @@ func TestVersionFilterUsesImmutableSignalAndCandleExcursionsAreBounds(t *testing
 		t.Fatalf("bounds: %+v", trade)
 	}
 }
+func TestLossBreakevenAndIsolatedWriteoffHaveDefinedDenominators(t *testing.T) {
+	in := analytics.Input{Scope: "backtest", Positions: []paper.Position{{ID: "win", Status: "closed", RealizedPnL: d("20")}, {ID: "loss", Status: "closed", RealizedPnL: d("-10")}, {ID: "flat", Status: "closed"}}}
+	r, e := analytics.Trades(in, analytics.Filter{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if r.ClosedTrades != 3 || r.Wins != 1 || r.Losses != 1 || r.Breakeven != 1 || r.WinRate.String() != "0.3333333333333333" || r.ProfitFactor.String() != "2" || r.AverageWin.String() != "20" || r.AverageLoss.String() != "-10" || r.Expectancy.String() != "3.3333333333333333" || r.AverageHoldingSeconds != nil {
+		t.Fatalf("denominators %+v", r)
+	}
+	in.Positions = []paper.Position{{ID: "gap", Status: "closed", RealizedPnL: d("-25.245"), FeesPaid: d("1.37"), FundingPnL: d("1.5")}}
+	in.Fills = []paper.Fill{{PositionID: "gap", IsolatedDeficit: d("44.625")}}
+	r, e = analytics.Trades(in, analytics.Filter{})
+	if e != nil || r.GrossPnL.String() != "-70" || r.NetPnL.String() != "-25.245" || r.IsolatedDeficit.String() != "44.625" {
+		t.Fatalf("writeoff %+v %v", r, e)
+	}
+}
