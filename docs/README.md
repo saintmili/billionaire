@@ -10,6 +10,8 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 | [Glossary](../GLOSSARY.md) | Established domain terms |
 | [Agent configuration](../AGENTS.md) | When to read tracker, triage, domain, and project instructions |
 
+**Current milestone:** M5 offline acceptance is complete; see the [combined report and operating guide](m5-report.md). M2 actual-host validation remains pending, live monitoring remains disabled, and later milestones remain unstarted.
+
 ## Reconnaissance evidence
 
 - [StopLore integration map](stoplore-integration.md): pinned public API, persistence, license findings, mapping and reconciliation gaps.
@@ -25,6 +27,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 - [M4 linear slice report](m4-linear-report.md): ticket #4 long/short isolated collateral, settlement and valuation.
 - [M4 protection slice report](m4-protection-report.md): ticket #6 stops, targets, trailing state, candle ordering and atomic exits.
 - [M4 funding slice report](m4-funding-report.md): ticket #7 funding provenance/coverage, approximate liquidation, event ordering and verification.
+- [M5 acceptance report and operating guide](m5-report.md): combined CLI/PostgreSQL replay, complete isolation, exact analytics, recovery/retention, train/test examples and current operating limits.
 - [M5 trade performance slice report](m5-trade-report.md): ticket #20 lifecycle metrics, read-only scopes, persisted equity, exact reconciliation and limits.
 - [M5 signal report](m5-signal-report.md): ticket #21 candidate/suppression evidence, independent hypothetical outcomes and immutable report/CLI verification.
 - [M5 linear replay slice report](m5-linear-replay-report.md): ticket #19 isolated long/short funding, interval/point phases, protective exits, approximate liquidation and coverage.

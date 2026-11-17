@@ -4,9 +4,11 @@ A Linux-first Go CLI for public-market monitoring and paper trading. M3 provides
 configuration, PostgreSQL storage, public candle synchronization, versioned
 strategies and recorded signals. M4 now adds durable paper accounts and an opening
 ledger, offline spot/linear orders, risk controls, signal approval, protective exits,
-funding and approximate isolated liquidation. Backtesting and the daemon remain
-upcoming work. [M4 offline acceptance is complete](docs/m4-report.md); M2 actual-host
-validation remains pending and live monitoring remains disabled.
+funding and approximate isolated liquidation. M5 adds isolated spot/linear historical
+replay, frozen manifests, trade/signal analytics, comparison and JSON/CSV exports.
+[M5 offline acceptance is complete](docs/m5-report.md); M2 actual-host validation
+remains pending and live monitoring remains disabled. The daemon and later
+milestones remain unstarted.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -668,9 +670,10 @@ are checked again before fill. Failed writes roll back and remain retryable;
 recorded observations, fills, ledger and journal-outbox items retain existing
 atomic replay behavior. No StopLore delivery occurs in M4.
 
-For isolated spot fixture replay, saved reports and frozen-input reruns, see the
-[M5 historical replay guide](docs/m5-historical-replay-report.md). Start with
-`millionaire backtest run --help`; this offline slice does not enable live monitoring.
+For isolated historical replay, frozen-input reruns, comparison/export, recovery
+and separate train/test examples, see the [M5 operating guide](docs/m5-report.md)
+and [historical selection details](docs/m5-historical-replay-report.md). Start with
+`millionaire backtest run --help`; live monitoring remains disabled.
 
 Trade performance is available through `millionaire backtest trades RUN-ID
 --output json` or `millionaire report trades --scope forward-paper --account

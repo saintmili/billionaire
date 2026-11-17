@@ -1,6 +1,6 @@
 # Millionaire roadmap
 
-**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending because access is geographically blocked here. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. M4 offline paper lifecycle and combined acceptance are complete under its approved sequencing exception; see the [M4 report](m4-report.md). Live monitoring remains disabled pending the M2 gate. See [M0 evidence and limitations](m0-report.md), the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
+**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending because access is geographically blocked here. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. M4 offline paper lifecycle and combined acceptance are complete under its approved sequencing exception; see the [M4 report](m4-report.md). M5 offline backtesting/analytics and combined acceptance are complete under the approved sequencing exception; see the [M5 report](m5-report.md). Stop at M5. Live monitoring remains disabled pending the M2 gate. See [M0 evidence and limitations](m0-report.md), the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
 
 Read [the specification](spec.md) for requirements and [technical design](design.md) for the proposed baseline. Track implementation tickets and their dependencies in GitHub Issues using [the tracker conventions](agents/issue-tracker.md).
 
@@ -13,7 +13,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M2 — Market data and historical synchronization | Implemented; offline checks pass; [live-host gate pending](m2-report.md) |
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
 | M4 — Paper accounts, orders, risk, and position lifecycle | Complete under offline sequencing exception — [combined acceptance evidence](m4-report.md); M2 live-host gate remains pending |
-| M5 — First-class backtesting and analytics | In progress — ticket #17 [isolated spot fixture run/report](m5-spot-backtest-report.md) and #18 [historical datasets/multi-timeframe replay](m5-historical-replay-report.md); ticket #19 [linear funding/protection replay](m5-linear-replay-report.md); remaining M5 scope and combined acceptance stay open |
+| M5 — First-class backtesting and analytics | Complete under offline sequencing exception — [combined acceptance and operating guide](m5-report.md), including #17–#22 slices; M2 live-host gate remains pending; stop at M5 |
 | M6 — Notifications and process operation | Not started |
 | M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
 | M7 — StopLore journaling | Not started |
@@ -107,6 +107,8 @@ monitoring is enabled. This exception does not waive that gate. Stop at M5.
 **Tasks:** Historical replay service with virtual clock, reproducibility manifests, exact version/data hash, independent simulated accounts, report metrics, run comparison, CSV/JSON export, signal-success definitions, missed-data warnings.
 
 **Acceptance:** Fixed dataset+parameters+seed produces identical trades and metrics on rerun; no look-ahead on multi-timeframe; a backtest cannot mutate live paper accounts; differences in datasets/assumptions appear in compare output; smoke backtest on fixture succeeds.
+
+**Outcome (2026-11-18):** Offline gate passed against fixtures and real PostgreSQL, including complete forward-state isolation, CLI spot/linear analytics/export, frozen determinism, changed assumptions, compatible normal-paper economic agreement, cancellation/failure/restart and separate chronological sample reports. Full tests, practical race checks, vet and build passed; see [evidence and limitations](m5-report.md). M2 actual-host validation remains pending; live monitoring remains disabled and no later milestone is started.
 
 ### M6 — Notifications and process operation
 
