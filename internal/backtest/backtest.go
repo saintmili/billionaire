@@ -21,16 +21,19 @@ var BuildRevision = "unavailable"
 const ExecutionModel = "spot-ohlcv-close-next-open-phase-v1"
 
 type Config struct {
-	VersionID      string                    `json:"strategy_version"`
-	Instrument     marketdata.InstrumentInfo `json:"instrument_metadata"`
-	From           time.Time                 `json:"from"`
-	To             time.Time                 `json:"to"`
-	Timeframes     []domain.Timeframe        `json:"timeframes"`
-	Seed           int64                     `json:"seed"`
-	InitialCapital string                    `json:"initial_capital"`
-	FeeRate        string                    `json:"fee_rate"`
-	SlippageBPS    string                    `json:"slippage_bps"`
-	Risk           paper.RiskPolicy          `json:"risk"`
+	AcknowledgeGaps bool                      `json:"acknowledge_gaps"`
+	Source          string                    `json:"dataset_source,omitempty"`
+	ClockMode       string                    `json:"clock_mode,omitempty"`
+	VersionID       string                    `json:"strategy_version"`
+	Instrument      marketdata.InstrumentInfo `json:"instrument_metadata"`
+	From            time.Time                 `json:"from"`
+	To              time.Time                 `json:"to"`
+	Timeframes      []domain.Timeframe        `json:"timeframes"`
+	Seed            int64                     `json:"seed"`
+	InitialCapital  string                    `json:"initial_capital"`
+	FeeRate         string                    `json:"fee_rate"`
+	SlippageBPS     string                    `json:"slippage_bps"`
+	Risk            paper.RiskPolicy          `json:"risk"`
 }
 type Inputs struct {
 	Config  Config           `json:"config"`
@@ -84,6 +87,11 @@ func NewManifest(in Inputs) Manifest {
 		Metadata marketdata.InstrumentInfo
 		Candles  []domain.Candle
 	}{in.Config.Instrument, in.Candles}), Model: ExecutionModel, Clock: "frozen OHLCV: close available at exclusive end; close phase before next open at equal boundary", EndPolicy: "retain open positions and pending intents; no synthetic final liquidation"}
+	m.Clock = "latest selected OHLCV snapshot modeled available at close; original provider observation retained in frozen inputs; revision history unavailable"
+	if in.Config.ClockMode == "recorded-close" {
+		m.Clock = "recorded closed-candle observations published at provider observation; later corrections publish without retroactive evaluation"
+	}
+	m.Clock += "; ordering v2: availability, publish all frames, primary interval protection, primary evaluation, next actual open; timeframe/open/revision tie break"
 	m.ReproducibilityHash = Hash(m)
 	return m
 }
@@ -94,13 +102,31 @@ func (c Config) Validate(v strategy.Version) error {
 	if err := c.Instrument.Validate(); err != nil {
 		return err
 	}
-	if c.Instrument.Instrument.Provider != "fixture" || c.Instrument.Instrument.Market != domain.Spot || v.Definition.Direction != strategy.Long || v.Definition.Evaluation != strategy.OnClose || len(c.Timeframes) != 1 || len(v.Definition.Timeframes) != 1 || c.Timeframes[0] != v.Definition.Primary {
-		return errors.New("this slice supports fixture spot long close-based single-timeframe strategies only")
+	if c.Instrument.Instrument.Market != domain.Spot || v.Definition.Direction != strategy.Long || v.Definition.Evaluation != strategy.OnClose {
+		return errors.New("historical OHLCV supports spot long on_candle_close only; update-mode requires recorded intrabar updates and is unsupported")
+	}
+	if c.ClockMode != "" && c.ClockMode != "close" && c.ClockMode != "recorded-close" {
+		return errors.New("unsupported historical clock mode")
+	}
+	if len(c.Timeframes) != len(v.Definition.Timeframes) {
+		return errors.New("selected timeframes must match strategy version")
+	}
+	seen := map[domain.Timeframe]bool{}
+	for _, f := range c.Timeframes {
+		if seen[f] {
+			return errors.New("duplicate timeframe")
+		}
+		seen[f] = true
+	}
+	for _, f := range v.Definition.Timeframes {
+		if !seen[f] {
+			return errors.New("selected timeframes must match strategy version")
+		}
 	}
 	if err := v.Definition.ValidateInstance(strategy.Instance{ID: "validate", VersionID: v.ID, Account: "validate", Instrument: c.Instrument.Instrument, Action: strategy.AutoPaper}); err != nil {
 		return err
 	}
-	if err := (marketdata.Query{Instrument: c.Instrument.Instrument, Timeframe: c.Timeframes[0], From: c.From, To: c.To}).Validate(); err != nil {
+	if err := (marketdata.Query{Instrument: c.Instrument.Instrument, Timeframe: v.Definition.Primary, From: c.From, To: c.To}).Validate(); err != nil {
 		return err
 	}
 	if _, err := paper.ExactValue(c.InitialCapital, true); err != nil {
