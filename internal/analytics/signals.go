@@ -151,7 +151,7 @@ func Signals(in SignalInput, f SignalFilter, rule SuccessRule) (SignalReport, er
 	sort.Strings(keys)
 	for _, k := range keys {
 		g := groups[k]
-		if g.Candidates > 0 {
+		if g.Candidates > 0 && in.CandidatesAvailable {
 			v := decimal.NewFromInt(int64(g.Suppressed)).Div(decimal.NewFromInt(int64(g.Candidates)))
 			g.SuppressionRate = &v
 		}
@@ -166,7 +166,7 @@ func Signals(in SignalInput, f SignalFilter, rule SuccessRule) (SignalReport, er
 		}
 		r.Groups = append(r.Groups, *g)
 	}
-	if !in.CandidatesAvailable && len(in.Candidates) == 0 {
+	if !in.CandidatesAvailable {
 		r.Warnings = append(r.Warnings, "Satisfied-candidate evidence unavailable; suppression rate is unknown")
 	}
 	r.Warnings = append(r.Warnings, "Entry candidates only; suppression denominator is distinct ready satisfied evaluation events before emission policy/cooldown; conversion requires an actual entry fill", "Hypothetical outcomes use proposed signal price, subsequent full closed bars and percent thresholds; independent of paper profit and entry rejection")
@@ -191,6 +191,12 @@ func observe(s strategy.Signal, candles []domain.Candle, through time.Time, r Su
 	_, expected := s.Timeframe.Bounds(s.ObservedAt)
 	if start, _ := s.Timeframe.Bounds(s.ObservedAt); start.Equal(s.ObservedAt) {
 		expected = start
+	}
+	if !s.CandleOpen.IsZero() {
+		_, afterSignalCandle := s.Timeframe.Bounds(s.CandleOpen)
+		if expected.Before(afterSignalCandle) {
+			expected = afterSignalCandle
+		}
 	}
 	bars := map[time.Time]domain.Candle{}
 	for _, c := range candles {

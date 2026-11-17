@@ -39,6 +39,15 @@ func (s *Store) BacktestSignals(ctx context.Context, id string, f analytics.Sign
 	if json.Unmarshal(b, &evidence) != nil {
 		return analytics.SignalReport{}, ErrSchema
 	}
+	if saved.Config.ClockMode == "recorded-close" {
+		bars := []domain.Candle{}
+		for _, c := range frozen.Candles {
+			if !c.ObservedAt.After(saved.Config.To) {
+				bars = append(bars, c)
+			}
+		}
+		frozen.Candles = bars
+	}
 	in := analytics.SignalInput{Scope: "backtest", Signals: saved.Signals, Candidates: evidence.Candidates, CandidatesAvailable: evidence.Available, Candles: frozen.Candles, Through: saved.Config.To, Fills: saved.Fills, Orders: saved.Orders}
 	r, err := analytics.Signals(in, f, rule)
 	if err != nil {
@@ -121,11 +130,15 @@ func (s *Store) PaperSignals(ctx context.Context, f analytics.SignalFilter, rule
 	if err != nil {
 		return analytics.SignalReport{}, err
 	}
+	available := true
 	candidates := []strategy.Candidate{}
 	for _, e := range evaluations {
+		if e.Candidates == nil {
+			available = false
+		}
 		candidates = append(candidates, e.Candidates...)
 	}
-	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.market_candles WHERE end_time<=$1 ORDER BY open_time,revision", through)
+	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.market_candles WHERE end_time<=$1 AND observed_at<=$1 AND source=provider ORDER BY open_time,revision", through)
 	if err != nil {
 		return analytics.SignalReport{}, safeError(ctx, ErrUnavailable)
 	}
@@ -152,7 +165,7 @@ func (s *Store) PaperSignals(ctx context.Context, f analytics.SignalFilter, rule
 	if err = tx.Commit(ctx); err != nil {
 		return analytics.SignalReport{}, safeError(ctx, ErrUnavailable)
 	}
-	in := analytics.SignalInput{Scope: "forward-paper", Signals: signals, Candidates: candidates, Candles: candles, Through: through, Orders: orders, Fills: fills}
+	in := analytics.SignalInput{Scope: "forward-paper", Signals: signals, Candidates: candidates, CandidatesAvailable: available, Candles: candles, Through: through, Orders: orders, Fills: fills}
 	r, err := analytics.Signals(in, f, rule)
 	if err != nil {
 		return r, err

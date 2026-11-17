@@ -63,7 +63,7 @@ type Evaluation struct {
 
 func Plan(registry *Registry, version Version, instance Instance, event marketdata.Event, history []domain.Candle, prior State) (Evaluation, error) {
 	c := event.Candle
-	result := Evaluation{State: prior, Signals: []Signal{}}
+	result := Evaluation{State: prior, Signals: []Signal{}, Candidates: []Candidate{}}
 	if c == nil {
 		return result, errors.New("strategy evaluation requires a candle event")
 	}
