@@ -8,7 +8,6 @@ import (
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"github.com/spf13/cobra"
-	"time"
 )
 
 func (o *options) addComparisonCommands(root *cobra.Command) {
@@ -70,17 +69,11 @@ func (o *options) strategiesCommand() *cobra.Command {
 			return errors.New("--scope must be backtest; forward-paper strategy attribution is unavailable")
 		}
 		var e error
-		if from != "" {
-			f.Range.From, e = time.Parse(time.RFC3339Nano, from)
-			if e != nil {
-				return errors.New("--from must be RFC3339")
-			}
+		if f.Range.From, e = optionalReportDate(from, "--from"); e != nil {
+			return e
 		}
-		if to != "" {
-			f.Range.To, e = time.Parse(time.RFC3339Nano, to)
-			if e != nil {
-				return errors.New("--to must be RFC3339")
-			}
+		if f.Range.To, e = optionalReportDate(to, "--to"); e != nil {
+			return e
 		}
 		if !f.Range.From.IsZero() && !f.Range.To.IsZero() && !f.Range.From.Before(f.Range.To) {
 			return errors.New("--from must precede --to")
@@ -91,12 +84,8 @@ func (o *options) strategiesCommand() *cobra.Command {
 				return e
 			}
 		}
-		if provider != "" || market != "" || symbol != "" {
-			id, _, e := (marketFlags{provider: provider, market: market, symbol: symbol, frame: "1m"}).identity(provider)
-			if e != nil {
-				return e
-			}
-			f.Instrument = &id
+		if f.Instrument, e = optionalReportInstrument(provider, market, symbol); e != nil {
+			return e
 		}
 		return o.readStore(c, func(ctx context.Context, s *postgres.Store) error {
 			r, e := s.BacktestStrategies(ctx, f)

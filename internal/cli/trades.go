@@ -37,34 +37,18 @@ func (o *options) tradeCommand(backtest bool) *cobra.Command {
 		if backtest {
 			run = args[0]
 		}
-		if scope != "backtest" && scope != "forward-paper" {
-			return errors.New("--scope must explicitly select backtest or forward-paper")
-		}
-		if scope == "backtest" && run == "" {
-			return errors.New("backtest scope requires --run")
-		}
-		if scope == "forward-paper" && (run != "" || f.AccountID == "") {
-			return errors.New("forward-paper scope requires --account and excludes --run")
+		if err := validateReportScope(scope, run, f.AccountID); err != nil {
+			return err
 		}
 		var err error
-		if from != "" {
-			f.From, err = time.Parse(time.RFC3339, from)
-			if err != nil {
-				return errors.New("--from must be RFC3339")
-			}
+		if f.From, err = optionalReportDate(from, "--from"); err != nil {
+			return err
 		}
-		if to != "" {
-			f.To, err = time.Parse(time.RFC3339, to)
-			if err != nil {
-				return errors.New("--to must be RFC3339")
-			}
+		if f.To, err = optionalReportDate(to, "--to"); err != nil {
+			return err
 		}
-		if provider != "" || market != "" || symbol != "" {
-			identity, _, e := (marketFlags{provider: provider, market: market, symbol: symbol, frame: "1m"}).identity(provider)
-			if e != nil {
-				return e
-			}
-			f.Instrument = &identity
+		if f.Instrument, err = optionalReportInstrument(provider, market, symbol); err != nil {
+			return err
 		}
 		if err = f.Validate(); err != nil {
 			return err
