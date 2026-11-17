@@ -95,6 +95,17 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 		return report, err
 	}
 	defer owner.Close()
+	capture := func(at time.Time) error {
+		point, e := isolated.CaptureBacktestEquity(ctx, account.ID, at)
+		if e != nil {
+			return e
+		}
+		report.Equity = append(report.Equity, point)
+		return nil
+	}
+	if err = capture(cfg.From); err != nil {
+		return report, err
+	}
 
 	type replayEvent struct {
 		at   time.Time
@@ -164,6 +175,9 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			if e != nil {
 				return report, e
 			}
+			if err = capture(ev.at); err != nil {
+				return report, err
+			}
 			if !evaluation.Ready {
 				report.Warnings = append(report.Warnings, "Strategy unready at "+ev.at.Format(time.RFC3339)+": "+evaluation.Reason)
 			}
@@ -185,6 +199,9 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			gate := paper.ExecutionGate{ReplayNextOpen: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}
 			open := paper.Observation{Phase: "next_open", ID: "open-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Open, ObservedAt: ev.at, AvailableAt: ev.at, Ready: true}
 			if _, err = owner.Observe(ctx, open, gate); err != nil {
+				return report, err
+			}
+			if err = capture(ev.at); err != nil {
 				return report, err
 			}
 		}
