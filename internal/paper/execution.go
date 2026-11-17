@@ -213,10 +213,10 @@ func Identity(kind, key string) string { return fmt.Sprintf("%s_%x", kind, sha25
 func decimal(s string) domain.Decimal  { v, _ := domain.ParseDecimal(s); return v }
 
 func (o Observation) Validate() error {
-	if o.Phase == "next_open" && o.Bar != nil {
+	if (o.Phase == "next_open" || o.Phase == "funding_after_interval") && o.Bar != nil {
 		return errors.New("replay opening observation cannot contain a completed bar")
 	}
-	if o.Phase != "" && o.Phase != "next_open" {
+	if o.Phase != "" && o.Phase != "next_open" && o.Phase != "completed_interval" && o.Phase != "funding_after_interval" {
 		return errors.New("unsupported observation phase")
 	}
 	if !requestID.MatchString(o.ID) || o.Instrument.Validate() != nil || o.Source != o.Instrument.Provider || o.ObservedAt.IsZero() || o.AvailableAt.Before(o.ObservedAt) {

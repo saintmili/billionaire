@@ -44,6 +44,10 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	id := hex.EncodeToString(random[:])
 	schema := "bt_" + id
 	report = backtest.Report{ID: id, Scope: "backtest", Status: "running", Manifest: backtest.NewManifest(in), Config: cfg, Signals: []strategy.Signal{}, Decisions: []paper.SignalDecision{}, Orders: []paper.Order{}, Fills: []paper.Fill{}, Positions: []paper.Position{}, Ledger: []paper.LedgerEntry{}, Warnings: []string{"OHLCV close model; no intrabar path is inferred", "Open positions and pending intents are retained at range end; final cash is not total equity", "Historical sample only; sample size and survivorship bias limit performance claims"}}
+	report.FundingCoverage = cfg.FundingCoverage()
+	if cfg.Instrument.Instrument.Market == domain.Linear {
+		report.Warnings = append(report.Warnings, "Approximate isolated liquidation uses maintenance 0.005 plus liquidation fee 0.005; no venue tiers or mark/index basis", "Funding coverage: "+report.FundingCoverage.Status+"; missing funding is unknown, never an assumed zero rate")
+	}
 	report.Warnings = append(report.Warnings, quality...)
 	report.Warnings = append(report.Warnings, "Original provider observation clocks/revisions are retained in frozen inputs; signal source_observed_at uses the explicitly modeled replay view")
 	inputsJSON, _ := json.Marshal(in)
@@ -108,9 +112,10 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	}
 
 	type replayEvent struct {
-		at   time.Time
-		open bool
-		raw  domain.Candle
+		at      time.Time
+		open    bool
+		raw     domain.Candle
+		funding *paper.FundingEvent
 	}
 	events := []replayEvent{}
 	for _, raw := range frozen {
@@ -123,10 +128,20 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			events = append(events, replayEvent{at: raw.OpenTime, open: true, raw: raw})
 		}
 	}
+	for n := range cfg.Funding.Events {
+		e := cfg.Funding.Events[n]
+		events = append(events, replayEvent{at: e.AvailableAt, funding: &e})
+	}
 	sort.Slice(events, func(i, j int) bool {
 		a, b := events[i], events[j]
 		if !a.at.Equal(b.at) {
 			return a.at.Before(b.at)
+		}
+		if (a.funding != nil) != (b.funding != nil) {
+			return a.funding != nil
+		}
+		if a.funding != nil {
+			return a.funding.ID < b.funding.ID
 		}
 		if a.open != b.open {
 			return !a.open
@@ -142,6 +157,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 		}
 		return a.raw.Revision < b.raw.Revision
 	})
+	settled := map[time.Time]bool{}
 	evaluated := map[time.Time]bool{}
 	opened := map[time.Time]bool{}
 	for i := 0; i < len(events); {
@@ -154,7 +170,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 		}
 		// Publication phase: every completed timeframe is visible before evaluation.
 		for _, ev := range events[i:j] {
-			if ev.open {
+			if ev.open || ev.funding != nil {
 				continue
 			}
 			c := ev.raw
@@ -164,17 +180,36 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			}
 		}
 		for _, ev := range events[i:j] {
-			if ev.open || ev.raw.Timeframe != v.Definition.Primary || ev.raw.OpenTime.Before(cfg.From) || evaluated[ev.raw.OpenTime] {
+			if ev.open || ev.funding != nil || ev.raw.Timeframe != v.Definition.Primary || ev.raw.OpenTime.Before(cfg.From) || settled[ev.raw.OpenTime] {
+				continue
+			}
+			settled[ev.raw.OpenTime] = true
+			c := ev.raw
+			c.ObservedAt = ev.at
+			gate := paper.ExecutionGate{ReplayNextOpen: true, ReplayProtectionOnly: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}
+			close := paper.Observation{Phase: "completed_interval", ID: "close-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Close, ObservedAt: ev.at, AvailableAt: ev.at, Ready: true, Bar: &paper.PriceBar{Start: c.OpenTime, End: c.EndTime, Open: c.Open, High: c.High, Low: c.Low, Close: c.Close}}
+			if _, err = owner.Observe(ctx, close, gate); err != nil {
+				return report, err
+			}
+		}
+		// Funding points follow the interval ending here, before close decisions and opens.
+		for _, ev := range events[i:j] {
+			if ev.funding != nil {
+				if _, err = owner.ApplyReplayFunding(ctx, *ev.funding); err != nil {
+					return report, err
+				}
+				if err = capture(ev.at); err != nil {
+					return report, err
+				}
+			}
+		}
+		for _, ev := range events[i:j] {
+			if ev.open || ev.funding != nil || ev.raw.Timeframe != v.Definition.Primary || ev.raw.OpenTime.Before(cfg.From) || evaluated[ev.raw.OpenTime] {
 				continue
 			}
 			evaluated[ev.raw.OpenTime] = true
 			c := ev.raw
 			c.ObservedAt = ev.at
-			gate := paper.ExecutionGate{ReplayNextOpen: true, ReplayProtectionOnly: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}
-			close := paper.Observation{ID: "close-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Close, ObservedAt: ev.at, AvailableAt: ev.at, Ready: true, Bar: &paper.PriceBar{Start: c.OpenTime, End: c.EndTime, Open: c.Open, High: c.High, Low: c.Low, Close: c.Close}}
-			if _, err = owner.Observe(ctx, close, gate); err != nil {
-				return report, err
-			}
 			evaluation, e := isolated.EvaluateStrategyEvent(ctx, binding.ID, marketdata.Event{Kind: "candle", Candle: &c, AvailableAt: ev.at, AllowsEntries: true}, registry)
 			if e != nil {
 				return report, e
@@ -187,7 +222,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			}
 			report.Signals = append(report.Signals, evaluation.Signals...)
 			for _, signal := range evaluation.Signals {
-				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
+				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, Leverage: cfg.EffectiveLeverage(), FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
 					return report, err
 				}
 			}
@@ -210,6 +245,9 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			}
 		}
 		i = j
+	}
+	if report.Funding, err = isolated.PaperFunding(ctx); err != nil {
+		return report, err
 	}
 	if report.Orders, err = isolated.PaperOrders(ctx, account.ID); err != nil {
 		return report, err

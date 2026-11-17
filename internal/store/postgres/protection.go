@@ -41,7 +41,7 @@ func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observa
 			continue
 		}
 		// A skipped overlapping bar or old observation leaves the state unchanged.
-		if !decision.State.UpdatedAt.After(p.Protection.UpdatedAt) {
+		if !decision.State.UpdatedAt.After(p.Protection.UpdatedAt) && !(observation.Phase == "funding_after_interval" && decision.Reason != "") {
 			continue
 		}
 		if decision.Reason == "" {

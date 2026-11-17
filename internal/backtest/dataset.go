@@ -68,6 +68,9 @@ func Availability(c Config, b domain.Candle) time.Time {
 
 // Freeze validates and canonically orders exact source payloads before trading.
 func Freeze(c Config, v strategy.Version, bars []domain.Candle) (Inputs, []string, error) {
+	if err := freezeFunding(&c, v); err != nil {
+		return Inputs{}, nil, err
+	}
 	queries, e := Queries(c, v)
 	if e != nil {
 		return Inputs{}, nil, e

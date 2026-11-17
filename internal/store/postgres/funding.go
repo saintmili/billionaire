@@ -14,6 +14,18 @@ import (
 // ApplyFunding consumes an explicit interval before later price observations.
 // The owner lock, financial ledger and outcome commit together, including gaps.
 func (o *PaperOwner) ApplyFunding(ctx context.Context, e paper.FundingEvent) (paper.FundingResult, error) {
+	return o.applyFunding(ctx, e, false)
+}
+
+// ApplyReplayFunding permits the funding point after a completed interval phase
+// in a private replay namespace, preserving forward strict ordering.
+func (o *PaperOwner) ApplyReplayFunding(ctx context.Context, e paper.FundingEvent) (paper.FundingResult, error) {
+	if o.namespace == "" {
+		return paper.FundingResult{}, errors.New("replay funding requires an isolated backtest execution context")
+	}
+	return o.applyFunding(ctx, e, true)
+}
+func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, replay bool) (paper.FundingResult, error) {
 	result := paper.FundingResult{Event: e, Applications: []paper.FundingApplication{}, Orders: []paper.Order{}}
 	if err := e.Validate(); err != nil {
 		return result, err
@@ -54,7 +66,7 @@ func (o *PaperOwner) ApplyFunding(ctx context.Context, e paper.FundingEvent) (pa
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return result, safeError(ctx, ErrUnavailable)
 	}
-	if err == nil && !e.EffectiveAt.After(last.AvailableAt) {
+	if err == nil && !e.EffectiveAt.After(last.AvailableAt) && !(replay && last.Phase == "completed_interval" && last.Bar != nil && last.Bar.End.Equal(e.EffectiveAt) && last.AvailableAt.Equal(e.EffectiveAt)) {
 		return result, errors.New("funding must precede price observations at or after its effective time; retroactive funding is unsupported")
 	}
 	previous, err := decodePaperRow[paper.FundingEvent](tx.QueryRow(ctx, `SELECT payload FROM millionaire.paper_funding_events WHERE instrument_key=$1 ORDER BY effective_at DESC LIMIT 1`, key))
@@ -79,7 +91,7 @@ func (o *PaperOwner) ApplyFunding(ctx context.Context, e paper.FundingEvent) (pa
 			if p.Instrument != e.Instrument || !e.EffectiveAt.After(p.OpenedAt) {
 				continue
 			}
-			if p.Protection != nil && !e.EffectiveAt.After(p.Protection.UpdatedAt) {
+			if p.Protection != nil && (!e.EffectiveAt.After(p.Protection.UpdatedAt) && !(replay && e.EffectiveAt.Equal(p.Protection.UpdatedAt))) {
 				return result, errors.New("funding cannot precede an existing position adjustment or exit-management clock")
 			}
 			if p.OpenedAt.IsZero() {
@@ -124,6 +136,9 @@ func (o *PaperOwner) ApplyFunding(ctx context.Context, e paper.FundingEvent) (pa
 		}
 		// Funding changes collateral before liquidation at its exact public valuation.
 		observation := paper.Observation{ID: paper.Identity("funding-price", e.ID), Instrument: e.Instrument, Source: e.Instrument.Provider, Price: e.Price, ObservedAt: e.EffectiveAt, AvailableAt: e.AvailableAt, Ready: true}
+		if replay {
+			observation.Phase = "funding_after_interval"
+		}
 		orders, err := observeProtection(ctx, tx, observation, paper.ExecutionGate{Now: e.AvailableAt, StaleAfter: e.AvailableAt.Sub(e.EffectiveAt) + time.Nanosecond, Enabled: false})
 		if err != nil {
 			return result, safeError(ctx, ErrUnavailable)

@@ -22,6 +22,8 @@ var BuildRevision = "unavailable"
 const ExecutionModel = "spot-ohlcv-multiframe-next-open-phase-v2"
 
 type Config struct {
+	Funding         FundingDataset            `json:"funding"`
+	Leverage        int                       `json:"leverage"`
 	AcknowledgeGaps bool                      `json:"acknowledge_gaps"`
 	SourceURL       string                    `json:"source_url,omitempty"`
 	Source          string                    `json:"dataset_source,omitempty"`
@@ -53,22 +55,24 @@ type Manifest struct {
 	EndPolicy           string `json:"end_policy"`
 }
 type Report struct {
-	Equity    []analytics.EquityPoint `json:"equity"`
-	ID        string                  `json:"id"`
-	AccountID string                  `json:"account_id,omitempty"`
-	Scope     string                  `json:"scope"`
-	Status    string                  `json:"status"`
-	Error     string                  `json:"error,omitempty"`
-	Manifest  Manifest                `json:"manifest"`
-	Config    Config                  `json:"config"`
-	Signals   []strategy.Signal       `json:"signals"`
-	Decisions []paper.SignalDecision  `json:"decisions"`
-	Orders    []paper.Order           `json:"orders"`
-	Fills     []paper.Fill            `json:"fills"`
-	Positions []paper.Position        `json:"positions"`
-	Balance   domain.Decimal          `json:"final_cash_balance"`
-	Ledger    []paper.LedgerEntry     `json:"ledger"`
-	Warnings  []string                `json:"warnings"`
+	Funding         []paper.FundingResult   `json:"funding"`
+	FundingCoverage FundingCoverage         `json:"funding_coverage"`
+	Equity          []analytics.EquityPoint `json:"equity"`
+	ID              string                  `json:"id"`
+	AccountID       string                  `json:"account_id,omitempty"`
+	Scope           string                  `json:"scope"`
+	Status          string                  `json:"status"`
+	Error           string                  `json:"error,omitempty"`
+	Manifest        Manifest                `json:"manifest"`
+	Config          Config                  `json:"config"`
+	Signals         []strategy.Signal       `json:"signals"`
+	Decisions       []paper.SignalDecision  `json:"decisions"`
+	Orders          []paper.Order           `json:"orders"`
+	Fills           []paper.Fill            `json:"fills"`
+	Positions       []paper.Position        `json:"positions"`
+	Balance         domain.Decimal          `json:"final_cash_balance"`
+	Ledger          []paper.LedgerEntry     `json:"ledger"`
+	Warnings        []string                `json:"warnings"`
 }
 
 func Hash(v any) string { b, _ := json.Marshal(v); return fmt.Sprintf("%x", sha256.Sum256(b)) }
@@ -89,7 +93,8 @@ func NewManifest(in Inputs) Manifest {
 	m := Manifest{Build: build, StrategyHash: in.Version.ID, ConfigurationHash: Hash(in.Config), DatasetHash: Hash(struct {
 		Metadata marketdata.InstrumentInfo
 		Candles  []domain.Candle
-	}{in.Config.Instrument, in.Candles}), Model: ExecutionModel, Clock: "frozen OHLCV: close available at exclusive end; close phase before next open at equal boundary", EndPolicy: "retain open positions and pending intents; no synthetic final liquidation"}
+		Funding  FundingDataset
+	}{in.Config.Instrument, in.Candles, in.Config.Funding}), Model: ExecutionModel, Clock: "frozen OHLCV: close available at exclusive end; close phase before next open at equal boundary", EndPolicy: "retain open positions and pending intents; no synthetic final liquidation"}
 	m.Clock = "latest selected OHLCV snapshot modeled available at close; original provider observation retained in frozen inputs; revision history unavailable"
 	if in.Config.ClockMode == "recorded-close" {
 		m.Clock = "recorded closed-candle observations published at provider observation; later corrections publish without retroactive evaluation"
@@ -138,6 +143,13 @@ func (c Config) Validate(v strategy.Version) error {
 	if err := c.Risk.Validate(); err != nil {
 		return err
 	}
-	_, err := paper.PrepareOrder(paper.OrderRequest{RequestID: "validate", AccountID: "validate", Action: "open", Instrument: c.Instrument.Instrument, Side: "long", Leverage: 1, Quantity: "risk", At: c.From, FeeRate: c.FeeRate, SlippageBPS: c.SlippageBPS}, c.Instrument)
+	_, err := paper.PrepareOrder(paper.OrderRequest{RequestID: "validate", AccountID: "validate", Action: "open", Instrument: c.Instrument.Instrument, Side: string(v.Definition.Direction), Leverage: c.EffectiveLeverage(), Quantity: "risk", At: c.From, FeeRate: c.FeeRate, SlippageBPS: c.SlippageBPS}, c.Instrument)
 	return err
+}
+
+func (c Config) EffectiveLeverage() int {
+	if c.Leverage == 0 {
+		return 1
+	}
+	return c.Leverage
 }
