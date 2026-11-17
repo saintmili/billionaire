@@ -96,6 +96,9 @@ func TestBacktestSnapshotsPreserveMissingAndIncompleteEvidenceWithoutExecution(t
 	if _, e = readOnly.BacktestStrategies(ctx, postgres.StrategyReportFilter{}); e != nil {
 		t.Fatalf("strategy report attempted writes: %v", e)
 	}
+	if _, e = s.BacktestStrategies(ctx, postgres.StrategyReportFilter{Range: backtest.Period{From: at.Add(time.Hour), To: at}}); e == nil {
+		t.Fatal("invalid selection range accepted")
+	}
 	selected, e := s.BacktestStrategies(ctx, postgres.StrategyReportFilter{})
 	if e != nil || len(selected) != 6 {
 		t.Fatalf("list omitted unavailable runs %+v %v", selected, e)

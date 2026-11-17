@@ -94,6 +94,14 @@ type StrategyReportFilter struct {
 // BacktestStrategies returns separate run snapshots, never pooled strategy
 // metrics. Dates select runs whose original ranges overlap [from,to).
 func (s *Store) BacktestStrategies(ctx context.Context, f StrategyReportFilter) ([]backtest.Snapshot, error) {
+	if err := (analytics.Filter{From: f.Range.From, To: f.Range.To, Instrument: f.Instrument}).Validate(); err != nil {
+		return nil, err
+	}
+	if f.Timeframe != "" {
+		if _, err := domain.ParseTimeframe(string(f.Timeframe)); err != nil {
+			return nil, err
+		}
+	}
 	ids := f.RunIDs
 	if len(ids) == 0 {
 		rows, e := s.pool.Query(ctx, "SELECT id FROM millionaire.backtest_runs ORDER BY created_at,id")

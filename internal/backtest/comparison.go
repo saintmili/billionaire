@@ -87,7 +87,7 @@ func Compare(left, right Snapshot) Comparison {
 		}
 		as, aok := a.(string)
 		bs, bok := b.(string)
-		if aok && bok {
+		if aok && bok && (path == "config.initial_capital" || path == "config.fee_rate" || path == "config.slippage_bps" || strings.HasPrefix(path, "config.risk.") || strings.HasPrefix(path, "config.protection.") || strings.HasPrefix(path, "config.liquidation.")) {
 			ad, ae := domain.ParseDecimal(as)
 			bd, be := domain.ParseDecimal(bs)
 			if ae == nil && be == nil && ad.Equal(bd) {

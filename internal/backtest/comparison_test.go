@@ -57,3 +57,14 @@ func TestComparisonNumericallyEquivalentAssumptionsAndTimeframeOrder(t *testing.
 		t.Fatal("comparison mutated input")
 	}
 }
+
+func TestComparisonDoesNotNormalizeImmutableIdentifiersAsNumbers(t *testing.T) {
+	a := backtest.Snapshot{Report: backtest.Report{Config: backtest.Config{VersionID: "001"}, Manifest: backtest.Manifest{DatasetHash: "001"}}}
+	b := a
+	b.Report.Config.VersionID = "1"
+	b.Report.Manifest.DatasetHash = "1"
+	c := backtest.Compare(a, b)
+	if len(c.Differences) != 2 {
+		t.Fatalf("identity was normalized: %+v", c.Differences)
+	}
+}
