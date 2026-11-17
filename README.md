@@ -667,3 +667,7 @@ state, kill switch, instance enabled state, freshness, cooldown and exposure lim
 are checked again before fill. Failed writes roll back and remain retryable;
 recorded observations, fills, ledger and journal-outbox items retain existing
 atomic replay behavior. No StopLore delivery occurs in M4.
+
+For isolated spot fixture replay, saved reports and frozen-input reruns, see the
+[M5 spot backtest guide](docs/m5-spot-backtest-report.md). Start with
+`millionaire backtest run --help`; this offline slice does not enable live monitoring.

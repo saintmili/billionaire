@@ -205,3 +205,7 @@ This table summarizes the baseline for navigation, including the approved web sc
 | Web appearance | Responsive desktop/mobile, system light/dark with remembered override |
 | UI languages | English MVP; translation preparation now, multiple languages/RTL later |
 | Future live trading | Not implemented and disabled in MVP |
+
+## Backtest execution isolation
+
+The M5 run/report implementation reuses existing PostgreSQL strategy, risk and execution services inside a retained per-run schema. Main-schema records retain frozen inputs/manifests and results. [ADR 0006](adr/0006-backtest-execution-isolation.md) records the isolation tradeoff, privilege/retention consequences and SQL namespace boundary; [ticket #17 evidence](m5-spot-backtest-report.md) documents the initial spot fixture model.
