@@ -1,0 +1,7 @@
+# Isolate each backtest execution in a retained PostgreSQL schema
+
+Accepted for offline M5 ticket #17 on 2026-11-17. Each backtest gets a generated private PostgreSQL schema initialized through the same versioned migrations, while the main schema retains its immutable inputs/manifest and saved report; a private pool/session/transaction wrapper routes the reserved static application schema references and owner lock into that namespace. An account-only scope would leave global controls, price clocks, pending orders, runtime history and outboxes shared; separate databases require broader privileges, while duplicating execution/risk code would violate the shared-services contract.
+
+This preserves existing transactional strategy, risk and execution behavior and keeps forward paper mutations isolated. Bound SQL values are never rewritten; schema identifiers are generated from random run IDs, never caller input. Every future SQL execution path must preserve the namespace: introducing raw session/batch/copy paths requires extending the wrapper or an explicitly scoped boundary.
+
+The tradeoff is more schemas, migration work per run, and a database CREATE privilege requirement. Retain the main registry and execution schemas together; no automatic deletion is introduced. The saved report can be read independently of execution tables. This implements ADRs 0001/0002 within PostgreSQL and does not create a second financial implementation or enable journal delivery.

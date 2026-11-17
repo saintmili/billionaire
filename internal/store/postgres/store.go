@@ -25,7 +25,7 @@ type Direction string
 const (
 	Up            Direction = "up"
 	Down          Direction = "down"
-	LatestVersion           = 9
+	LatestVersion           = 10
 )
 
 //go:embed migrations/0001_bootstrap.up.sql
@@ -87,13 +87,19 @@ var fundingUp string
 //go:embed migrations/0009_funding.down.sql
 var fundingDown string
 
-var migrations = []migration{{1, bootstrapUp, bootstrapDown}, {2, marketUp, marketDown}, {3, strategiesUp, strategiesDown}, {4, accountsUp, accountsDown}, {5, spotUp, spotDown}, {6, riskUp, riskDown}, {7, protectionUp, protectionDown}, {8, decisionsUp, decisionsDown}, {9, fundingUp, fundingDown}}
+//go:embed migrations/0010_backtests.up.sql
+var backtestsUp string
+
+//go:embed migrations/0010_backtests.down.sql
+var backtestsDown string
+
+var migrations = []migration{{1, bootstrapUp, bootstrapDown}, {2, marketUp, marketDown}, {3, strategiesUp, strategiesDown}, {4, accountsUp, accountsDown}, {5, spotUp, spotDown}, {6, riskUp, riskDown}, {7, protectionUp, protectionDown}, {8, decisionsUp, decisionsDown}, {9, fundingUp, fundingDown}, {10, backtestsUp, backtestsDown}}
 
 func (m migration) checksum() string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(m.up+"\n--DOWN--\n"+m.down)))
 }
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct{ pool *scopedPool }
 type Status struct {
 	Initialized     bool `json:"initialized"`
 	Version         int  `json:"schema_version"`
@@ -119,7 +125,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		pool.Close()
 		return nil, safeError(ctx, ErrUnavailable)
 	}
-	return &Store{pool: pool}, nil
+	return &Store{pool: &scopedPool{Pool: pool}}, nil
 }
 func (s *Store) Close() { s.pool.Close() }
 func safeError(ctx context.Context, fallback error) error {

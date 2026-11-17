@@ -367,8 +367,11 @@ func TestFundingUpgradeRecoversEntryClockAndApproximateModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.Close()
-	if err = store.Migrate(ctx, postgres.Down); err != nil {
-		t.Fatal(err)
+	// Exercise the funding upgrade from its actual predecessor as migrations advance.
+	for version := postgres.LatestVersion; version > 8; version-- {
+		if err = store.Migrate(ctx, postgres.Down); err != nil {
+			t.Fatal(err)
+		}
 	}
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {

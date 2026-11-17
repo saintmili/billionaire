@@ -42,6 +42,8 @@ type Order struct {
 }
 
 type Observation struct {
+	// Phase orders replay opening after the previous close at a shared boundary.
+	Phase       string            `json:"phase,omitempty"`
 	Bar         *PriceBar         `json:"bar,omitempty"`
 	ID          string            `json:"id"`
 	Instrument  domain.Instrument `json:"instrument"`
@@ -53,10 +55,12 @@ type Observation struct {
 }
 
 type ExecutionGate struct {
-	RiskQuantity string
-	Now          time.Time
-	StaleAfter   time.Duration
-	Enabled      bool
+	// ReplayNextOpen opts into equal-boundary opens inside an isolated replay only.
+	ReplayNextOpen bool
+	RiskQuantity   string
+	Now            time.Time
+	StaleAfter     time.Duration
+	Enabled        bool
 }
 
 type Fill struct {
@@ -207,6 +211,12 @@ func Identity(kind, key string) string { return fmt.Sprintf("%s_%x", kind, sha25
 func decimal(s string) domain.Decimal  { v, _ := domain.ParseDecimal(s); return v }
 
 func (o Observation) Validate() error {
+	if o.Phase == "next_open" && o.Bar != nil {
+		return errors.New("replay opening observation cannot contain a completed bar")
+	}
+	if o.Phase != "" && o.Phase != "next_open" {
+		return errors.New("unsupported observation phase")
+	}
 	if !requestID.MatchString(o.ID) || o.Instrument.Validate() != nil || o.Source != o.Instrument.Provider || o.ObservedAt.IsZero() || o.AvailableAt.Before(o.ObservedAt) {
 		return errors.New("observation requires a valid identity, matching source and ordered observation/availability timestamps")
 	}
@@ -373,7 +383,11 @@ func ObservationEligibility(order Order, observation Observation, gate Execution
 	if order.Status != "pending" || order.Request.Instrument != observation.Instrument {
 		return false, ""
 	}
-	if !observation.ObservedAt.After(order.Request.At) || !observation.AvailableAt.After(order.Request.At) || observation.AvailableAt.After(gate.Now) {
+	afterIntent := observation.ObservedAt.After(order.Request.At) && observation.AvailableAt.After(order.Request.At)
+	if observation.Phase == "next_open" && gate.ReplayNextOpen {
+		afterIntent = !observation.ObservedAt.Before(order.Request.At) && !observation.AvailableAt.Before(order.Request.At)
+	}
+	if !afterIntent || observation.AvailableAt.After(gate.Now) {
 		return false, ""
 	}
 	if !observation.Ready || gate.Now.Sub(observation.ObservedAt) > gate.StaleAfter {

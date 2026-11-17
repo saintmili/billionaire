@@ -19,15 +19,17 @@ var ErrPaperOwned = errors.New("offline paper execution is already owned by anot
 // PaperOwner pins ownership and all mutations to one session. Losing the session
 // loses both the lock and the ability to write; no pool reconnect can bypass it.
 type PaperOwner struct {
-	mu   sync.Mutex
-	conn *pgx.Conn
+	namespace string
+	mu        sync.Mutex
+	conn      *scopedConn
 }
 
 func (s *Store) AcquirePaperOwner(ctx context.Context) (*PaperOwner, error) {
-	conn, err := pgx.ConnectConfig(ctx, s.pool.Config().ConnConfig.Copy())
+	raw, err := pgx.ConnectConfig(ctx, s.pool.Config().ConnConfig.Copy())
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
+	conn := &scopedConn{Conn: raw, schema: s.pool.schema}
 	var acquired bool
 	if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock(7341928602)").Scan(&acquired); err != nil {
 		closePaperConnection(conn)
@@ -37,10 +39,10 @@ func (s *Store) AcquirePaperOwner(ctx context.Context) (*PaperOwner, error) {
 		closePaperConnection(conn)
 		return nil, ErrPaperOwned
 	}
-	return &PaperOwner{conn: conn}, nil
+	return &PaperOwner{conn: conn, namespace: s.pool.schema}, nil
 }
 
-func closePaperConnection(conn *pgx.Conn) {
+func closePaperConnection(conn *scopedConn) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = conn.Close(ctx)
