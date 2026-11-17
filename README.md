@@ -680,3 +680,5 @@ for exact metric boundaries, partial exits, ledger reconciliation and unavailabl
 valuation labels.
 
 Signal behavior and hypothetical success: `millionaire backtest signals RUN-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json`. Forward scope uses `millionaire report signals --scope forward-paper --account ACCOUNT-ID` with the same explicit rule flags. Read saved definitions/results with `millionaire report signals --saved REPORT-ID --output json`. See [signal report semantics and evidence](docs/m5-signal-report.md).
+
+Linear historical runs add `--market linear --leverage 2 --funding-file testdata/backtest/m5-linear-funding.json`; the JSON file declares expected funding intervals and contemporaneous explicit events. Missing/unknown funding stays labeled. Optional partial-target/trailing and frozen approximate-liquidation flags use the common paper services; see [linear replay assumptions and examples](docs/m5-linear-replay-report.md).

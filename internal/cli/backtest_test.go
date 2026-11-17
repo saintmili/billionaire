@@ -264,3 +264,48 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 		t.Fatal("missing run succeeded")
 	}
 }
+
+func TestBacktestCLILinearFundingJourney(t *testing.T) {
+	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	invoke := func(args ...string) ([]byte, error) {
+		var out, logs bytes.Buffer
+		e := cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+		return out.Bytes(), e
+	}
+	if _, e := invoke("init"); e != nil {
+		t.Fatal(e)
+	}
+	b, e := invoke("strategy", "add", "../../examples/strategies/breakout.yaml")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var added struct {
+		Version strategy.Version `json:"version"`
+	}
+	if e = json.Unmarshal(b, &added); e != nil {
+		t.Fatal(e)
+	}
+	funding := filepath.Join(t.TempDir(), "funding.json")
+	if e = os.WriteFile(funding, []byte(`{"expected_intervals":["2026-01-01T00:22:00Z"],"events":[]}`), 0600); e != nil {
+		t.Fatal(e)
+	}
+	b, e = invoke("backtest", "run", "--strategy", added.Version.ID, "--fixture", "../../testdata/market/m3.json", "--market", "linear", "--leverage", "2", "--funding-file", funding, "--from", "2026-01-01T00:20:00Z", "--to", "2026-01-01T00:22:00Z")
+	if e != nil {
+		t.Fatalf("linear run: %s %v", b, e)
+	}
+	var r backtest.Report
+	if e = json.Unmarshal(b, &r); e != nil {
+		t.Fatal(e)
+	}
+	if r.Status != "completed" || r.FundingCoverage.Status != "missing" || r.FundingCoverage.Expected != 1 || r.Balance.String() != "9882.1" {
+		t.Fatalf("run: %s", b)
+	}
+	if e = os.Remove(funding); e != nil {
+		t.Fatal(e)
+	}
+	b, e = invoke("backtest", "run", "--source-run", r.ID)
+	if e != nil {
+		t.Fatalf("frozen rerun: %s %v", b, e)
+	}
+}

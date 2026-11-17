@@ -19,9 +19,13 @@ import (
 // BuildRevision may be set by release builds with -ldflags -X.
 var BuildRevision = "unavailable"
 
-const ExecutionModel = "spot-ohlcv-multiframe-next-open-phase-v2"
+const ExecutionModel = "spot-linear-ohlcv-interval-funding-point-phase-v3"
 
 type Config struct {
+	Liquidation     paper.LiquidationModel    `json:"liquidation_model,omitzero"`
+	Protection      paper.ProtectionConfig    `json:"protection_overrides,omitzero"`
+	Funding         FundingDataset            `json:"funding,omitzero"`
+	Leverage        int                       `json:"leverage,omitzero"`
 	AcknowledgeGaps bool                      `json:"acknowledge_gaps"`
 	SourceURL       string                    `json:"source_url,omitempty"`
 	Source          string                    `json:"dataset_source,omitempty"`
@@ -55,6 +59,8 @@ type Manifest struct {
 type Report struct {
 	Candidates          []strategy.Candidate    `json:"candidates"`
 	CandidatesAvailable bool                    `json:"candidates_available"`
+	Funding             []paper.FundingResult   `json:"funding"`
+	FundingCoverage     FundingCoverage         `json:"funding_coverage"`
 	Equity              []analytics.EquityPoint `json:"equity"`
 	ID                  string                  `json:"id"`
 	AccountID           string                  `json:"account_id,omitempty"`
@@ -91,12 +97,23 @@ func NewManifest(in Inputs) Manifest {
 	m := Manifest{Build: build, StrategyHash: in.Version.ID, ConfigurationHash: Hash(in.Config), DatasetHash: Hash(struct {
 		Metadata marketdata.InstrumentInfo
 		Candles  []domain.Candle
-	}{in.Config.Instrument, in.Candles}), Model: ExecutionModel, Clock: "frozen OHLCV: close available at exclusive end; close phase before next open at equal boundary", EndPolicy: "retain open positions and pending intents; no synthetic final liquidation"}
+		Funding  FundingDataset
+	}{in.Config.Instrument, in.Candles, in.Config.Funding}), Model: ExecutionModel, Clock: "frozen OHLCV: close available at exclusive end; close phase before next open at equal boundary", EndPolicy: "retain open positions and pending intents; no synthetic final liquidation"}
+	if len(in.Config.Funding.Expected) == 0 && len(in.Config.Funding.Events) == 0 {
+		m.DatasetHash = Hash(struct {
+			Metadata marketdata.InstrumentInfo
+			Candles  []domain.Candle
+		}{in.Config.Instrument, in.Candles})
+	}
 	m.Clock = "latest selected OHLCV snapshot modeled available at close; original provider observation retained in frozen inputs; revision history unavailable"
 	if in.Config.ClockMode == "recorded-close" {
 		m.Clock = "recorded closed-candle observations published at provider observation; later corrections publish without retroactive evaluation"
 	}
-	m.Clock += "; publications after range end retained as provenance only; ordering v2: availability, publish all frames, primary interval protection, primary evaluation, next actual open; timeframe/open/revision tie break"
+	if in.Config.Instrument.Instrument.Market == domain.Linear {
+		m.Model = "linear-isolated-ohlcv-interval-funding-point-v1"
+		m.Clock += "; completed primary intervals settle before funding at their exclusive end; funding precedes decisions and open points; intrainterval and delayed funding unsupported"
+	}
+	m.Clock += "; publications after range end retained as provenance only; ordering v3: availability, publish all frames, primary interval protection, funding point, close point/evaluation, next actual open; timeframe/open/revision tie break"
 	m.ReproducibilityHash = Hash(m)
 	return m
 }
@@ -107,8 +124,8 @@ func (c Config) Validate(v strategy.Version) error {
 	if err := c.Instrument.Validate(); err != nil {
 		return err
 	}
-	if c.Instrument.Instrument.Market != domain.Spot || v.Definition.Direction != strategy.Long || v.Definition.Evaluation != strategy.OnClose {
-		return errors.New("historical OHLCV supports spot long on_candle_close only; update-mode requires recorded intrabar updates and is unsupported")
+	if (c.Instrument.Instrument.Market != domain.Spot && c.Instrument.Instrument.Market != domain.Linear) || (c.Instrument.Instrument.Market == domain.Spot && v.Definition.Direction != strategy.Long) || v.Definition.Evaluation != strategy.OnClose {
+		return errors.New("historical OHLCV supports spot long or isolated linear long/short on_candle_close only; update-mode requires recorded intrabar updates and is unsupported")
 	}
 	if c.ClockMode != "" && c.ClockMode != "close" && c.ClockMode != "recorded-close" {
 		return errors.New("unsupported historical clock mode")
@@ -137,9 +154,36 @@ func (c Config) Validate(v strategy.Version) error {
 	if _, err := paper.ExactValue(c.InitialCapital, true); err != nil {
 		return err
 	}
+	if c.Instrument.Instrument.Market != domain.Linear && c.Liquidation != (paper.LiquidationModel{}) {
+		return errors.New("liquidation parameters require linear market")
+	}
+	if c.Instrument.Instrument.Market == domain.Linear {
+		if err := c.EffectiveLiquidation().Validate(); err != nil {
+			return err
+		}
+	}
 	if err := c.Risk.Validate(); err != nil {
 		return err
 	}
-	_, err := paper.PrepareOrder(paper.OrderRequest{RequestID: "validate", AccountID: "validate", Action: "open", Instrument: c.Instrument.Instrument, Side: "long", Leverage: 1, Quantity: "risk", At: c.From, FeeRate: c.FeeRate, SlippageBPS: c.SlippageBPS}, c.Instrument)
+	_, err := paper.PrepareOrder(paper.OrderRequest{RequestID: "validate", AccountID: "validate", Action: "open", Instrument: c.Instrument.Instrument, Side: string(v.Definition.Direction), Leverage: c.EffectiveLeverage(), Quantity: "risk", StopPrice: c.Protection.StopPrice, TargetPrice: c.Protection.TargetPrice, TargetQuantity: c.Protection.TargetQuantity, TrailActivation: c.Protection.TrailActivation, TrailDistance: c.Protection.TrailDistance, At: c.From, FeeRate: c.FeeRate, SlippageBPS: c.SlippageBPS}, c.Instrument)
 	return err
+}
+
+func (c Config) EffectiveLeverage() int {
+	if c.Leverage == 0 {
+		return 1
+	}
+	return c.Leverage
+}
+
+func (c Config) EffectiveLiquidation() paper.LiquidationModel {
+	model := c.Liquidation
+	defaults := paper.DefaultLiquidationModel()
+	if model.MaintenanceRate == "" {
+		model.MaintenanceRate = defaults.MaintenanceRate
+	}
+	if model.FeeRate == "" {
+		model.FeeRate = defaults.FeeRate
+	}
+	return model
 }

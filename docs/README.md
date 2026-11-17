@@ -27,6 +27,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 - [M4 funding slice report](m4-funding-report.md): ticket #7 funding provenance/coverage, approximate liquidation, event ordering and verification.
 - [M5 trade performance slice report](m5-trade-report.md): ticket #20 lifecycle metrics, read-only scopes, persisted equity, exact reconciliation and limits.
 - [M5 signal report](m5-signal-report.md): ticket #21 candidate/suppression evidence, independent hypothetical outcomes and immutable report/CLI verification.
+- [M5 linear replay slice report](m5-linear-replay-report.md): ticket #19 isolated long/short funding, interval/point phases, protective exits, approximate liquidation and coverage.
 - [M5 historical replay slice report](m5-historical-replay-report.md): ticket #18 public/fixture/cache selection, coverage, clocks and causal multi-timeframe replay.
 - [M5 spot fixture slice report](m5-spot-backtest-report.md): ticket #17 isolated frozen run/report, clocks, recovery and verification.
 - [Architecture decisions](adr/): accepted PostgreSQL, execution/journal separation and candle/replay decisions.
