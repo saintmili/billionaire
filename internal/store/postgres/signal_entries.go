@@ -166,8 +166,18 @@ func (s *Store) PendingSignalEntries(ctx context.Context, info marketdata.Instru
 	return result, nil
 }
 
+// SignalDecisions returns a bounded interactive listing. Backtest collection
+// reads the complete isolated history through signalDecisions instead.
 func (s *Store) SignalDecisions(ctx context.Context) ([]paper.SignalDecision, error) {
-	rows, err := s.pool.Query(ctx, `SELECT d.payload,o.payload FROM millionaire.signal_decisions d LEFT JOIN millionaire.paper_orders o ON o.id=d.order_id ORDER BY d.signal_id LIMIT 10000`)
+	return s.signalDecisions(ctx, true)
+}
+
+func (s *Store) signalDecisions(ctx context.Context, bounded bool) ([]paper.SignalDecision, error) {
+	query := `SELECT d.payload,o.payload FROM millionaire.signal_decisions d LEFT JOIN millionaire.paper_orders o ON o.id=d.order_id ORDER BY d.signal_id`
+	if bounded {
+		query += " LIMIT 10000"
+	}
+	rows, err := s.pool.Query(ctx, query)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}

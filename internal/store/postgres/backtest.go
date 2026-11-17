@@ -296,7 +296,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	if report.Positions, err = isolated.PaperPositions(ctx, account.ID); err != nil {
 		return report, err
 	}
-	if report.Decisions, err = isolated.SignalDecisions(ctx); err != nil {
+	if report.Decisions, err = isolated.signalDecisions(ctx, false); err != nil {
 		return report, err
 	}
 	if report.Ledger, err = isolated.PaperLedger(ctx, account.ID); err != nil {
