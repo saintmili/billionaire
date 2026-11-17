@@ -44,6 +44,8 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	id := hex.EncodeToString(random[:])
 	schema := "bt_" + id
 	report = backtest.Report{ID: id, Scope: "backtest", Status: "running", Manifest: backtest.NewManifest(in), Config: cfg, Signals: []strategy.Signal{}, Decisions: []paper.SignalDecision{}, Orders: []paper.Order{}, Fills: []paper.Fill{}, Positions: []paper.Position{}, Ledger: []paper.LedgerEntry{}, Warnings: []string{"OHLCV close model; no intrabar path is inferred", "Open positions and pending intents are retained at range end; final cash is not total equity", "Historical sample only; sample size and survivorship bias limit performance claims"}}
+	report.CandidatesAvailable = true
+	report.Candidates = []strategy.Candidate{}
 	report.FundingCoverage = cfg.FundingCoverage()
 	if cfg.Instrument.Instrument.Market == domain.Linear {
 		report.Warnings = append(report.Warnings, "Approximate isolated liquidation uses maintenance 0.005 plus liquidation fee 0.005; no venue tiers or mark/index basis", "Funding coverage: "+report.FundingCoverage.Status+"; missing funding is unknown, never an assumed zero rate")
@@ -220,6 +222,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			if !evaluation.Ready {
 				report.Warnings = append(report.Warnings, "Strategy unready at "+ev.at.Format(time.RFC3339)+": "+evaluation.Reason)
 			}
+			report.Candidates = append(report.Candidates, evaluation.Candidates...)
 			report.Signals = append(report.Signals, evaluation.Signals...)
 			for _, signal := range evaluation.Signals {
 				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, Leverage: cfg.EffectiveLeverage(), FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
