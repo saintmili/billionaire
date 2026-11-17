@@ -1,6 +1,7 @@
 package backtest_test
 
 import (
+	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/backtest"
 	"github.com/saintmili/billionaire/internal/domain"
 	"testing"
@@ -66,5 +67,13 @@ func TestComparisonDoesNotNormalizeImmutableIdentifiersAsNumbers(t *testing.T) {
 	c := backtest.Compare(a, b)
 	if len(c.Differences) != 2 {
 		t.Fatalf("identity was normalized: %+v", c.Differences)
+	}
+}
+
+func TestComparisonWarnsWhenIdenticalManifestLacksModelProvenance(t *testing.T) {
+	a := backtest.Snapshot{EvidenceStatus: "verified", Metrics: &analytics.Report{ValuationStatus: "complete"}, Report: backtest.Report{Manifest: backtest.Manifest{Build: "go/revision=known/modified=false"}}}
+	c := backtest.Compare(a, a)
+	if c.DirectlyComparable {
+		t.Fatal("missing model/hash provenance was treated as directly comparable")
 	}
 }

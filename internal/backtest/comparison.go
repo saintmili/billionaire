@@ -117,7 +117,12 @@ func Compare(left, right Snapshot) Comparison {
 		if s.EvidenceStatus != "verified" {
 			c.Warnings = append(c.Warnings, s.Report.ID+": "+s.EvidenceStatus)
 		}
-		if strings.Contains(s.Report.Manifest.Build, "unavailable") || strings.Contains(s.Report.Manifest.Build, "unknown") || s.Report.Manifest.Build == "" {
+		m := s.Report.Manifest
+		if m.StrategyHash == "" || m.ConfigurationHash == "" || m.DatasetHash == "" || m.ReproducibilityHash == "" || m.Model == "" || m.Clock == "" || m.EndPolicy == "" {
+			c.Warnings = append(c.Warnings, s.Report.ID+": manifest hash/model provenance incomplete")
+			c.DirectlyComparable = false
+		}
+		if strings.Contains(s.Report.Manifest.Build, "unavailable") || strings.Contains(s.Report.Manifest.Build, "unknown") || strings.Contains(s.Report.Manifest.Build, "modified=true") || s.Report.Manifest.Build == "" {
 			c.Warnings = append(c.Warnings, s.Report.ID+": build provenance incomplete")
 			c.DirectlyComparable = false
 		}
