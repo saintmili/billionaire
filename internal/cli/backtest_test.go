@@ -67,6 +67,20 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 	if r.Status != "completed" || len(r.Fills) != 2 || r.Balance.String() != "9882.1" {
 		t.Fatalf("run: %s", b)
 	}
+
+	for _, args := range [][]string{{"backtest", "signals", r.ID}, {"report", "signals", "--scope", "backtest", "--run", r.ID}} {
+		args = append(args, "--threshold-percent", "100", "--stop-percent", "99", "--window-bars", "2", "--timeframe", "1m", "--strategy-version", added.Version.ID)
+		output, err := invoke(args...)
+		var signals analytics.SignalReport
+		if err != nil || json.Unmarshal(output, &signals) != nil || signals.Scope != "backtest" || signals.RunID != r.ID || len(signals.Groups) != 1 || signals.Groups[0].Generated != 1 || signals.Groups[0].Candidates != 1 || signals.Groups[0].SuppressionRate == nil || signals.Groups[0].SuppressionRate.String() != "0" || signals.Groups[0].ConversionRate.String() != "1" || signals.Outcomes[0].Status != "incomplete" {
+			t.Fatalf("signal JSON %s %v", output, err)
+		}
+		read, err := invoke("report", "signals", "--saved", signals.ID)
+		var retained analytics.SignalReport
+		if err != nil || json.Unmarshal(read, &retained) != nil || retained.ID != signals.ID || retained.Rule.ThresholdPercent != "100" {
+			t.Fatalf("retained signal report %s %v", read, err)
+		}
+	}
 	b, e = invoke("backtest", "report", r.ID)
 	if e != nil {
 		t.Fatal(e)
@@ -113,6 +127,11 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 	var forward analytics.Report
 	if e != nil || json.Unmarshal(b, &forward) != nil || forward.Scope != "forward-paper" || forward.ClosedTrades != 0 || forward.CashBalance.String() != "1000" || forward.Trades == nil {
 		t.Fatalf("forward JSON %s %v", b, e)
+	}
+	b, e = invoke("report", "signals", "--scope", "forward-paper", "--account", account.ID, "--threshold-percent", "1", "--stop-percent", "1", "--window-bars", "2")
+	var signals analytics.SignalReport
+	if e != nil || json.Unmarshal(b, &signals) != nil || signals.Scope != "forward-paper" || len(signals.Groups) != 0 {
+		t.Fatalf("empty forward signals %s %v", b, e)
 	}
 	t.Run("explicit fixture selection is independent of populated cache", func(t *testing.T) {
 		var changed fixture.Dataset

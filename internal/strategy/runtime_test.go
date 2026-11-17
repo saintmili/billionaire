@@ -40,6 +40,9 @@ func TestEmissionPoliciesAndCooldownRemainSeparateFromReplayDedup(t *testing.T) 
 			if err != nil || len(result.Signals) != want {
 				t.Fatalf("%s cooldown %s event %d: %+v %v", tc.policy, tc.cooldown, n, result, err)
 			}
+			if len(result.Candidates) != 1 || result.Candidates[0].Emitted != (want == 1) {
+				t.Fatalf("lost satisfied candidate %s: %+v", tc.policy, result)
+			}
 			state = result.State
 		}
 	}
@@ -181,5 +184,33 @@ func TestRegisteredStrategyEmitsAndResetsExitWithoutDeclarativeTree(t *testing.T
 			t.Fatal("wrong signal kind")
 		}
 		state = result.State
+	}
+}
+
+func TestSignalCandidateEvidenceRemainsCausalWithFutureSuccessPrices(t *testing.T) {
+	registry := strategy.DefaultRegistry()
+	d, e := strategy.Parse(strings.NewReader(breakoutYAML), registry)
+	if e != nil {
+		t.Fatal(e)
+	}
+	bars := barsForBreakout(t)
+	v := strategy.Version{ID: strategy.ContentHash(d), Definition: d}
+	i := strategy.Instance{ID: "causal-report", VersionID: v.ID, Instrument: bars[20].Instrument, Account: "demo", Action: strategy.AlertOnly, Enabled: true}
+	first, e := strategy.Plan(registry, v, i, marketdata.Event{Kind: "candle", Candle: &bars[20]}, bars, strategy.State{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	// An enormous future target touch changes retrospective success evidence only.
+	future := bars[21]
+	future.High, _ = domain.ParseDecimal("1000000")
+	future.Close = future.High
+	future = marketdata.Stamp(future)
+	changed := append(append([]domain.Candle{}, bars[:21]...), future)
+	second, e := strategy.Plan(registry, v, i, marketdata.Event{Kind: "candle", Candle: &bars[20]}, changed, strategy.State{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(first.Signals) != 1 || len(first.Candidates) != 1 || first.Signals[0].ID != second.Signals[0].ID || first.Signals[0].ProposedEntry.String() != second.Signals[0].ProposedEntry.String() {
+		t.Fatalf("future success prices changed generation: %+v %+v", first, second)
 	}
 }
