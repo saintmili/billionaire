@@ -98,7 +98,7 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 		d.Status = "rejected"
 		d.Reason = "signal source stale/unready"
 	default:
-		r := paper.OrderRequest{RequestID: "signal-" + signal.ID, SignalID: signal.ID, StrategyID: signal.StrategyID, AccountID: instance.Account, Instrument: signal.Instrument, Side: string(signal.Direction), Action: "open", At: request.At, Quantity: request.Quantity, Leverage: request.Leverage, FeeRate: request.FeeRate, SlippageBPS: request.SlippageBPS}
+		r := paper.OrderRequest{Liquidation: request.Liquidation, RequestID: "signal-" + signal.ID, SignalID: signal.ID, StrategyID: signal.StrategyID, AccountID: instance.Account, Instrument: signal.Instrument, Side: string(signal.Direction), Action: "open", At: request.At, Quantity: request.Quantity, Leverage: request.Leverage, FeeRate: request.FeeRate, SlippageBPS: request.SlippageBPS}
 		if signal.Stop != nil {
 			r.StopPrice = signal.Stop.String()
 		}

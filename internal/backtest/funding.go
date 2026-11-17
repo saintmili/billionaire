@@ -25,7 +25,7 @@ type FundingCoverage struct {
 }
 
 func (c Config) FundingCoverage() FundingCoverage {
-	out := FundingCoverage{Status: "unknown", Expected: len(c.Funding.Expected), Missing: []time.Time{}, Liquidation: paper.DefaultLiquidationModel()}
+	out := FundingCoverage{Status: "unknown", Expected: len(c.Funding.Expected), Missing: []time.Time{}, Liquidation: c.Liquidation}
 	if c.Instrument.Instrument.Market != domain.Linear {
 		out.Status = "not_applicable"
 		return out
@@ -51,6 +51,9 @@ func (c Config) FundingCoverage() FundingCoverage {
 	return out
 }
 func freezeFunding(c *Config, v strategy.Version) error {
+	if c.Instrument.Instrument.Market == domain.Linear {
+		c.Liquidation = c.EffectiveLiquidation()
+	}
 	f := c.Funding
 	if c.ClockMode == "recorded-close" && len(f.Events) > 0 {
 		return errors.New("funding with delayed recorded candle intervals is unsupported; select close clock and aligned primary observations")

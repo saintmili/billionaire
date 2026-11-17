@@ -35,7 +35,7 @@ func (o *options) addBacktestCommands(root *cobra.Command) {
 		return o.withDatabase(cmd.Context(), app, func(ctx context.Context, s *postgres.Store) error {
 			var inputs backtest.Inputs
 			if sourceRun != "" {
-				for _, name := range []string{"strategy", "provider", "market", "symbol", "fixture", "from", "to", "timeframes", "seed", "capital", "fee-rate", "slippage-bps", "fixed-risk", "percent-risk", "max-positions", "daily-loss", "symbol-exposure", "max-leverage", "margin-percent", "cooldown-seconds", "pyramiding", "cached", "refresh", "acknowledge-gaps", "clock-mode", "funding-file", "leverage", "stop-price", "target-price", "target-quantity", "trail-activation", "trail-distance"} {
+				for _, name := range []string{"strategy", "provider", "market", "symbol", "fixture", "from", "to", "timeframes", "seed", "capital", "fee-rate", "slippage-bps", "fixed-risk", "percent-risk", "max-positions", "daily-loss", "symbol-exposure", "max-leverage", "margin-percent", "cooldown-seconds", "pyramiding", "cached", "refresh", "acknowledge-gaps", "clock-mode", "funding-file", "leverage", "stop-price", "target-price", "target-quantity", "trail-activation", "trail-distance", "maintenance-rate", "liquidation-fee"} {
 					if cmd.Flags().Changed(name) {
 						return errors.New("--source-run cannot be combined with changed input flags")
 					}
@@ -166,6 +166,8 @@ func (o *options) addBacktestCommands(root *cobra.Command) {
 	run.Flags().StringVar(&cfg.Protection.TargetQuantity, "target-quantity", "", "one-time partial target quantity; requires --target-price")
 	run.Flags().StringVar(&cfg.Protection.TrailActivation, "trail-activation", "", "absolute favorable price activating trailing on a later observation")
 	run.Flags().StringVar(&cfg.Protection.TrailDistance, "trail-distance", "", "trailing price distance; requires activation")
+	run.Flags().StringVar(&cfg.Liquidation.MaintenanceRate, "maintenance-rate", "", "approximate isolated maintenance fraction; linear default 0.005")
+	run.Flags().StringVar(&cfg.Liquidation.FeeRate, "liquidation-fee", "", "approximate liquidation fee fraction; linear default 0.005")
 	bindBacktestRisk(run, &cfg.Risk)
 	run.Flags().BoolVar(&cached, "cached", false, "read cached metadata/candles only; no network")
 	run.Flags().BoolVar(&refresh, "refresh", false, "refresh public/fixture history before freezing")

@@ -72,7 +72,7 @@ func TestBacktestLinearSettlesPreFundingIntervalProtection(t *testing.T) {
 
 func TestBacktestLinearPartialTargetThenFundingRetainsExposure(t *testing.T) {
 	s, cfg, bars := linearReplay(t)
-	cfg.Protection = paper.ProtectionConfig{TargetPrice: "12", TargetQuantity: "400", TrailActivation: "12", TrailDistance: "1"}
+	cfg.Protection = paper.ProtectionConfig{TargetPrice: "12", TargetQuantity: "400", TrailActivation: "12", TrailDistance: "2"}
 	last := bars[len(bars)-1]
 	last.Low = spotDecimal("9")
 	last.Close = spotDecimal("12")
@@ -185,5 +185,137 @@ func TestBacktestLinearFundingDuplicateFrozenInputIsIdempotent(t *testing.T) {
 	}
 	if again.Manifest.ReproducibilityHash != r.Manifest.ReproducibilityHash || again.Balance.String() != r.Balance.String() {
 		t.Fatal("frozen rerun changed")
+	}
+}
+
+func TestBacktestLinearShortFundingCredit(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	ctx := context.Background()
+	old, e := s.StrategyVersion(ctx, cfg.VersionID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	d := old.Definition
+	d.Direction = strategy.Short
+	d.Markets = []domain.MarketType{domain.Linear}
+	v, e := s.AddStrategyVersion(ctx, d, strategy.DefaultRegistry())
+	if e != nil {
+		t.Fatal(e)
+	}
+	cfg.VersionID = v.ID
+	for n, b := range bars {
+		b.Open = spotDecimal("20").Sub(b.Open)
+		b.Close = spotDecimal("20").Sub(b.Close)
+		b.Low, b.High = spotDecimal("20").Sub(b.High), spotDecimal("20").Sub(b.Low)
+		bars[n] = marketdata.Stamp(b)
+	}
+	last := bars[len(bars)-1]
+	last.High = spotDecimal("11")
+	last.Low = spotDecimal("9")
+	last.Close = spotDecimal("10")
+	bars[len(bars)-1] = marketdata.Stamp(last)
+	cfg.Funding.Events[0].Price = spotDecimal("10")
+	r, e := s.RunBacktest(ctx, cfg, bars)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(r.Fills) != 1 || r.Fills[0].Price.String() != "11" || r.Positions[0].Direction() != "short" || r.Funding[0].Applications[0].Payment.String() != "100" {
+		t.Fatalf("short credit: %+v", r)
+	}
+	if r.Balance.String() != "4489" || r.Positions[0].ReservedMargin.String() != "5600" || r.Equity[len(r.Equity)-1].Equity.String() != "11089" {
+		t.Fatalf("short collateral/equity: %+v", r)
+	}
+}
+func TestBacktestLinearFundingCanLiquidateAfterSettledInterval(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	cfg.Leverage = 10
+	cfg.Protection.StopPrice = "8"
+	last := bars[len(bars)-1]
+	last.Low = spotDecimal("9")
+	last.High = spotDecimal("11")
+	bars[len(bars)-1] = marketdata.Stamp(last)
+	rate := "0.1"
+	cfg.Funding.Events[0].Rate = &rate
+	r, e := s.RunBacktest(context.Background(), cfg, bars)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(r.Fills) != 2 || r.Fills[1].ExitReason != "liquidation_approximate" || r.Fills[1].IsolatedDeficit.String() != "4.5" || r.Balance.String() != "9909.1" {
+		t.Fatalf("funding liquidation/cap: fills%+v cash%s", r.Fills, r.Balance)
+	}
+}
+func TestBacktestLinearGapAndAmbiguousBars(t *testing.T) {
+	for _, gap := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ambiguous", true: "gap"}[gap], func(t *testing.T) {
+			s, cfg, bars := linearReplay(t)
+			cfg.Funding = backtest.FundingDataset{}
+			cfg.Protection.TargetPrice = "12"
+			if gap {
+				extra := bars[len(bars)-1]
+				extra.OpenTime = cfg.To
+				extra.EndTime = cfg.To.Add(time.Minute)
+				extra.ObservedAt = extra.EndTime
+				extra.Open = spotDecimal("8")
+				extra.High = spotDecimal("10")
+				extra.Low = spotDecimal("7")
+				extra.Close = spotDecimal("9")
+				last := bars[len(bars)-1]
+				last.Low = spotDecimal("9")
+				last.High = spotDecimal("11")
+				bars[len(bars)-1] = marketdata.Stamp(last)
+				bars = append(bars, marketdata.Stamp(extra))
+				cfg.To = extra.EndTime
+			}
+			r, e := s.RunBacktest(context.Background(), cfg, bars)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if len(r.Fills) != 2 || r.Fills[1].ExitReason != "stop_loss" || r.Fills[1].Gap != gap || r.Fills[1].Ambiguous == gap {
+				t.Fatalf("conservative stop: %+v", r.Fills)
+			}
+			if gap && (!r.Fills[1].ExecutedAt.Equal(cfg.To.Add(-time.Minute))) || gap && r.Fills[1].Price.String() != "8" {
+				t.Fatalf("gap must fill actual open: %+v", r.Fills)
+			}
+		})
+	}
+}
+func TestBacktestLinearRejectsUnsupportedFundingClocksBeforeRun(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	for _, mode := range []string{"inside", "delayed", "recorded"} {
+		t.Run(mode, func(t *testing.T) {
+			c := cfg
+			c.Funding.Events = append([]paper.FundingEvent(nil), cfg.Funding.Events...)
+			c.Funding.Expected = append([]time.Time(nil), cfg.Funding.Expected...)
+			switch mode {
+			case "inside":
+				c.Funding.Expected[0] = cfg.To.Add(-30 * time.Second)
+				c.Funding.Events[0].EffectiveAt = c.Funding.Expected[0]
+				c.Funding.Events[0].AvailableAt = c.Funding.Expected[0]
+			case "delayed":
+				c.Funding.Events[0].AvailableAt = cfg.To.Add(time.Second)
+			case "recorded":
+				c.ClockMode = "recorded-close"
+			}
+			r, e := s.RunBacktest(context.Background(), c, bars)
+			if e == nil || r.ID != "" {
+				t.Fatalf("unsupported funding got run: %+v %v", r, e)
+			}
+		})
+	}
+}
+
+func TestBacktestLinearFreezesLiquidationModel(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	cfg.Liquidation = paper.LiquidationModel{MaintenanceRate: "0.01", FeeRate: "0.002"}
+	r, e := s.RunBacktest(context.Background(), cfg, bars)
+	if e != nil {
+		t.Fatal(e)
+	}
+	in, e := s.BacktestInputs(context.Background(), r.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if in.Config.Liquidation != cfg.Liquidation || r.FundingCoverage.Liquidation != cfg.Liquidation || *r.Positions[0].Liquidation != cfg.Liquidation {
+		t.Fatalf("model must flow through shared order and freeze: %+v", r)
 	}
 }

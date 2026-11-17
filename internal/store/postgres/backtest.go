@@ -48,7 +48,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	report.Candidates = []strategy.Candidate{}
 	report.FundingCoverage = cfg.FundingCoverage()
 	if cfg.Instrument.Instrument.Market == domain.Linear {
-		report.Warnings = append(report.Warnings, "Approximate isolated liquidation uses maintenance 0.005 plus liquidation fee 0.005; no venue tiers or mark/index basis", "Funding coverage: "+report.FundingCoverage.Status+"; missing funding is unknown, never an assumed zero rate")
+		report.Warnings = append(report.Warnings, "Approximate isolated liquidation uses frozen maintenance "+cfg.Liquidation.MaintenanceRate+" plus liquidation fee "+cfg.Liquidation.FeeRate+"; no venue tiers or mark/index basis", "Funding coverage: "+report.FundingCoverage.Status+"; missing funding is unknown, never an assumed zero rate")
 	}
 	report.Warnings = append(report.Warnings, quality...)
 	report.Warnings = append(report.Warnings, "Original provider observation clocks/revisions are retained in frozen inputs; signal source_observed_at uses the explicitly modeled replay view")
@@ -235,7 +235,11 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			report.Candidates = append(report.Candidates, evaluation.Candidates...)
 			report.Signals = append(report.Signals, evaluation.Signals...)
 			for _, signal := range evaluation.Signals {
-				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, Leverage: cfg.EffectiveLeverage(), Protection: &cfg.Protection, FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
+				var liquidation *paper.LiquidationModel
+				if cfg.Instrument.Instrument.Market == domain.Linear {
+					liquidation = &cfg.Liquidation
+				}
+				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, Leverage: cfg.EffectiveLeverage(), Protection: &cfg.Protection, Liquidation: liquidation, FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
 					return report, err
 				}
 			}
@@ -268,7 +272,27 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	if report.Fills, err = isolated.PaperFills(ctx, account.ID); err != nil {
 		return report, err
 	}
-	sort.Slice(report.Fills, func(i, j int) bool { return report.Fills[i].ExecutedAt.Before(report.Fills[j].ExecutedAt) })
+	fillPhase := map[string]int{}
+	for _, b := range frozen {
+		fillPhase["close-"+b.Revision] = 0
+		fillPhase["open-"+b.Revision] = 2
+	}
+	for _, e := range cfg.Funding.Events {
+		fillPhase[paper.Identity("funding-price", e.ID)] = 1
+	}
+	sort.SliceStable(report.Fills, func(i, j int) bool {
+		a, b := report.Fills[i], report.Fills[j]
+		if !a.ExecutedAt.Equal(b.ExecutedAt) {
+			return a.ExecutedAt.Before(b.ExecutedAt)
+		}
+		if fillPhase[a.ObservationID] != fillPhase[b.ObservationID] {
+			return fillPhase[a.ObservationID] < fillPhase[b.ObservationID]
+		}
+		if !a.Price.Equal(b.Price) {
+			return a.Price.LessThan(b.Price)
+		}
+		return a.Quantity.LessThan(b.Quantity)
+	})
 	if report.Positions, err = isolated.PaperPositions(ctx, account.ID); err != nil {
 		return report, err
 	}

@@ -22,6 +22,7 @@ var BuildRevision = "unavailable"
 const ExecutionModel = "spot-linear-ohlcv-interval-funding-point-phase-v3"
 
 type Config struct {
+	Liquidation     paper.LiquidationModel    `json:"liquidation_model,omitzero"`
 	Protection      paper.ProtectionConfig    `json:"protection_overrides,omitzero"`
 	Funding         FundingDataset            `json:"funding,omitzero"`
 	Leverage        int                       `json:"leverage,omitzero"`
@@ -153,6 +154,11 @@ func (c Config) Validate(v strategy.Version) error {
 	if _, err := paper.ExactValue(c.InitialCapital, true); err != nil {
 		return err
 	}
+	if c.Instrument.Instrument.Market == domain.Linear || c.Liquidation != (paper.LiquidationModel{}) {
+		if err := c.EffectiveLiquidation().Validate(); err != nil {
+			return err
+		}
+	}
 	if err := c.Risk.Validate(); err != nil {
 		return err
 	}
@@ -165,4 +171,16 @@ func (c Config) EffectiveLeverage() int {
 		return 1
 	}
 	return c.Leverage
+}
+
+func (c Config) EffectiveLiquidation() paper.LiquidationModel {
+	model := c.Liquidation
+	defaults := paper.DefaultLiquidationModel()
+	if model.MaintenanceRate == "" {
+		model.MaintenanceRate = defaults.MaintenanceRate
+	}
+	if model.FeeRate == "" {
+		model.FeeRate = defaults.FeeRate
+	}
+	return model
 }
