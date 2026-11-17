@@ -8,6 +8,10 @@ pending. Live monitoring remains disabled. All trading is simulated; no exchange
 credentials or authenticated trading API is involved. Stop at M5: daemon and
 notifications (M6), web (M6W), journal delivery (M7) and release (M8) remain pending.
 
+The [independent M5 review and resolutions](m5-review.md) records the separate
+Standards/Spec findings, complete-decision persistence fix, CLI parsing cleanup,
+and follow-up verification.
+
 ## Run, report, compare and export
 
 Use the PostgreSQL setup in the [root guide](../README.md). The application role
