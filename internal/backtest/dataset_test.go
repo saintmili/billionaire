@@ -119,3 +119,29 @@ func TestRecordedCloseRevisionClockRetainsFirstAvailability(t *testing.T) {
 		t.Fatal("known later correction silently backdated")
 	}
 }
+
+func TestLinearReplayConfigurationRetainsMarketRestrictions(t *testing.T) {
+	p, e := fixture.Open("../../testdata/market/m3.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	info, e := p.Instrument(context.Background(), domain.Spot, "BTC/USDT")
+	if e != nil {
+		t.Fatal(e)
+	}
+	f, e := os.Open("../../examples/strategies/breakout.yaml")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer f.Close()
+	d, e := strategy.Parse(f, strategy.DefaultRegistry())
+	if e != nil {
+		t.Fatal(e)
+	}
+	info.Instrument.Market = domain.Linear
+	v := strategy.Version{ID: strategy.ContentHash(d), Definition: d}
+	cfg := backtest.Config{VersionID: v.ID, Instrument: info, From: p.Now().Add(-2 * time.Minute), To: p.Now(), Timeframes: []domain.Timeframe{"1m"}, InitialCapital: "10000", FeeRate: "0.001", SlippageBPS: "0"}
+	if e = cfg.Validate(v); e != nil {
+		t.Fatal("linear close strategy rejected", e)
+	}
+}

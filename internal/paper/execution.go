@@ -42,7 +42,7 @@ type Order struct {
 }
 
 type Observation struct {
-	// Phase orders replay opening after the previous close at a shared boundary.
+	// Phase orders isolated replay intervals, funding points and actual opens.
 	Phase       string            `json:"phase,omitempty"`
 	Bar         *PriceBar         `json:"bar,omitempty"`
 	ID          string            `json:"id"`
@@ -55,7 +55,8 @@ type Observation struct {
 }
 
 type ExecutionGate struct {
-	// ReplayNextOpen opts into equal-boundary opens inside an isolated replay only.
+	// ReplayNextOpen permits equal-boundary actual opens and funding protective
+	// closes inside an isolated replay only.
 	ReplayNextOpen bool
 	// ReplayProtectionOnly settles protective exits without consuming pending intents.
 	ReplayProtectionOnly bool
@@ -213,10 +214,10 @@ func Identity(kind, key string) string { return fmt.Sprintf("%s_%x", kind, sha25
 func decimal(s string) domain.Decimal  { v, _ := domain.ParseDecimal(s); return v }
 
 func (o Observation) Validate() error {
-	if o.Phase == "next_open" && o.Bar != nil {
+	if (o.Phase == "next_open" || o.Phase == "funding_after_interval") && o.Bar != nil {
 		return errors.New("replay opening observation cannot contain a completed bar")
 	}
-	if o.Phase != "" && o.Phase != "next_open" {
+	if o.Phase != "" && o.Phase != "next_open" && o.Phase != "completed_interval" && o.Phase != "funding_after_interval" {
 		return errors.New("unsupported observation phase")
 	}
 	if !requestID.MatchString(o.ID) || o.Instrument.Validate() != nil || o.Source != o.Instrument.Provider || o.ObservedAt.IsZero() || o.AvailableAt.Before(o.ObservedAt) {
@@ -386,7 +387,7 @@ func ObservationEligibility(order Order, observation Observation, gate Execution
 		return false, ""
 	}
 	afterIntent := observation.ObservedAt.After(order.Request.At) && observation.AvailableAt.After(order.Request.At)
-	if observation.Phase == "next_open" && gate.ReplayNextOpen {
+	if gate.ReplayNextOpen && (observation.Phase == "next_open" || observation.Phase == "funding_after_interval" && order.Request.Action == "close") {
 		afterIntent = !observation.ObservedAt.Before(order.Request.At) && !observation.AvailableAt.Before(order.Request.At)
 	}
 	if !afterIntent || observation.AvailableAt.After(gate.Now) {

@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -22,9 +25,9 @@ func (o *options) addBacktestCommands(root *cobra.Command) {
 	group := &cobra.Command{Use: "backtest", Short: "Run isolated deterministic backtests and inspect saved results", Args: cobra.NoArgs, RunE: func(c *cobra.Command, a []string) error { return c.Help() }}
 	var selected marketFlags
 	var cfg backtest.Config
-	var version, frames, sourceRun string
+	var version, frames, sourceRun, fundingFile string
 	var cached, refresh bool
-	run := &cobra.Command{Use: "run", Short: "Replay frozen public, fixture or cached historical candles", Long: "Run a spot long close-based strategy across its selected timeframes. Public history uses the shared cache/backfill boundary; --cached reads only persisted metadata and candles. Inputs, original provider provenance and results are retained. Signals execute at the next actual primary candle open. Missing warm-up always fails; --acknowledge-gaps records later gaps. OHLCV cannot reproduce update-mode strategies.", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	run := &cobra.Command{Use: "run", Short: "Replay frozen public, fixture or cached historical candles", Long: "Run a spot long or isolated linear long/short close-based strategy across its selected timeframes. Public history uses the shared cache/backfill boundary; --cached reads only persisted metadata and candles. Inputs, original provider provenance and results are retained. Signals execute at the next actual primary candle open. Missing warm-up always fails; --acknowledge-gaps records later gaps. OHLCV cannot reproduce update-mode strategies.", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		app, e := o.load()
 		if e != nil {
 			return e
@@ -32,7 +35,7 @@ func (o *options) addBacktestCommands(root *cobra.Command) {
 		return o.withDatabase(cmd.Context(), app, func(ctx context.Context, s *postgres.Store) error {
 			var inputs backtest.Inputs
 			if sourceRun != "" {
-				for _, name := range []string{"strategy", "provider", "market", "symbol", "fixture", "from", "to", "timeframes", "seed", "capital", "fee-rate", "slippage-bps", "fixed-risk", "percent-risk", "max-positions", "daily-loss", "symbol-exposure", "max-leverage", "margin-percent", "cooldown-seconds", "pyramiding", "cached", "refresh", "acknowledge-gaps", "clock-mode"} {
+				for _, name := range []string{"strategy", "provider", "market", "symbol", "fixture", "from", "to", "timeframes", "seed", "capital", "fee-rate", "slippage-bps", "fixed-risk", "percent-risk", "max-positions", "daily-loss", "symbol-exposure", "max-leverage", "margin-percent", "cooldown-seconds", "pyramiding", "cached", "refresh", "acknowledge-gaps", "clock-mode", "funding-file", "leverage", "stop-price", "target-price", "target-quantity", "trail-activation", "trail-distance", "maintenance-rate", "liquidation-fee"} {
 					if cmd.Flags().Changed(name) {
 						return errors.New("--source-run cannot be combined with changed input flags")
 					}
@@ -111,6 +114,20 @@ func (o *options) addBacktestCommands(root *cobra.Command) {
 						return e
 					}
 				}
+				if fundingFile != "" {
+					data, err := os.ReadFile(fundingFile)
+					if err != nil {
+						return errors.New("cannot read funding file")
+					}
+					decoder := json.NewDecoder(bytes.NewReader(data))
+					decoder.DisallowUnknownFields()
+					if err = decoder.Decode(&cfg.Funding); err != nil {
+						return errors.New("invalid funding dataset JSON")
+					}
+					if decoder.Decode(new(any)) != io.EOF {
+						return errors.New("funding file must contain exactly one JSON dataset")
+					}
+				}
 				inputs, e = s.SelectBacktestDataset(ctx, cfg, provider, refresh)
 				if e != nil {
 					return e
@@ -131,7 +148,7 @@ func (o *options) addBacktestCommands(root *cobra.Command) {
 	}}
 	run.Flags().StringVar(&version, "strategy", "", "immutable strategy version id")
 	run.Flags().StringVar(&selected.provider, "provider", "fixture", "fixture or bybit (public read-only history)")
-	run.Flags().StringVar(&selected.market, "market", "spot", "spot")
+	run.Flags().StringVar(&selected.market, "market", "spot", "spot or linear")
 	run.Flags().StringVar(&selected.symbol, "symbol", "BTC/USDT", "instrument BASE/USDT")
 	run.Flags().StringVar(&selected.fixture, "fixture", "", "offline candle fixture file")
 	run.Flags().StringVar(&selected.from, "from", "", "inclusive aligned RFC3339 trading range start")
@@ -141,6 +158,16 @@ func (o *options) addBacktestCommands(root *cobra.Command) {
 	run.Flags().StringVar(&cfg.InitialCapital, "capital", "10000", "initial USDT capital")
 	run.Flags().StringVar(&cfg.FeeRate, "fee-rate", "0.001", "fee fraction per fill")
 	run.Flags().StringVar(&cfg.SlippageBPS, "slippage-bps", "0", "adverse slippage in basis points")
+
+	run.Flags().StringVar(&fundingFile, "funding-file", "", "JSON expected_intervals and explicit public/fixture events; no automatic funding acquisition")
+	run.Flags().IntVar(&cfg.Leverage, "leverage", 1, "isolated linear entry leverage; spot requires 1")
+	run.Flags().StringVar(&cfg.Protection.StopPrice, "stop-price", "", "optional absolute entry stop override")
+	run.Flags().StringVar(&cfg.Protection.TargetPrice, "target-price", "", "optional absolute entry target override")
+	run.Flags().StringVar(&cfg.Protection.TargetQuantity, "target-quantity", "", "one-time partial target quantity; requires --target-price")
+	run.Flags().StringVar(&cfg.Protection.TrailActivation, "trail-activation", "", "absolute favorable price activating trailing on a later observation")
+	run.Flags().StringVar(&cfg.Protection.TrailDistance, "trail-distance", "", "trailing price distance; requires activation")
+	run.Flags().StringVar(&cfg.Liquidation.MaintenanceRate, "maintenance-rate", "", "approximate isolated maintenance fraction; linear default 0.005")
+	run.Flags().StringVar(&cfg.Liquidation.FeeRate, "liquidation-fee", "", "approximate liquidation fee fraction; linear default 0.005")
 	bindBacktestRisk(run, &cfg.Risk)
 	run.Flags().BoolVar(&cached, "cached", false, "read cached metadata/candles only; no network")
 	run.Flags().BoolVar(&refresh, "refresh", false, "refresh public/fixture history before freezing")

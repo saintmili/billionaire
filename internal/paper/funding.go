@@ -91,7 +91,7 @@ func (e FundingEvent) Validate() error {
 // reached before liquidation. A gap through both liquidates at the observed open.
 func EvaluateLiquidation(p Position, o Observation, protection ProtectionDecision) (ProtectionDecision, error) {
 	d := ProtectionDecision{}
-	if p.Instrument.Market != domain.Linear || p.Status != "open" || p.Protection == nil || !o.Ready || o.Instrument != p.Instrument || !o.ObservedAt.After(p.Protection.UpdatedAt) || !o.AvailableAt.After(p.Protection.UpdatedAt) {
+	if p.Instrument.Market != domain.Linear || p.Status != "open" || p.Protection == nil || !o.Ready || o.Instrument != p.Instrument || !protectionClockEligible(o, p.Protection.UpdatedAt) {
 		return d, nil
 	}
 	if o.Bar != nil && o.Bar.Start.Before(p.Protection.UpdatedAt) {
