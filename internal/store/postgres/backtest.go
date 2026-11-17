@@ -200,6 +200,12 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 				if _, err = owner.ApplyReplayFunding(ctx, *ev.funding); err != nil {
 					return report, err
 				}
+				point := paper.Observation{ID: "funding-mark-" + ev.funding.ID, Instrument: ev.funding.Instrument, Source: ev.funding.Instrument.Provider, Price: ev.funding.Price, ObservedAt: ev.at, AvailableAt: ev.at, Ready: true}
+				if ev.funding.Rate != nil {
+					if _, err = owner.Observe(ctx, point, paper.ExecutionGate{ReplayNextOpen: true, ReplayProtectionOnly: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}); err != nil {
+						return report, err
+					}
+				}
 				if err = capture(ev.at); err != nil {
 					return report, err
 				}
@@ -212,6 +218,10 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			evaluated[ev.raw.OpenTime] = true
 			c := ev.raw
 			c.ObservedAt = ev.at
+			closePoint := paper.Observation{ID: "close-point-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Close, ObservedAt: ev.at, AvailableAt: ev.at, Ready: true}
+			if _, err = owner.Observe(ctx, closePoint, paper.ExecutionGate{ReplayNextOpen: true, ReplayProtectionOnly: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}); err != nil {
+				return report, err
+			}
 			evaluation, e := isolated.EvaluateStrategyEvent(ctx, binding.ID, marketdata.Event{Kind: "candle", Candle: &c, AvailableAt: ev.at, AllowsEntries: true}, registry)
 			if e != nil {
 				return report, e

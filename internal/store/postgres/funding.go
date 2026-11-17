@@ -139,7 +139,7 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 		if replay {
 			observation.Phase = "funding_after_interval"
 		}
-		orders, err := observeProtection(ctx, tx, observation, paper.ExecutionGate{Now: e.AvailableAt, StaleAfter: e.AvailableAt.Sub(e.EffectiveAt) + time.Nanosecond, Enabled: false})
+		orders, err := observeProtection(ctx, tx, observation, paper.ExecutionGate{ReplayNextOpen: replay, Now: e.AvailableAt, StaleAfter: e.AvailableAt.Sub(e.EffectiveAt) + time.Nanosecond, Enabled: false})
 		if err != nil {
 			return result, safeError(ctx, ErrUnavailable)
 		}

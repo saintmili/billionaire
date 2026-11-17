@@ -73,13 +73,13 @@ func freezeFunding(c *Config, v strategy.Version) error {
 		}
 	}
 	sort.Slice(f.Events, func(i, j int) bool { return f.Events[i].EffectiveAt.Before(f.Events[j].EffectiveAt) })
-	for i, e := range f.Events {
+	unique := []paper.FundingEvent{}
+	for _, e := range f.Events {
 		if err := e.Validate(); err != nil {
 			return err
 		}
 		e.EffectiveAt = e.EffectiveAt.UTC()
 		e.AvailableAt = e.AvailableAt.UTC()
-		f.Events[i] = e
 		if e.Instrument != c.Instrument.Instrument || !e.AvailableAt.Equal(e.EffectiveAt) {
 			return errors.New("historical funding requires matching instrument and valuation available exactly at effective time; delayed retroactive funding is unsupported")
 		}
@@ -92,9 +92,23 @@ func freezeFunding(c *Config, v strategy.Version) error {
 		if !found {
 			return errors.New("every supplied funding event must belong to the explicit expected schedule")
 		}
-		if i > 0 && e.EffectiveAt.Equal(f.Events[i-1].EffectiveAt) {
-			return fmt.Errorf("duplicate/conflicting funding interval %s", e.EffectiveAt)
+		if len(unique) > 0 && e.EffectiveAt.Equal(unique[len(unique)-1].EffectiveAt) {
+			if Hash(e) == Hash(unique[len(unique)-1]) {
+				continue
+			}
+			return fmt.Errorf("conflicting funding interval %s", e.EffectiveAt)
 		}
+		for _, previous := range unique {
+			if previous.ID == e.ID {
+				return errors.New("funding identity reused across intervals")
+			}
+		}
+		unique = append(unique, e)
+	}
+	if len(unique) > 0 {
+		f.Events = unique
+	} else {
+		f.Events = nil
 	}
 	c.Funding = f
 	return nil

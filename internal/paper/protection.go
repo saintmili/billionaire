@@ -258,7 +258,7 @@ func favorable(p Position, price, reference domain.Decimal) bool {
 // an already settled interval at its exclusive end. Ordinary observations retain
 // strict monotonic clocks and every bar retains its overlap check.
 func ProtectionClockEligible(o Observation, updated time.Time) bool {
-	if o.Phase == "funding_after_interval" {
+	if o.Phase == "funding_after_interval" || o.Phase == "next_open" {
 		return !o.ObservedAt.Before(updated) && !o.AvailableAt.Before(updated)
 	}
 	return o.ObservedAt.After(updated) && o.AvailableAt.After(updated)

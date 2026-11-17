@@ -19,12 +19,12 @@ import (
 // BuildRevision may be set by release builds with -ldflags -X.
 var BuildRevision = "unavailable"
 
-const ExecutionModel = "spot-ohlcv-multiframe-next-open-phase-v2"
+const ExecutionModel = "spot-linear-ohlcv-interval-funding-point-phase-v3"
 
 type Config struct {
-	Protection      paper.ProtectionConfig    `json:"protection_overrides"`
-	Funding         FundingDataset            `json:"funding"`
-	Leverage        int                       `json:"leverage"`
+	Protection      paper.ProtectionConfig    `json:"protection_overrides,omitzero"`
+	Funding         FundingDataset            `json:"funding,omitzero"`
+	Leverage        int                       `json:"leverage,omitzero"`
 	AcknowledgeGaps bool                      `json:"acknowledge_gaps"`
 	SourceURL       string                    `json:"source_url,omitempty"`
 	Source          string                    `json:"dataset_source,omitempty"`
@@ -98,6 +98,12 @@ func NewManifest(in Inputs) Manifest {
 		Candles  []domain.Candle
 		Funding  FundingDataset
 	}{in.Config.Instrument, in.Candles, in.Config.Funding}), Model: ExecutionModel, Clock: "frozen OHLCV: close available at exclusive end; close phase before next open at equal boundary", EndPolicy: "retain open positions and pending intents; no synthetic final liquidation"}
+	if len(in.Config.Funding.Expected) == 0 && len(in.Config.Funding.Events) == 0 {
+		m.DatasetHash = Hash(struct {
+			Metadata marketdata.InstrumentInfo
+			Candles  []domain.Candle
+		}{in.Config.Instrument, in.Candles})
+	}
 	m.Clock = "latest selected OHLCV snapshot modeled available at close; original provider observation retained in frozen inputs; revision history unavailable"
 	if in.Config.ClockMode == "recorded-close" {
 		m.Clock = "recorded closed-candle observations published at provider observation; later corrections publish without retroactive evaluation"

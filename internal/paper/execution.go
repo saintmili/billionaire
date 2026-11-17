@@ -386,7 +386,7 @@ func ObservationEligibility(order Order, observation Observation, gate Execution
 		return false, ""
 	}
 	afterIntent := observation.ObservedAt.After(order.Request.At) && observation.AvailableAt.After(order.Request.At)
-	if observation.Phase == "next_open" && gate.ReplayNextOpen {
+	if gate.ReplayNextOpen && (observation.Phase == "next_open" || observation.Phase == "funding_after_interval" && order.Request.Action == "close") {
 		afterIntent = !observation.ObservedAt.Before(order.Request.At) && !observation.AvailableAt.Before(order.Request.At)
 	}
 	if !afterIntent || observation.AvailableAt.After(gate.Now) {

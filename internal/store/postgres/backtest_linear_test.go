@@ -96,3 +96,94 @@ func TestBacktestLinearPartialTargetThenFundingRetainsExposure(t *testing.T) {
 		t.Fatal(r.FundingCoverage)
 	}
 }
+
+func TestBacktestLinearTrailingWaitsForDistinctFundingPoint(t *testing.T) {
+	for _, funding := range []bool{false, true} {
+		t.Run(map[bool]string{false: "interval_only", true: "explicit_funding_point"}[funding], func(t *testing.T) {
+			s, cfg, bars := linearReplay(t)
+			cfg.Protection = paper.ProtectionConfig{TrailActivation: "12", TrailDistance: "1"}
+			last := bars[len(bars)-1]
+			last.Low = spotDecimal("9")
+			bars[len(bars)-1] = marketdata.Stamp(last)
+			if !funding {
+				cfg.Funding = backtest.FundingDataset{}
+			} else {
+				cfg.Funding.Events[0].Price = spotDecimal("9.8")
+			}
+			r, e := s.RunBacktest(context.Background(), cfg, bars)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if !funding {
+				if len(r.Fills) != 1 || !r.Positions[0].Protection.TrailingActive {
+					t.Fatalf("trailing may only act on next observation: %+v", r.Fills)
+				}
+				return
+			}
+			if len(r.Fills) != 2 || r.Fills[1].ExitReason != "trailing_stop" || !r.Fills[1].Gap || r.Fills[1].Price.String() != "9.8" || r.Balance.String() != "10683.2" {
+				t.Fatalf("distinct boundary funding mark after trail ratchet: fills%+v cash%s", r.Fills, r.Balance)
+			}
+		})
+	}
+}
+func TestBacktestLinearLiquidationBeforeWiderStop(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	cfg.Leverage = 10
+	cfg.Protection.StopPrice = "8"
+	r, e := s.RunBacktest(context.Background(), cfg, bars)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(r.Fills) != 2 || r.Fills[1].ExitReason != "liquidation_approximate" || r.Fills[1].Price.String() != "8.18" || r.Balance.String() != "9913.01" {
+		t.Fatalf("approximate liquidation: fills%+v cash%s", r.Fills, r.Balance)
+	}
+}
+func TestBacktestLinearFundingMarkControlsBoundaryEquity(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	last := bars[len(bars)-1]
+	last.Low = spotDecimal("9")
+	last.High = spotDecimal("11")
+	last.Close = spotDecimal("10")
+	bars[len(bars)-1] = marketdata.Stamp(last)
+	cfg.Funding.Events[0].Price = spotDecimal("11")
+	r, e := s.RunBacktest(context.Background(), cfg, bars)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Entry fee9; funding110; mark profit2000 => 11881. Close mark10 then 10881.
+	found := false
+	for _, point := range r.Equity {
+		if point.Equity != nil && point.At.Equal(cfg.To) && point.Equity.String() == "11881" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("funding mark must value its causal phase: %+v", r.Equity)
+	}
+	if r.Equity[len(r.Equity)-1].Equity.String() != "10881" {
+		t.Fatal(r.Equity)
+	}
+}
+
+func TestBacktestLinearFundingDuplicateFrozenInputIsIdempotent(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	cfg.Funding.Events = append(cfg.Funding.Events, cfg.Funding.Events[0])
+	r, e := s.RunBacktest(context.Background(), cfg, bars)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(r.Funding) != 1 {
+		t.Fatal("duplicate funded twice", r.Funding)
+	}
+	frozen, e := s.BacktestInputs(context.Background(), r.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	again, e := s.RunFrozenBacktest(context.Background(), frozen)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if again.Manifest.ReproducibilityHash != r.Manifest.ReproducibilityHash || again.Balance.String() != r.Balance.String() {
+		t.Fatal("frozen rerun changed")
+	}
+}
