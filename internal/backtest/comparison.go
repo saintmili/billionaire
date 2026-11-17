@@ -18,6 +18,8 @@ type Snapshot struct {
 	Version           *strategy.Version        `json:"strategy_version"`
 	Metrics           *analytics.Report        `json:"metrics"`
 	EvidenceStatus    string                   `json:"evidence_status"`
+	ArtifactBasis     string                   `json:"artifact_basis"`
+	FundingStatus     string                   `json:"funding_status"`
 	SignalStatus      string                   `json:"signal_status"`
 	SignalReports     []analytics.SignalReport `json:"signal_reports"`
 	RejectedDecisions *int                     `json:"rejected_decisions"`
@@ -112,10 +114,15 @@ func Compare(left, right Snapshot) Comparison {
 	walk("manifest", normalized(left.Report.Manifest), normalized(right.Report.Manifest))
 	diff("strategy_version", left.Version, right.Version)
 	diff("signal_reports", left.SignalReports, right.SignalReports)
+	diff("funding_coverage", left.Report.FundingCoverage, right.Report.FundingCoverage)
 	c.DirectlyComparable = len(c.Differences) == 0 && left.EvidenceStatus == "verified" && right.EvidenceStatus == "verified" && left.Metrics != nil && right.Metrics != nil && left.Metrics.ValuationStatus == "complete" && right.Metrics.ValuationStatus == "complete"
 	for _, s := range []Snapshot{left, right} {
 		if s.EvidenceStatus != "verified" {
 			c.Warnings = append(c.Warnings, s.Report.ID+": "+s.EvidenceStatus)
+		}
+		if s.Report.Config.Instrument.Instrument.Market == domain.Linear && s.Report.FundingCoverage.Status != "complete" {
+			c.Warnings = append(c.Warnings, s.Report.ID+": funding coverage unavailable, unknown or missing; zero settled funding is not evidence of zero funding cost")
+			c.DirectlyComparable = false
 		}
 		m := s.Report.Manifest
 		if m.StrategyHash == "" || m.ConfigurationHash == "" || m.DatasetHash == "" || m.ReproducibilityHash == "" || m.Model == "" || m.Clock == "" || m.EndPolicy == "" {

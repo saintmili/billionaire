@@ -4,6 +4,7 @@ import (
 	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/backtest"
 	"github.com/saintmili/billionaire/internal/domain"
+	"github.com/saintmili/billionaire/internal/marketdata"
 	"testing"
 	"time"
 )
@@ -75,5 +76,20 @@ func TestComparisonWarnsWhenIdenticalManifestLacksModelProvenance(t *testing.T) 
 	c := backtest.Compare(a, a)
 	if c.DirectlyComparable {
 		t.Fatal("missing model/hash provenance was treated as directly comparable")
+	}
+}
+
+func TestComparisonPreservesUnknownFundingInsteadOfAssumingZero(t *testing.T) {
+	a := backtest.Snapshot{EvidenceStatus: "verified", Metrics: &analytics.Report{ValuationStatus: "complete"}, Report: backtest.Report{Config: backtest.Config{Instrument: marketdata.InstrumentInfo{Instrument: domain.Instrument{Market: domain.Linear}}}, Manifest: backtest.Manifest{Build: "known", StrategyHash: "s", ConfigurationHash: "c", DatasetHash: "d", ReproducibilityHash: "r", Model: "linear", Clock: "close", EndPolicy: "retain"}}}
+	for _, status := range []string{"", "unknown", "missing"} {
+		a.Report.FundingCoverage.Status = status
+		c := backtest.Compare(a, a)
+		if c.DirectlyComparable {
+			t.Fatalf("funding %q assumed complete", status)
+		}
+	}
+	a.Report.FundingCoverage.Status = "complete"
+	if c := backtest.Compare(a, a); !c.DirectlyComparable {
+		t.Fatalf("known matching funding rejected %+v", c)
 	}
 }

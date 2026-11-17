@@ -15,6 +15,12 @@ func (s *Store) BacktestSnapshot(ctx context.Context, id string) (backtest.Snaps
 		return backtest.Snapshot{}, err
 	}
 	out := backtest.Snapshot{Report: r, EvidenceStatus: "unavailable", SignalStatus: "not_evaluated/no_saved_rule", SignalReports: []analytics.SignalReport{}, Warnings: append([]string{}, r.Warnings...)}
+	out.FundingStatus = "unavailable"
+	if r.Config.Instrument.Instrument.Market == domain.Spot {
+		out.FundingStatus = "not_applicable"
+	} else if r.Config.Instrument.Instrument.Market == domain.Linear && r.FundingCoverage.Status != "" {
+		out.FundingStatus = r.FundingCoverage.Status
+	}
 	rows, err := s.pool.Query(ctx, "SELECT report FROM millionaire.signal_reports WHERE run_id=$1 ORDER BY id", id)
 	if err != nil {
 		return out, safeError(ctx, ErrUnavailable)
@@ -61,7 +67,14 @@ func (s *Store) BacktestSnapshot(ctx context.Context, id string) (backtest.Snaps
 	}
 	out.RejectedDecisions = &reject
 	out.PendingOrders = &pending
-	out.AmbiguousFills = &ambiguous
+	out.ArtifactBasis = "retained completed-run decisions and orders; pending_orders counts unfilled end intents only; hypothetical missed fills unavailable"
+	switch r.Manifest.Model {
+	case backtest.ExecutionModel, "linear-isolated-ohlcv-interval-funding-point-v1", "spot-ohlcv-multiframe-next-open-phase-v2":
+		out.AmbiguousFills = &ambiguous
+		out.ArtifactBasis += "; ambiguous_fills counts retained execution flags, not a reconstructed intrabar path"
+	default:
+		out.Warnings = append(out.Warnings, "Ambiguity flag evidence unavailable for an unrecognized legacy execution model")
+	}
 	if !r.CandidatesAvailable {
 		out.Warnings = append(out.Warnings, "Suppressed candidate evidence unavailable")
 	}

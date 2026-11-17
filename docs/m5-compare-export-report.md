@@ -47,8 +47,8 @@ profit-factor labels and the retained equity curve. A positive return alone does
 not establish superiority. Small samples, survivorship and selection/look-ahead
 bias limit inference. `matched_period` never represents newly calculated matched-
 period performance. Different dataset hashes may reflect revisions, lookback,
-coverage or provenance even when requested dates match. Unknown build provenance
-prevents authoritative direct comparability. Read the preserved warnings even
+coverage or provenance even when requested dates match. Missing manifest/model fields, unknown build provenance or a modified build
+prevent authoritative direct comparability. Read the preserved warnings even
 when the same run is compared with itself.
 
 Snapshots preserve full decisions/orders/fills, including rejection reasons,
@@ -56,7 +56,11 @@ pending end-of-range intents, ambiguous stop/target flags, price gaps and isolat
 deficits. Counts are available only for completed runs with verified frozen
 inputs. Pending orders are retained unfilled intents, not proof of all hypothetical
 missed fills. Coverage/model and exact funding source evidence remain in the full
-configuration/report. Legacy missing fields do not establish complete funding or
+configuration/report. Snapshot `funding_status` is `not_applicable` only for
+confirmed spot, preserves the retained linear coverage status and otherwise says
+`unavailable`. Linear unknown/missing/unavailable coverage prevents authoritative
+direct comparability even on the same run; zero posted funding is not proof of
+zero cost. Funding coverage differences appear explicitly. Legacy missing fields do not establish complete funding or
 absence of ambiguity. Old missing candidate evidence is explicitly warned.
 
 Failed/running/cancelled runs retain status/error and partial audit artifacts but
@@ -125,4 +129,38 @@ generation or trading writes. Tests retain huge/18-place decimals, negative/null
 values, escaped JSON/CSV, nanosecond times, equal-time phase order, empty context
 rows and writer errors.
 
-Final full-suite, vet, race and CLI build/help outcomes are recorded after execution.
+Final checks run on 2026-11-17 with `GOCACHE=/tmp/billionaire-go-cache` and the
+provided disposable `MILLIONAIRE_TEST_DATABASE_URL`. The pre-linear full suite
+passed (PostgreSQL 45.970s; CLI 12.675s), vet passed, focused backtest/analytics/
+PostgreSQL/CLI race checks passed, and CLI build plus compare/export/strategies
+help passed. Final checks after merging #19 are recorded below.
+
+The finalized #19 linear fields are retained without reconstructing funding:
+configuration includes leverage/protection/liquidation and the expected funding
+schedule/exact events; reports include coverage/missing intervals, funding results
+and provenance. A real CLI linear fixture with missing funding remains explicitly
+incomparable and exports its frozen leverage and liquidation assumptions after
+the original funding file is removed. This slice does not add broader intrabar or
+delayed-funding support; ADR 0007's boundary remains in force.
+
+Final merged verification (including #19 `d99c112`):
+
+- `go test ./... -count=1` with actual PostgreSQL — passed; PostgreSQL
+  68.200s, CLI 19.353s.
+- `go vet ./...` — passed.
+- `go test -race ./internal/backtest ./internal/store/postgres ./internal/cli
+  -run 'TestComparison|TestExport|TestBacktest' -count=1` with actual PostgreSQL
+  — passed; PostgreSQL 23.093s, CLI 7.651s.
+- Final artifact-basis/legacy-ambiguity and funding export regression checks
+  (`TestBacktestSnapshotsPreserve|TestComparison|TestExport|TestBacktestCLI.*Journey`)
+  — passed; PostgreSQL 1.330s, CLI 4.992s.
+- CLI build and compare/export/strategies help — passed; `git diff --check` passed.
+
+Snapshot `artifact_basis` states the limits of retained counts. Unknown legacy
+execution models have null ambiguity counts with warnings; zero flags from a known
+model refer only to recorded fills, not a reconstructed intrabar path. Hypothetical
+missed fills remain unavailable; pending counts describe retained end intents.
+
+No tracker updates, push, PR, live trading, daemon, journal delivery or later
+milestone work was performed. The assigned branch descends from M5 integration,
+incorporates finalized #19 and merges the current integration tip before handoff.

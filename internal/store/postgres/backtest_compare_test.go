@@ -40,11 +40,14 @@ func TestBacktestSnapshotsPreserveMissingAndIncompleteEvidenceWithoutExecution(t
 	for _, tc := range []struct {
 		id, status          string
 		corrupt, incomplete bool
-	}{{"empty", "completed", false, false}, {"incomplete", "completed", false, true}, {"corrupt", "completed", true, false}, {"failed", "failed", false, false}, {"running", "running", false, false}, {"cancelled", "cancelled", false, false}} {
+	}{{"empty", "completed", false, false}, {"incomplete", "completed", false, true}, {"corrupt", "completed", true, false}, {"legacy", "completed", false, false}, {"failed", "failed", false, false}, {"running", "running", false, false}, {"cancelled", "cancelled", false, false}} {
 		r := backtest.Report{ID: tc.id, Status: tc.status, Scope: "backtest", Config: in.Config, Manifest: manifest, Balance: capital, Equity: []analytics.EquityPoint{{At: at, Equity: &capital}, {At: at.Add(time.Hour), Equity: &capital}}}
 		if tc.incomplete {
 			r.Equity[1].Equity = nil
 			r.Equity[1].Reason = "missing mark"
+		}
+		if tc.id == "legacy" {
+			r.Manifest.Model = "unrecognized-old-model"
 		}
 		if tc.corrupt {
 			r.Manifest.DatasetHash = "lost"
@@ -64,6 +67,10 @@ func TestBacktestSnapshotsPreserveMissingAndIncompleteEvidenceWithoutExecution(t
 		case "empty":
 			if got.Metrics == nil || got.Metrics.ClosedTrades != 0 || got.Metrics.Return == nil || !got.Metrics.Return.IsZero() || got.Metrics.MaximumDrawdown == nil || !got.Metrics.MaximumDrawdown.IsZero() {
 				t.Fatalf("valid empty %+v", got)
+			}
+		case "legacy":
+			if got.Metrics == nil || got.AmbiguousFills != nil || len(got.Warnings) == 0 {
+				t.Fatalf("legacy ambiguity invented %+v", got)
 			}
 		case "incomplete":
 			if got.Metrics == nil || got.Metrics.Return != nil || got.Metrics.MaximumDrawdown != nil || got.Metrics.ValuationStatus != "incomplete" {
@@ -100,7 +107,7 @@ func TestBacktestSnapshotsPreserveMissingAndIncompleteEvidenceWithoutExecution(t
 		t.Fatal("invalid selection range accepted")
 	}
 	selected, e := s.BacktestStrategies(ctx, postgres.StrategyReportFilter{})
-	if e != nil || len(selected) != 6 {
+	if e != nil || len(selected) != 7 {
 		t.Fatalf("list omitted unavailable runs %+v %v", selected, e)
 	}
 }

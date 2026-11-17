@@ -332,6 +332,16 @@ func TestBacktestCLILinearFundingJourney(t *testing.T) {
 	if e = os.Remove(funding); e != nil {
 		t.Fatal(e)
 	}
+	b, e = invoke("backtest", "compare", r.ID, r.ID)
+	var comparison backtest.Comparison
+	if e != nil || json.Unmarshal(b, &comparison) != nil || comparison.DirectlyComparable || comparison.Left.FundingStatus != "missing" || comparison.Left.Report.FundingCoverage.Expected != 1 || len(comparison.Left.Report.FundingCoverage.Missing) != 1 {
+		t.Fatalf("missing funding compare: %s %v", b, e)
+	}
+	b, e = invoke("backtest", "export", r.ID, "--kind", "report", "--format", "json")
+	var exported backtest.Export
+	if e != nil || json.Unmarshal(b, &exported) != nil || exported.Context.Report.Config.Leverage != 2 || exported.Context.FundingStatus != "missing" || exported.Context.Report.Config.Liquidation.MaintenanceRate != "0.005" {
+		t.Fatalf("funding export: %s %v", b, e)
+	}
 	b, e = invoke("backtest", "run", "--source-run", r.ID)
 	if e != nil {
 		t.Fatalf("frozen rerun: %s %v", b, e)
