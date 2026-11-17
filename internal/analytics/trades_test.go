@@ -4,6 +4,7 @@ import (
 	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/paper"
+	"github.com/saintmili/billionaire/internal/strategy"
 	"testing"
 	"time"
 )
@@ -30,5 +31,43 @@ func TestPartialExitsAreOneTradeWithExactFeesAndFunding(t *testing.T) {
 	}
 	if r.ProfitFactor != nil || r.ProfitFactorStatus != "no_losses" || r.Trades[0].RealizedR == nil || r.Trades[0].RealizedR.String() != "1.135" || r.AverageHoldingSeconds.String() != "7200" {
 		t.Fatalf("boundaries: %+v", r)
+	}
+}
+func TestEquityUsesObservedPeaksAndRejectsIncompleteValuations(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	capital := d("1000")
+	a, b, c := d("1000"), d("1200"), d("900")
+	in := analytics.Input{Scope: "backtest", InitialCapital: &capital, Equity: []analytics.EquityPoint{{At: at, Equity: &a}, {At: at.Add(time.Hour), Equity: &b}, {At: at.Add(2 * time.Hour), Equity: &c}}}
+	r, e := analytics.Trades(in, analytics.Filter{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if r.Return == nil || r.Return.String() != "-0.1" || r.MaximumDrawdown.String() != "300" || r.MaximumDrawdownFraction.String() != "0.25" {
+		t.Fatalf("equity: %+v", r)
+	}
+	in.Equity[1].Equity = nil
+	in.Equity[1].Reason = "stale"
+	r, e = analytics.Trades(in, analytics.Filter{})
+	if e != nil || r.Return != nil || r.MaximumDrawdown != nil || r.ValuationStatus != "incomplete" {
+		t.Fatalf("stale: %+v %v", r, e)
+	}
+}
+func TestNoTradesAndMissingRiskRemainUndefined(t *testing.T) {
+	r, e := analytics.Trades(analytics.Input{Scope: "forward-paper"}, analytics.Filter{})
+	if e != nil || r.Expectancy != nil || r.WinRate != nil || r.ProfitFactor != nil || r.ValuationStatus != "unavailable" {
+		t.Fatalf("empty: %+v %v", r, e)
+	}
+}
+func TestVersionFilterUsesImmutableSignalAndCandleExcursionsAreBounds(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	p := paper.Position{ID: "p", StrategyID: "stable", Status: "closed", OpenedAt: at, EntryPrice: d("100"), InitialQuantity: d("2")}
+	in := analytics.Input{Scope: "backtest", Positions: []paper.Position{p}, Signals: []strategy.Signal{{ID: "s", VersionID: "v1"}}, Orders: []paper.Order{{ID: "o", Request: paper.OrderRequest{SignalID: "s", Action: "open"}}}, Fills: []paper.Fill{{OrderID: "o", PositionID: "p", ExecutedAt: at}, {PositionID: "p", ExecutedAt: at.Add(2 * time.Minute)}}, Candles: []domain.Candle{{OpenTime: at, EndTime: at.Add(time.Minute), High: d("120"), Low: d("90")}, {OpenTime: at.Add(time.Minute), EndTime: at.Add(2 * time.Minute), High: d("999"), Low: d("1")}}}
+	r, e := analytics.Trades(in, analytics.Filter{StrategyVersion: "v1"})
+	if e != nil || r.ClosedTrades != 1 {
+		t.Fatalf("version: %+v %v", r, e)
+	}
+	trade := r.Trades[0]
+	if trade.MAE == nil || trade.MAE.String() != "-20" || trade.MFE.String() != "40" || trade.StrategyVersion != "v1" {
+		t.Fatalf("bounds: %+v", trade)
 	}
 }

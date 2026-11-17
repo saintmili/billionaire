@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/backtest"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
@@ -92,6 +93,20 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 	entry := r.Fills[0]
 	if entry.Price.String() != "9" || !entry.ExecutedAt.Equal(from.Add(time.Minute)) || r.Balance.String() != "9882.1" {
 		t.Fatalf("next open9; loss100 + fees17.9: %+v balance %s", entry, r.Balance)
+	}
+
+	for range 2 {
+		metrics, e := s.BacktestTrades(ctx, r.ID, analytics.Filter{})
+		if e != nil {
+			t.Fatal(e)
+		}
+		if metrics.Scope != "backtest" || metrics.RunID != r.ID || metrics.ClosedTrades != 1 || metrics.GrossPnL.String() != "-100" || metrics.NetPnL.String() != "-117.9" || metrics.Fees.String() != "17.9" || metrics.LedgerTotal.String() != "9882.1" || metrics.LedgerCashReconciled == nil || !*metrics.LedgerCashReconciled {
+			t.Fatalf("persisted trades: %+v", metrics)
+		}
+		filtered, e := s.BacktestTrades(ctx, r.ID, analytics.Filter{StrategyVersion: v.ID})
+		if e != nil || filtered.ClosedTrades != 1 || filtered.Trades[0].StrategyVersion != v.ID || len(filtered.Equity) != 0 {
+			t.Fatalf("version filtered metrics: %+v %v", filtered, e)
+		}
 	}
 	again, err := s.RunBacktest(ctx, cfg, bars)
 	if err != nil {
