@@ -138,6 +138,33 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 	if r.Manifest.ReproducibilityHash != again.Manifest.ReproducibilityHash || r.Balance.String() != again.Balance.String() || r.Fills[0].Price.String() != again.Fills[0].Price.String() {
 		t.Fatal("economic rerun changed")
 	}
+
+	t.Run("retained comparison is exact and independent of execution schemas", func(t *testing.T) {
+		comparison, e := s.CompareBacktests(ctx, r.ID, again.ID)
+		if e != nil || len(comparison.Differences) != 0 || comparison.Left.Metrics.Return.String() != "-0.01179" || comparison.Left.Metrics.MaximumDrawdown.String() != "117.9" || comparison.Left.Metrics.ClosedTrades != 1 || comparison.Left.PendingOrders == nil {
+			t.Fatalf("comparison %+v %v", comparison, e)
+		}
+		changed := cfg
+		changed.FeeRate = "0.002"
+		different, e := s.RunBacktest(ctx, changed, bars)
+		if e != nil {
+			t.Fatal(e)
+		}
+		comparison, e = s.CompareBacktests(ctx, r.ID, different.ID)
+		found := false
+		for _, d := range comparison.Differences {
+			if d.Field == "config.fee_rate" {
+				found = true
+			}
+		}
+		if e != nil || comparison.DirectlyComparable || !found {
+			t.Fatalf("changed assumptions %+v %v", comparison, e)
+		}
+		selected, e := s.BacktestStrategies(ctx, postgres.StrategyReportFilter{RunIDs: []string{r.ID, again.ID}, AccountID: r.AccountID})
+		if e != nil || len(selected) != 1 || selected[0].Report.ID != r.ID {
+			t.Fatalf("dimensions %+v %v", selected, e)
+		}
+	})
 	accounts, err := s.PaperAccounts(ctx)
 	if err != nil || len(accounts) != 1 || accounts[0].Balance.String() != "1234" {
 		t.Fatal("forward account changed", err)
@@ -438,6 +465,11 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 		if e != nil || saved.Status != "failed" || saved.Error == "" {
 			t.Fatal("failed run lost", e)
 		}
+		comparison, e := s.CompareBacktests(ctx, r.ID, result.ID)
+		if e != nil || comparison.Right.Metrics != nil || comparison.Right.RejectedDecisions != nil || comparison.Right.EvidenceStatus != "run_failed" || comparison.DirectlyComparable {
+			t.Fatalf("failed performance invented %+v %v", comparison, e)
+		}
+
 	})
 	t.Run("cancelled provisioning remains identifiable", func(t *testing.T) {
 		blocker, e := pgx.Connect(ctx, dsn)
