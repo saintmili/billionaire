@@ -30,6 +30,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 - [M5 linear replay slice report](m5-linear-replay-report.md): ticket #19 isolated long/short funding, interval/point phases, protective exits, approximate liquidation and coverage.
 - [M5 historical replay slice report](m5-historical-replay-report.md): ticket #18 public/fixture/cache selection, coverage, clocks and causal multi-timeframe replay.
 - [M5 spot fixture slice report](m5-spot-backtest-report.md): ticket #17 isolated frozen run/report, clocks, recovery and verification.
+- [M5 comparison/export slice report](m5-compare-export-report.md): ticket #22 retained-run comparison, strategy dimensions and exact JSON/CSV schema.
 - [Architecture decisions](adr/): accepted PostgreSQL, execution/journal separation and candle/replay decisions.
 - [Milestone checklist](milestone-checklist.md): sequenced follow-up work and acceptance gates.
 - GitHub Issues: implementation tickets and dependency links, prepared through `/to-tickets` after M0 findings are available.

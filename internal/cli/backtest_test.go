@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"encoding/csv"
 	"encoding/json"
 	"github.com/jackc/pgx/v5"
 	"path/filepath"
@@ -81,6 +82,33 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 			t.Fatalf("retained signal report %s %v", read, err)
 		}
 	}
+
+	t.Run("compare and export retained evidence", func(t *testing.T) {
+		output, err := invoke("backtest", "compare", r.ID, r.ID)
+		var comparison backtest.Comparison
+		if err != nil || json.Unmarshal(output, &comparison) != nil || len(comparison.Differences) != 0 || comparison.MatchedPeriod == nil || comparison.Left.Metrics == nil || comparison.Left.Metrics.ClosedTrades != 1 || comparison.Left.Metrics.Return == nil || comparison.Left.Metrics.MaximumDrawdown == nil || len(comparison.Left.SignalReports) == 0 {
+			t.Fatalf("comparison %s %v", output, err)
+		}
+		output, err = invoke("report", "strategies", "--scope", "backtest", "--run", r.ID, "--strategy-version", added.Version.ID, "--timeframe", "1m")
+		var selected struct {
+			Runs []backtest.Snapshot `json:"runs"`
+		}
+		if err != nil || json.Unmarshal(output, &selected) != nil || len(selected.Runs) != 1 {
+			t.Fatalf("strategies %s %v", output, err)
+		}
+		for _, kind := range []string{"report", "trades", "equity"} {
+			output, err = invoke("backtest", "export", r.ID, "--kind", kind, "--format", "json")
+			var exported backtest.Export
+			if err != nil || json.Unmarshal(output, &exported) != nil || exported.Context.Report.Manifest != r.Manifest || len(exported.Context.SignalReports) == 0 || len(exported.Rows) == 0 {
+				t.Fatalf("export %s %v", output, err)
+			}
+			output, err = invoke("backtest", "export", r.ID, "--kind", kind, "--format", "csv")
+			rows, errCSV := csv.NewReader(bytes.NewReader(output)).ReadAll()
+			if err != nil || errCSV != nil || len(rows) < 2 || len(rows[1]) != 6 {
+				t.Fatalf("CSV %s %v %v", output, err, errCSV)
+			}
+		}
+	})
 	b, e = invoke("backtest", "report", r.ID)
 	if e != nil {
 		t.Fatal(e)
@@ -303,6 +331,16 @@ func TestBacktestCLILinearFundingJourney(t *testing.T) {
 	}
 	if e = os.Remove(funding); e != nil {
 		t.Fatal(e)
+	}
+	b, e = invoke("backtest", "compare", r.ID, r.ID)
+	var comparison backtest.Comparison
+	if e != nil || json.Unmarshal(b, &comparison) != nil || comparison.DirectlyComparable || comparison.Left.FundingStatus != "missing" || comparison.Left.Report.FundingCoverage.Expected != 1 || len(comparison.Left.Report.FundingCoverage.Missing) != 1 {
+		t.Fatalf("missing funding compare: %s %v", b, e)
+	}
+	b, e = invoke("backtest", "export", r.ID, "--kind", "report", "--format", "json")
+	var exported backtest.Export
+	if e != nil || json.Unmarshal(b, &exported) != nil || exported.Context.Report.Config.Leverage != 2 || exported.Context.FundingStatus != "missing" || exported.Context.Report.Config.Liquidation.MaintenanceRate != "0.005" {
+		t.Fatalf("funding export: %s %v", b, e)
 	}
 	b, e = invoke("backtest", "run", "--source-run", r.ID)
 	if e != nil {
