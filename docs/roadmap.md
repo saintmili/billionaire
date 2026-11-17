@@ -13,7 +13,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M2 — Market data and historical synchronization | Implemented; offline checks pass; [live-host gate pending](m2-report.md) |
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
 | M4 — Paper accounts, orders, risk, and position lifecycle | Complete under offline sequencing exception — [combined acceptance evidence](m4-report.md); M2 live-host gate remains pending |
-| M5 — First-class backtesting and analytics | In progress — ticket #17 [isolated spot fixture run/report](m5-spot-backtest-report.md); remaining M5 scope and combined acceptance stay open |
+| M5 — First-class backtesting and analytics | In progress — ticket #17 [isolated spot fixture run/report](m5-spot-backtest-report.md) and #18 [historical datasets/multi-timeframe replay](m5-historical-replay-report.md); remaining M5 scope and combined acceptance stay open |
 | M6 — Notifications and process operation | Not started |
 | M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
 | M7 — StopLore journaling | Not started |
