@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/paper"
+	"github.com/saintmili/billionaire/internal/strategy"
 	"github.com/shopspring/decimal"
 	"sort"
 	"time"
@@ -37,6 +38,8 @@ type EquityPoint struct {
 	Reason   string          `json:"reason,omitempty"`
 }
 type Input struct {
+	CashBalance    *domain.Decimal
+	Signals        []strategy.Signal
 	Scope          string
 	Positions      []paper.Position
 	Orders         []paper.Order
@@ -47,6 +50,8 @@ type Input struct {
 	Candles        []domain.Candle
 }
 type Trade struct {
+	IsolatedDeficit domain.Decimal    `json:"isolated_deficit"`
+	VersionStatus   string            `json:"version_status"`
 	PositionID      string            `json:"position_id"`
 	AccountID       string            `json:"account_id"`
 	StrategyVersion string            `json:"strategy_version,omitempty"`
@@ -67,6 +72,10 @@ type Trade struct {
 	ExcursionBasis  string            `json:"excursion_basis"`
 }
 type Report struct {
+	RunID                   string          `json:"run_id,omitempty"`
+	CashBalance             *domain.Decimal `json:"cash_balance"`
+	LedgerCashReconciled    *bool           `json:"ledger_cash_reconciled"`
+	IsolatedDeficit         domain.Decimal  `json:"isolated_deficit"`
 	Scope                   string          `json:"scope"`
 	Filter                  Filter          `json:"filter"`
 	Trades                  []Trade         `json:"trades"`
@@ -116,17 +125,35 @@ func Trades(in Input, f Filter) (Report, error) {
 	for _, o := range in.Orders {
 		orders[o.ID] = o
 	}
+	holdingKnown := 0
 	win, loss, holding := domain.Decimal{}, domain.Decimal{}, domain.Decimal{}
+	signals := map[string]string{}
+	for _, signal := range in.Signals {
+		signals[signal.ID] = signal.VersionID
+	}
 	for _, p := range in.Positions {
-		if f.AccountID != "" && p.AccountID != f.AccountID || f.StrategyVersion != "" && p.StrategyID != f.StrategyVersion || f.Instrument != nil && p.Instrument != *f.Instrument || !f.From.IsZero() && p.OpenedAt.Before(f.From) || !f.To.IsZero() && !p.OpenedAt.Before(f.To) {
+		version := ""
+		for _, fill := range in.Fills {
+			if fill.PositionID == p.ID {
+				o := orders[fill.OrderID]
+				if o.Request.Action == "open" {
+					version = signals[o.Request.SignalID]
+				}
+			}
+		}
+		if f.AccountID != "" && p.AccountID != f.AccountID || f.StrategyVersion != "" && version != f.StrategyVersion || f.Instrument != nil && p.Instrument != *f.Instrument || !f.From.IsZero() && p.OpenedAt.Before(f.From) || !f.To.IsZero() && !p.OpenedAt.Before(f.To) {
 			continue
 		}
-		t := Trade{PositionID: p.ID, AccountID: p.AccountID, StrategyVersion: p.StrategyID, Instrument: p.Instrument, Status: p.Status, OpenedAt: p.OpenedAt, Fees: p.FeesPaid, Funding: p.FundingPnL, ExcursionBasis: "unavailable: no complete price observation evidence"}
+		t := Trade{PositionID: p.ID, AccountID: p.AccountID, StrategyVersion: version, Instrument: p.Instrument, Status: p.Status, OpenedAt: p.OpenedAt, Fees: p.FeesPaid, Funding: p.FundingPnL, ExcursionBasis: "unavailable: no complete price observation evidence"}
+		t.VersionStatus = "unavailable: standalone order or missing signal evidence"
+		if version != "" {
+			t.VersionStatus = "immutable_signal_version"
+		}
 		t.NetPnL = p.RealizedPnL
 		// Open-position realized P&L does not yet allocate remaining entry fees.
 		remainingFee := p.RemainingCost
 		if p.Instrument.Market == domain.Spot {
-			remainingFee = remainingFee.Sub(p.EntryPrice.Mul(p.RemainingQuantity))
+			remainingFee = remainingFee.Sub(remainingSpotPrincipal(p, in.Fills, orders))
 		}
 		if p.Status == "open" {
 			t.NetPnL = t.NetPnL.Sub(remainingFee)
@@ -137,6 +164,7 @@ func Trades(in Input, f Filter) (Report, error) {
 			if fill.PositionID != p.ID {
 				continue
 			}
+			t.IsolatedDeficit = t.IsolatedDeficit.Add(fill.IsolatedDeficit)
 			if fill.ExecutedAt.After(last) {
 				last = fill.ExecutedAt
 			}
@@ -154,12 +182,16 @@ func Trades(in Input, f Filter) (Report, error) {
 				}
 			}
 		}
+		t.GrossPnL = t.GrossPnL.Sub(t.IsolatedDeficit)
 		if p.Status == "closed" {
 			r.ClosedTrades++
 			if !last.IsZero() {
 				t.ClosedAt = &last
+			}
+			if !last.IsZero() && !p.OpenedAt.IsZero() && !last.Before(p.OpenedAt) {
 				t.HoldingSeconds = ptr(decimal.NewFromInt(last.Sub(p.OpenedAt).Nanoseconds()).Shift(-9))
 				holding = holding.Add(*t.HoldingSeconds)
+				holdingKnown++
 			}
 			if t.PlannedRisk != nil {
 				t.RealizedR = ptr(t.NetPnL.Div(*t.PlannedRisk))
@@ -176,10 +208,12 @@ func Trades(in Input, f Filter) (Report, error) {
 		} else {
 			r.OpenPositions++
 		}
+		r.IsolatedDeficit = r.IsolatedDeficit.Add(t.IsolatedDeficit)
 		r.GrossPnL = r.GrossPnL.Add(t.GrossPnL)
 		r.NetPnL = r.NetPnL.Add(t.NetPnL)
 		r.Fees = r.Fees.Add(t.Fees)
 		r.Funding = r.Funding.Add(t.Funding)
+		excursions(&t, p, in.Candles)
 		r.Trades = append(r.Trades, t)
 	}
 	sort.Slice(r.Trades, func(i, j int) bool {
@@ -194,7 +228,9 @@ func Trades(in Input, f Filter) (Report, error) {
 		r.LossRate = ptr(integer(r.Losses).Div(n))
 		r.BreakevenRate = ptr(integer(r.Breakeven).Div(n))
 		r.Expectancy = ptr(win.Sub(loss).Div(n))
-		r.AverageHoldingSeconds = ptr(holding.Div(n))
+		if holdingKnown == r.ClosedTrades {
+			r.AverageHoldingSeconds = ptr(holding.Div(n))
+		}
 		r.ProfitFactorStatus = "no_losses"
 		if loss.IsPositive() {
 			r.ProfitFactor = ptr(win.Div(loss))
@@ -217,6 +253,11 @@ func Trades(in Input, f Filter) (Report, error) {
 		if l.Kind == "funding" {
 			r.LedgerFunding = r.LedgerFunding.Add(l.Amount)
 		}
+	}
+	r.CashBalance = in.CashBalance
+	if in.CashBalance != nil {
+		same := r.LedgerTotal.Equal(*in.CashBalance)
+		r.LedgerCashReconciled = &same
 	}
 	if f.StrategyVersion != "" || f.Instrument != nil || !f.From.IsZero() || !f.To.IsZero() {
 		r.Warnings = append(r.Warnings, "Lifecycle filters select position opening times; account equity and ledger are unavailable for a filtered subset")
@@ -257,10 +298,87 @@ func equityMetrics(r *Report, capital *domain.Decimal) {
 		r.Warnings = append(r.Warnings, "Unavailable/stale equity points prevent authoritative return and maximum drawdown")
 		return
 	}
+	if len(r.Equity) == 1 {
+		r.ValuationStatus = "snapshot_only"
+		if capital != nil && capital.IsPositive() {
+			r.Return = ptr(r.Equity[0].Equity.Sub(*capital).Div(*capital))
+		}
+		return
+	}
 	r.ValuationStatus = "complete"
 	r.MaximumDrawdown = ptr(dd)
 	r.MaximumDrawdownFraction = ptr(fraction)
 	if capital != nil && capital.IsPositive() {
 		r.Return = ptr(r.Equity[len(r.Equity)-1].Equity.Sub(*capital).Div(*capital))
 	}
+}
+
+// excursions uses only fully held candles before the final-exit bar. Values
+// describe initial-size price excursions, not cash P&L after partial exits.
+func excursions(t *Trade, p paper.Position, bars []domain.Candle) {
+	mae, mfe := domain.Decimal{}, domain.Decimal{}
+	count := 0
+	for _, bar := range bars {
+		if bar.Instrument != p.Instrument || bar.OpenTime.Before(p.OpenedAt) || t.ClosedAt != nil && !bar.EndTime.Before(*t.ClosedAt) {
+			continue
+		}
+		if !bar.High.IsPositive() || !bar.Low.IsPositive() {
+			continue
+		}
+		count++
+		low, high := p.PricePnL(bar.Low, p.InitialQuantity), p.PricePnL(bar.High, p.InitialQuantity)
+		if low.GreaterThan(high) {
+			low, high = high, low
+		}
+		if low.LessThan(mae) {
+			mae = low
+		}
+		if high.GreaterThan(mfe) {
+			mfe = high
+		}
+	}
+	if count > 0 {
+		t.MAE = ptr(mae)
+		t.MFE = ptr(mfe)
+		t.ExcursionBasis = "OHLC fully-held-bar bounds; initial quantity, excluding exit bar; partial-size/path/order unknown"
+	}
+}
+
+// remainingSpotPrincipal follows the engine's proportional 18-place cost
+// allocation over settled notionals. Recomputing price*remaining quantity would
+// count unsettled sub-atto products as fees or gains.
+func remainingSpotPrincipal(p paper.Position, fills []paper.Fill, orders map[string]paper.Order) domain.Decimal {
+	principal := p.EntryPrice.Mul(p.RemainingQuantity).RoundFloor(18)
+	ordered := []paper.Fill{}
+	for _, f := range fills {
+		if f.PositionID == p.ID {
+			ordered = append(ordered, f)
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].ExecutedAt.Before(ordered[j].ExecutedAt) })
+	quantity := domain.Decimal{}
+	found := false
+	for _, f := range ordered {
+		action := orders[f.OrderID].Request.Action
+		if action == "open" && f.Notional.IsPositive() && f.Quantity.IsPositive() {
+			principal = f.Notional
+			quantity = f.Quantity
+			found = true
+			continue
+		}
+		if !found || action != "close" {
+			continue
+		}
+		if f.Quantity.Equal(quantity) {
+			principal = domain.Decimal{}
+			quantity = domain.Decimal{}
+			continue
+		}
+		if quantity.IsPositive() {
+			allocated := principal.Mul(f.Quantity).DivRound(quantity, 18)
+			principal = principal.Sub(allocated)
+			quantity = quantity.Sub(f.Quantity)
+		}
+	}
+	return principal
 }
