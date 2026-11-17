@@ -678,3 +678,5 @@ ACCOUNT-ID --output json`. Both support immutable strategy version, instrument
 and opening-date filters. See [trade metrics and equity](docs/m5-trade-report.md)
 for exact metric boundaries, partial exits, ledger reconciliation and unavailable
 valuation labels.
+
+Signal behavior and hypothetical success: `millionaire backtest signals RUN-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json`. Forward scope uses `millionaire report signals --scope forward-paper --account ACCOUNT-ID` with the same explicit rule flags. Read saved definitions/results with `millionaire report signals --saved REPORT-ID --output json`. See [signal report semantics and evidence](docs/m5-signal-report.md).

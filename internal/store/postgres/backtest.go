@@ -44,6 +44,8 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	id := hex.EncodeToString(random[:])
 	schema := "bt_" + id
 	report = backtest.Report{ID: id, Scope: "backtest", Status: "running", Manifest: backtest.NewManifest(in), Config: cfg, Signals: []strategy.Signal{}, Decisions: []paper.SignalDecision{}, Orders: []paper.Order{}, Fills: []paper.Fill{}, Positions: []paper.Position{}, Ledger: []paper.LedgerEntry{}, Warnings: []string{"OHLCV close model; no intrabar path is inferred", "Open positions and pending intents are retained at range end; final cash is not total equity", "Historical sample only; sample size and survivorship bias limit performance claims"}}
+	report.CandidatesAvailable = true
+	report.Candidates = []strategy.Candidate{}
 	report.Warnings = append(report.Warnings, quality...)
 	report.Warnings = append(report.Warnings, "Original provider observation clocks/revisions are retained in frozen inputs; signal source_observed_at uses the explicitly modeled replay view")
 	inputsJSON, _ := json.Marshal(in)
@@ -185,6 +187,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			if !evaluation.Ready {
 				report.Warnings = append(report.Warnings, "Strategy unready at "+ev.at.Format(time.RFC3339)+": "+evaluation.Reason)
 			}
+			report.Candidates = append(report.Candidates, evaluation.Candidates...)
 			report.Signals = append(report.Signals, evaluation.Signals...)
 			for _, signal := range evaluation.Signals {
 				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {

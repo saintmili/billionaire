@@ -42,17 +42,28 @@ type Signal struct {
 	Reason           string            `json:"reason"`
 	Evidence         map[string]string `json:"evidence"`
 }
+type Candidate struct {
+	ID         string            `json:"id"`
+	VersionID  string            `json:"version_id"`
+	Kind       string            `json:"kind"`
+	Instrument domain.Instrument `json:"instrument"`
+	Timeframe  domain.Timeframe  `json:"timeframe"`
+	ObservedAt time.Time         `json:"observed_at"`
+	Emitted    bool              `json:"emitted"`
+}
+
 type Evaluation struct {
-	EventID string   `json:"event_id"`
-	State   State    `json:"state"`
-	Ready   bool     `json:"ready"`
-	Reason  string   `json:"reason"`
-	Signals []Signal `json:"signals"`
+	Candidates []Candidate `json:"candidates"`
+	EventID    string      `json:"event_id"`
+	State      State       `json:"state"`
+	Ready      bool        `json:"ready"`
+	Reason     string      `json:"reason"`
+	Signals    []Signal    `json:"signals"`
 }
 
 func Plan(registry *Registry, version Version, instance Instance, event marketdata.Event, history []domain.Candle, prior State) (Evaluation, error) {
 	c := event.Candle
-	result := Evaluation{State: prior, Signals: []Signal{}}
+	result := Evaluation{State: prior, Signals: []Signal{}, Candidates: []Candidate{}}
 	if c == nil {
 		return result, errors.New("strategy evaluation requires a candle event")
 	}
@@ -127,10 +138,13 @@ func Plan(registry *Registry, version Version, instance Instance, event marketda
 		} else {
 			result.State.ExitTrue = condition
 		}
+		id := fmt.Sprintf("%x", sha256.Sum256([]byte(instance.ID+":"+result.EventID+":"+kind+":"+string(d.Direction))))
+		if condition {
+			result.Candidates = append(result.Candidates, Candidate{ID: id, VersionID: version.ID, Kind: kind, Instrument: instance.Instrument, Timeframe: d.Primary, ObservedAt: at, Emitted: emit})
+		}
 		if !emit {
 			continue
 		}
-		id := fmt.Sprintf("%x", sha256.Sum256([]byte(instance.ID+":"+result.EventID+":"+kind+":"+string(d.Direction))))
 		signal := Signal{ID: id, StrategyID: d.ID, VersionID: version.ID, InstanceID: instance.ID, EventID: result.EventID, Kind: kind, Direction: d.Direction, Instrument: instance.Instrument, Timeframe: d.Primary, ObservedAt: at, SourceObservedAt: c.ObservedAt.UTC(), CandleOpen: c.OpenTime, ProposedEntry: c.Close, RiskPercent: d.RiskPercent, Action: instance.Action, SourceReady: event.AllowsEntries && event.Kind != "recovered_candle", Reason: decision.Reason, Evidence: decision.Evidence}
 		if kind == "exit" {
 			signal.Reason = "exit rule matched"
