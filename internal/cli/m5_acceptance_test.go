@@ -111,6 +111,22 @@ func TestM5CLICombinedLinearAnalyticsFrozenExportAndTrainTest(t *testing.T) {
 	if rerun.ID == run.ID || rerun.AccountID == run.AccountID || rerun.Manifest != run.Manifest || rerun.Balance.String() != run.Balance.String() || rerunSignals.Outcomes[0].Status != "success" {
 		t.Fatal("frozen economics/success changed")
 	}
+	if len(rerun.Fills) != len(run.Fills) || backtest.Hash(rerun.Equity) != backtest.Hash(run.Equity) {
+		t.Fatal("frozen fills or sampled equity changed")
+	}
+	for i, original := range run.Fills {
+		repeated := rerun.Fills[i]
+		if !original.Price.Equal(repeated.Price) || !original.Quantity.Equal(repeated.Quantity) || !original.Fee.Equal(repeated.Fee) || !original.ExecutedAt.Equal(repeated.ExecutedAt) || original.ExitReason != repeated.ExitReason || original.Ambiguous != repeated.Ambiguous || original.Gap != repeated.Gap {
+			t.Fatalf("frozen economic fill changed: %+v %+v", original, repeated)
+		}
+	}
+	var repeatedMetrics analytics.Report
+	if e = json.Unmarshal(invoke("backtest", "trades", rerun.ID), &repeatedMetrics); e != nil {
+		t.Fatal(e)
+	}
+	if repeatedMetrics.ClosedTrades != trades.ClosedTrades || repeatedMetrics.OpenPositions != trades.OpenPositions || !repeatedMetrics.GrossPnL.Equal(trades.GrossPnL) || !repeatedMetrics.NetPnL.Equal(trades.NetPnL) || !repeatedMetrics.Fees.Equal(trades.Fees) || !repeatedMetrics.Funding.Equal(trades.Funding) || repeatedMetrics.Return.String() != trades.Return.String() || repeatedMetrics.MaximumDrawdown.String() != trades.MaximumDrawdown.String() {
+		t.Fatal("frozen trade metrics changed")
+	}
 	// Equal immutable assumptions and equal selected rules compare without changes.
 	var comparison backtest.Comparison
 	if e = json.Unmarshal(invoke("backtest", "compare", run.ID, rerun.ID), &comparison); e != nil {

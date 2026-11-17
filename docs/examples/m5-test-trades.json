@@ -1,0 +1,68 @@
+{
+  "run_id": "17d38421e5862bdbbaa50e71cc1a8084",
+  "cash_balance": "10000",
+  "ledger_cash_reconciled": true,
+  "isolated_deficit": "0",
+  "scope": "backtest",
+  "filter": {
+    "from": "0001-01-01T00:00:00Z",
+    "to": "0001-01-01T00:00:00Z"
+  },
+  "trades": [],
+  "closed_trades": 0,
+  "open_positions": 0,
+  "wins": 0,
+  "losses": 0,
+  "breakeven": 0,
+  "win_rate": null,
+  "loss_rate": null,
+  "breakeven_rate": null,
+  "gross_pnl": "0",
+  "net_pnl": "0",
+  "fees": "0",
+  "funding": "0",
+  "average_win": null,
+  "average_loss": null,
+  "expectancy": null,
+  "profit_factor": null,
+  "profit_factor_status": "no_trades",
+  "average_holding_seconds": null,
+  "equity": [
+    {
+      "at": "2026-01-01T00:21:00Z",
+      "equity": "10000",
+      "exposure": "0",
+      "leverage": "0",
+      "cash": "10000"
+    },
+    {
+      "at": "2026-01-01T00:21:00Z",
+      "equity": "10000",
+      "exposure": "0",
+      "leverage": "0",
+      "cash": "10000"
+    },
+    {
+      "at": "2026-01-01T00:22:00Z",
+      "equity": "10000",
+      "exposure": "0",
+      "leverage": "0",
+      "cash": "10000"
+    }
+  ],
+  "return": "0",
+  "maximum_drawdown": "0",
+  "maximum_drawdown_fraction": "0",
+  "valuation_status": "complete",
+  "ledger_total": "10000",
+  "ledger_fees": "0",
+  "ledger_funding": "0",
+  "warnings": [
+    "Gross/net totals include realized portions and charged entry costs of open positions; outcome rates and expectancy use closed lifecycles only",
+    "Ledger totals are account-wide cash movements including opening capital and collateral, not trade P&L",
+    "OHLCV close model; no intrabar path is inferred",
+    "Open positions and pending intents are retained at range end; final cash is not total equity",
+    "Historical sample only; sample size and survivorship bias limit performance claims",
+    "Original provider observation clocks/revisions are retained in frozen inputs; signal source_observed_at uses the explicitly modeled replay view"
+  ]
+}

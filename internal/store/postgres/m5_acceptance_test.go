@@ -173,7 +173,7 @@ func TestM5ReplayMatchesCompatibleNormalPaperEconomics(t *testing.T) {
 	}
 	defer o.Close()
 	signal := evaluation.Signals[0]
-	if signal.Stop.String() != r.Signals[0].Stop.String() {
+	if signal.ProposedEntry.String() != r.Signals[0].ProposedEntry.String() || signal.Stop.String() != r.Signals[0].Stop.String() {
 		t.Fatal("strategy observations disagree")
 	}
 	if _, e = o.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: signal.ObservedAt, Leverage: 2, FeeRate: "0.001", SlippageBPS: "0"}, cfg.Instrument, true); e != nil {
