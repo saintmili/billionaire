@@ -129,7 +129,10 @@ go test -race ./internal/analytics ./internal/store/postgres ./internal/cli \
 ```
 
 The full PostgreSQL suite passed in approximately 49 seconds; focused race
-checks passed for all three packages. The financial-precision regression also
+checks passed for all three packages. After merging the final ticket #18
+integration tip `a1abaeb` into this branch, `go vet ./...`, `git diff --check`
+and the focused race checks passed again, including all PostgreSQL/CLI
+`TestBacktest` cases (PostgreSQL 9.4 seconds, CLI 6.3 seconds). The financial-precision regression also
 verifies that an unsettled 36-place price-times-quantity product cannot offset
 an actually charged entry fee; remaining spot cost uses settled fill notional
 and the engine's 18-place allocation.
