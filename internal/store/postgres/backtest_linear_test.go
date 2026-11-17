@@ -69,3 +69,30 @@ func TestBacktestLinearSettlesPreFundingIntervalProtection(t *testing.T) {
 		t.Fatalf("exact loss100 fees17.9: %s", r.Balance)
 	}
 }
+
+func TestBacktestLinearPartialTargetThenFundingRetainsExposure(t *testing.T) {
+	s, cfg, bars := linearReplay(t)
+	cfg.Protection = paper.ProtectionConfig{TargetPrice: "12", TargetQuantity: "400", TrailActivation: "12", TrailDistance: "1"}
+	last := bars[len(bars)-1]
+	last.Low = spotDecimal("9")
+	last.Close = spotDecimal("12")
+	last.High = spotDecimal("13")
+	bars[len(bars)-1] = marketdata.Stamp(last)
+	cfg.Funding.Events[0].Price = spotDecimal("12")
+	r, e := s.RunBacktest(context.Background(), cfg, bars)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(r.Fills) != 2 || r.Fills[1].ExitReason != "take_profit" || r.Fills[1].Quantity.String() != "400" {
+		t.Fatalf("partial target: %+v", r.Fills)
+	}
+	if len(r.Funding) != 1 || len(r.Funding[0].Applications) != 1 || r.Funding[0].Applications[0].Payment.String() != "-72" {
+		t.Fatalf("remaining600 * mark12 * rate.01: %+v", r.Funding)
+	}
+	if r.Balance.String() != "8486.2" || r.Positions[0].ReservedMargin.String() != "2628" || r.Positions[0].RemainingQuantity.String() != "600" {
+		t.Fatalf("cash and reserved collateral: cash%s position%+v", r.Balance, r.Positions)
+	}
+	if r.FundingCoverage.Status != "complete" {
+		t.Fatal(r.FundingCoverage)
+	}
+}

@@ -22,6 +22,7 @@ var BuildRevision = "unavailable"
 const ExecutionModel = "spot-ohlcv-multiframe-next-open-phase-v2"
 
 type Config struct {
+	Protection      paper.ProtectionConfig    `json:"protection_overrides"`
 	Funding         FundingDataset            `json:"funding"`
 	Leverage        int                       `json:"leverage"`
 	AcknowledgeGaps bool                      `json:"acknowledge_gaps"`
@@ -101,6 +102,10 @@ func NewManifest(in Inputs) Manifest {
 	if in.Config.ClockMode == "recorded-close" {
 		m.Clock = "recorded closed-candle observations published at provider observation; later corrections publish without retroactive evaluation"
 	}
+	if in.Config.Instrument.Instrument.Market == domain.Linear {
+		m.Model = "linear-isolated-ohlcv-interval-funding-point-v1"
+		m.Clock += "; completed primary intervals settle before funding at their exclusive end; funding precedes decisions and open points; intrainterval and delayed funding unsupported"
+	}
 	m.Clock += "; publications after range end retained as provenance only; ordering v2: availability, publish all frames, primary interval protection, primary evaluation, next actual open; timeframe/open/revision tie break"
 	m.ReproducibilityHash = Hash(m)
 	return m
@@ -145,7 +150,7 @@ func (c Config) Validate(v strategy.Version) error {
 	if err := c.Risk.Validate(); err != nil {
 		return err
 	}
-	_, err := paper.PrepareOrder(paper.OrderRequest{RequestID: "validate", AccountID: "validate", Action: "open", Instrument: c.Instrument.Instrument, Side: string(v.Definition.Direction), Leverage: c.EffectiveLeverage(), Quantity: "risk", At: c.From, FeeRate: c.FeeRate, SlippageBPS: c.SlippageBPS}, c.Instrument)
+	_, err := paper.PrepareOrder(paper.OrderRequest{RequestID: "validate", AccountID: "validate", Action: "open", Instrument: c.Instrument.Instrument, Side: string(v.Definition.Direction), Leverage: c.EffectiveLeverage(), Quantity: "risk", StopPrice: c.Protection.StopPrice, TargetPrice: c.Protection.TargetPrice, TargetQuantity: c.Protection.TargetQuantity, TrailActivation: c.Protection.TrailActivation, TrailDistance: c.Protection.TrailDistance, At: c.From, FeeRate: c.FeeRate, SlippageBPS: c.SlippageBPS}, c.Instrument)
 	return err
 }
 

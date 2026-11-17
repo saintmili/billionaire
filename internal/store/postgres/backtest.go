@@ -225,7 +225,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			report.Candidates = append(report.Candidates, evaluation.Candidates...)
 			report.Signals = append(report.Signals, evaluation.Signals...)
 			for _, signal := range evaluation.Signals {
-				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, Leverage: cfg.EffectiveLeverage(), FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
+				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, Leverage: cfg.EffectiveLeverage(), Protection: &cfg.Protection, FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
 					return report, err
 				}
 			}

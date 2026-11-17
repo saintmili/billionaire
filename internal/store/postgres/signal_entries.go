@@ -105,6 +105,18 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 		if signal.Target != nil {
 			r.TargetPrice = signal.Target.String()
 		}
+		if request.Protection != nil {
+			c := *request.Protection
+			if c.StopPrice != "" {
+				r.StopPrice = c.StopPrice
+			}
+			if c.TargetPrice != "" {
+				r.TargetPrice = c.TargetPrice
+			}
+			r.TargetQuantity = c.TargetQuantity
+			r.TrailActivation = c.TrailActivation
+			r.TrailDistance = c.TrailDistance
+		}
 		order, e := paper.PrepareOrder(r, info)
 		if e != nil {
 			return d, e
