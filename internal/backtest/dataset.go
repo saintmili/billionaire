@@ -112,7 +112,7 @@ func Freeze(c Config, v strategy.Version, bars []domain.Candle) (Inputs, []strin
 					return Inputs{}, nil, errors.New("conflicting candle revisions at equal observation time")
 				}
 				if a.Revision == b.Revision {
-					if b.ObservedAt.After(a.ObservedAt) {
+					if c.ClockMode != "recorded-close" && b.ObservedAt.After(a.ObservedAt) {
 						unique[len(unique)-1] = b
 					}
 					continue
@@ -127,22 +127,23 @@ func Freeze(c Config, v strategy.Version, bars []domain.Candle) (Inputs, []strin
 	_, first := v.Definition.Primary.Bounds(c.From)
 	warnings := []string{}
 	for _, q := range queries {
-		byOpen := map[time.Time]bool{}
+		byOpen := map[time.Time]time.Time{}
 		for _, b := range unique {
 			if b.Timeframe == q.Timeframe {
-				if b.OpenTime.Before(c.From) && Availability(c, b).After(first) {
-					continue
+				at := Availability(c, b)
+				if previous, ok := byOpen[b.OpenTime]; !ok || at.Before(previous) {
+					byOpen[b.OpenTime] = at
 				}
-				byOpen[b.OpenTime] = true
 			}
 		}
 		for at := q.From; at.Before(q.To); {
 			_, end := q.Timeframe.Bounds(at)
-			if !byOpen[at] {
-				warm := at.Before(c.From)
-				if q.Timeframe != v.Definition.Primary {
-					warm = !end.After(first)
-				}
+			warm := at.Before(c.From)
+			if q.Timeframe != v.Definition.Primary {
+				warm = !end.After(first)
+			}
+			available, present := byOpen[at]
+			if !present || warm && available.After(first) {
 				if warm {
 					return Inputs{}, nil, fmt.Errorf("%w: %s %s", strategy.ErrWarmup, q.Timeframe, at.Format(time.RFC3339))
 				}

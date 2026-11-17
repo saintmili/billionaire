@@ -25,52 +25,18 @@ func (s *Store) RunBacktest(ctx context.Context, cfg backtest.Config, bars []dom
 	if err != nil {
 		return report, err
 	}
-	if err = cfg.Validate(v); err != nil {
-		return report, err
-	}
-	registry := strategy.DefaultRegistry()
-	warm, err := strategy.WarmupQueries(v.Definition, cfg.Instrument.Instrument, cfg.From, registry)
+	return s.RunFrozenBacktest(ctx, backtest.Inputs{Config: cfg, Version: v, Candles: bars})
+}
+
+// RunFrozenBacktest consumes the retained immutable version directly. It never
+// resolves the version or history from mutable upstream registries.
+func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (report backtest.Report, err error) {
+	in, quality, err := backtest.Freeze(inputs.Config, inputs.Version, inputs.Candles)
 	if err != nil {
 		return report, err
 	}
-	start := cfg.From
-	for _, w := range warm {
-		if w.Query.From.Before(start) {
-			start = w.Query.From
-		}
-	}
-	frozen := []domain.Candle{}
-	for _, c := range bars {
-		if c.Instrument == cfg.Instrument.Instrument && c.Timeframe == cfg.Timeframes[0] && !c.OpenTime.Before(start) && !c.EndTime.After(cfg.To) {
-			frozen = append(frozen, c)
-		}
-	}
-	sort.Slice(frozen, func(i, j int) bool { return frozen[i].OpenTime.Before(frozen[j].OpenTime) })
-	if err = validateCandles(frozen); err != nil {
-		return report, err
-	}
-	unique := []domain.Candle{}
-	for _, c := range frozen {
-		if len(unique) > 0 && unique[len(unique)-1].OpenTime.Equal(c.OpenTime) {
-			if backtest.Hash(unique[len(unique)-1]) != backtest.Hash(c) {
-				return report, errors.New("conflicting fixture candle revisions")
-			}
-			continue
-		}
-		unique = append(unique, c)
-	}
-	frozen = unique
-	expected := start
-	for _, c := range frozen {
-		if !c.OpenTime.Equal(expected) {
-			return report, strategy.ErrWarmup
-		}
-		expected = c.EndTime
-	}
-	if len(frozen) == 0 || !expected.Equal(cfg.To) {
-		return report, strategy.ErrWarmup
-	}
-	in := backtest.Inputs{Config: cfg, Version: v, Candles: frozen}
+	cfg, v, frozen := in.Config, in.Version, in.Candles
+	registry := strategy.DefaultRegistry()
 	var random [16]byte
 	if _, err = rand.Read(random[:]); err != nil {
 		return report, err
@@ -78,6 +44,8 @@ func (s *Store) RunBacktest(ctx context.Context, cfg backtest.Config, bars []dom
 	id := hex.EncodeToString(random[:])
 	schema := "bt_" + id
 	report = backtest.Report{ID: id, Scope: "backtest", Status: "running", Manifest: backtest.NewManifest(in), Config: cfg, Signals: []strategy.Signal{}, Decisions: []paper.SignalDecision{}, Orders: []paper.Order{}, Fills: []paper.Fill{}, Positions: []paper.Position{}, Ledger: []paper.LedgerEntry{}, Warnings: []string{"OHLCV close model; no intrabar path is inferred", "Open positions and pending intents are retained at range end; final cash is not total equity", "Fixture sample only; no statistical performance claim"}}
+	report.Warnings = append(report.Warnings, quality...)
+	report.Warnings = append(report.Warnings, "Original provider observation clocks/revisions are retained in frozen inputs; signal source_observed_at uses the explicitly modeled replay view")
 	inputsJSON, _ := json.Marshal(in)
 	manifestJSON, _ := json.Marshal(report.Manifest)
 	resultJSON, _ := json.Marshal(report)
@@ -127,41 +95,100 @@ func (s *Store) RunBacktest(ctx context.Context, cfg backtest.Config, bars []dom
 		return report, err
 	}
 	defer owner.Close()
+
+	type replayEvent struct {
+		at   time.Time
+		open bool
+		raw  domain.Candle
+	}
+	events := []replayEvent{}
 	for _, raw := range frozen {
+		events = append(events, replayEvent{at: backtest.Availability(cfg, raw), raw: raw})
+		if raw.Timeframe == v.Definition.Primary && !raw.OpenTime.Before(cfg.From) {
+			events = append(events, replayEvent{at: raw.OpenTime, open: true, raw: raw})
+		}
+	}
+	sort.Slice(events, func(i, j int) bool {
+		a, b := events[i], events[j]
+		if !a.at.Equal(b.at) {
+			return a.at.Before(b.at)
+		}
+		if a.open != b.open {
+			return !a.open
+		}
+		if a.open && !a.raw.ObservedAt.Equal(b.raw.ObservedAt) {
+			return a.raw.ObservedAt.Before(b.raw.ObservedAt)
+		}
+		if a.raw.Timeframe != b.raw.Timeframe {
+			return a.raw.Timeframe < b.raw.Timeframe
+		}
+		if !a.raw.OpenTime.Equal(b.raw.OpenTime) {
+			return a.raw.OpenTime.Before(b.raw.OpenTime)
+		}
+		return a.raw.Revision < b.raw.Revision
+	})
+	evaluated := map[time.Time]bool{}
+	opened := map[time.Time]bool{}
+	for i := 0; i < len(events); {
 		if err = ctx.Err(); err != nil {
 			return report, err
 		}
-		c := raw
-		c.ObservedAt = c.EndTime // virtual availability; original provenance is retained in Inputs
-		if c.OpenTime.Before(cfg.From) {
+		j := i + 1
+		for j < len(events) && events[j].at.Equal(events[i].at) {
+			j++
+		}
+		// Publication phase: every completed timeframe is visible before evaluation.
+		for _, ev := range events[i:j] {
+			if ev.open {
+				continue
+			}
+			c := ev.raw
+			c.ObservedAt = ev.at
 			if _, err = isolated.SaveCandles(ctx, []domain.Candle{c}); err != nil {
 				return report, err
 			}
-			continue
 		}
-		gate := paper.ExecutionGate{ReplayNextOpen: true, Now: c.OpenTime, StaleAfter: 24 * time.Hour, Enabled: true}
-		open := paper.Observation{Phase: "next_open", ID: "open-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Open, ObservedAt: c.OpenTime, AvailableAt: c.OpenTime, Ready: true}
-		if _, err = owner.Observe(ctx, open, gate); err != nil {
-			return report, err
+		for _, ev := range events[i:j] {
+			if ev.open || ev.raw.Timeframe != v.Definition.Primary || ev.raw.OpenTime.Before(cfg.From) || evaluated[ev.raw.OpenTime] {
+				continue
+			}
+			evaluated[ev.raw.OpenTime] = true
+			c := ev.raw
+			c.ObservedAt = ev.at
+			gate := paper.ExecutionGate{ReplayNextOpen: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}
+			close := paper.Observation{ID: "close-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Close, ObservedAt: ev.at, AvailableAt: ev.at, Ready: true, Bar: &paper.PriceBar{Start: c.OpenTime, End: c.EndTime, Open: c.Open, High: c.High, Low: c.Low, Close: c.Close}}
+			if _, err = owner.Observe(ctx, close, gate); err != nil {
+				return report, err
+			}
+			evaluation, e := isolated.EvaluateStrategyEvent(ctx, binding.ID, marketdata.Event{Kind: "candle", Candle: &c, AvailableAt: ev.at, AllowsEntries: true}, registry)
+			if e != nil {
+				return report, e
+			}
+			if !evaluation.Ready {
+				report.Warnings = append(report.Warnings, "Strategy unready at "+ev.at.Format(time.RFC3339)+": "+evaluation.Reason)
+			}
+			report.Signals = append(report.Signals, evaluation.Signals...)
+			for _, signal := range evaluation.Signals {
+				if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: ev.at, FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
+					return report, err
+				}
+			}
 		}
-		gate.Now = c.EndTime
-		close := paper.Observation{ID: "close-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Close, ObservedAt: c.EndTime, AvailableAt: c.EndTime, Ready: true, Bar: &paper.PriceBar{Start: c.OpenTime, End: c.EndTime, Open: c.Open, High: c.High, Low: c.Low, Close: c.Close}}
-		if _, err = owner.Observe(ctx, close, gate); err != nil {
-			return report, err
-		}
-		if _, err = isolated.SaveCandles(ctx, []domain.Candle{c}); err != nil {
-			return report, err
-		}
-		evaluation, e := isolated.EvaluateStrategyEvent(ctx, binding.ID, marketdata.Event{Kind: "candle", Candle: &c, AvailableAt: c.EndTime, AllowsEntries: true}, registry)
-		if e != nil {
-			return report, e
-		}
-		report.Signals = append(report.Signals, evaluation.Signals...)
-		for _, signal := range evaluation.Signals {
-			if _, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: signal.ID, At: c.EndTime, FeeRate: cfg.FeeRate, SlippageBPS: cfg.SlippageBPS}, cfg.Instrument, true); err != nil {
+		// Only actual primary opens drive pending fills. Corrections never fabricate
+		// another open, evaluate a past primary event or apply its interval twice.
+		for _, ev := range events[i:j] {
+			if !ev.open || opened[ev.raw.OpenTime] {
+				continue
+			}
+			opened[ev.raw.OpenTime] = true
+			c := ev.raw
+			gate := paper.ExecutionGate{ReplayNextOpen: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}
+			open := paper.Observation{Phase: "next_open", ID: "open-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Open, ObservedAt: ev.at, AvailableAt: ev.at, Ready: true}
+			if _, err = owner.Observe(ctx, open, gate); err != nil {
 				return report, err
 			}
 		}
+		i = j
 	}
 	if report.Orders, err = isolated.PaperOrders(ctx, account.ID); err != nil {
 		return report, err

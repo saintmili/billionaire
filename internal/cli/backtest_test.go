@@ -69,6 +69,18 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 	if e = os.Remove(fixturePath); e != nil {
 		t.Fatal(e)
 	}
+
+	b, e = invoke("backtest", "run", "--strategy", added.Version.ID, "--provider", "fixture", "--cached", "--from", "2026-01-01T00:20:00Z", "--to", "2026-01-01T00:22:00Z")
+	var cached backtest.Report
+	if e != nil || json.Unmarshal(b, &cached) != nil || cached.Balance.String() != r.Balance.String() || cached.Config.Source != "cache-only" {
+		t.Fatalf("cache-only after fixture removal: %s %v", b, e)
+	}
+	if _, e = invoke("backtest", "run", "--source-run", r.ID, "--cached"); e == nil {
+		t.Fatal("source-run input flag accepted")
+	}
+	if _, e = invoke("backtest", "run", "--strategy", added.Version.ID, "--provider", "fixture", "--cached", "--symbol", "ETH/USDT", "--from", "2026-01-01T00:20:00Z", "--to", "2026-01-01T00:22:00Z"); e == nil {
+		t.Fatal("missing cached metadata accepted")
+	}
 	b, e = invoke("backtest", "run", "--source-run", r.ID)
 	if e != nil {
 		t.Fatal(e)
