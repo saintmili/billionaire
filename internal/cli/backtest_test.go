@@ -73,6 +73,33 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 	if json.Unmarshal(b, &saved) != nil || saved.ID != r.ID || saved.Balance.String() != r.Balance.String() {
 		t.Fatalf("saved: %s", b)
 	}
+
+	t.Run("explicit fixture selection is independent of populated cache", func(t *testing.T) {
+		var changed fixture.Dataset
+		if e := json.Unmarshal(fixtureBytes, &changed); e != nil {
+			t.Fatal(e)
+		}
+		for i := range changed.Candles {
+			c := &changed.Candles[i]
+			if c.Instrument.Market == domain.Spot && c.Instrument.ID == "BTCUSDT" && c.OpenTime.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+				c.Close, _ = domain.ParseDecimal("9.6")
+				c.ObservedAt = c.ObservedAt.Add(time.Hour)
+			}
+		}
+		encoded, e := json.Marshal(changed)
+		if e != nil {
+			t.Fatal(e)
+		}
+		changedPath := filepath.Join(t.TempDir(), "changed.json")
+		if e = os.WriteFile(changedPath, encoded, 0600); e != nil {
+			t.Fatal(e)
+		}
+		output, e := invoke("backtest", "run", "--strategy", added.Version.ID, "--provider", "fixture", "--fixture", changedPath, "--from", "2026-01-01T00:20:00Z", "--to", "2026-01-01T00:22:00Z")
+		var selected backtest.Report
+		if e != nil || json.Unmarshal(output, &selected) != nil || selected.Manifest.DatasetHash == r.Manifest.DatasetHash {
+			t.Fatalf("selected fixture silently replaced by cache: %s %v", output, e)
+		}
+	})
 	if e = os.Remove(fixturePath); e != nil {
 		t.Fatal(e)
 	}
