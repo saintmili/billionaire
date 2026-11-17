@@ -57,10 +57,12 @@ type Observation struct {
 type ExecutionGate struct {
 	// ReplayNextOpen opts into equal-boundary opens inside an isolated replay only.
 	ReplayNextOpen bool
-	RiskQuantity   string
-	Now            time.Time
-	StaleAfter     time.Duration
-	Enabled        bool
+	// ReplayProtectionOnly settles protective exits without consuming pending intents.
+	ReplayProtectionOnly bool
+	RiskQuantity         string
+	Now                  time.Time
+	StaleAfter           time.Duration
+	Enabled              bool
 }
 
 type Fill struct {

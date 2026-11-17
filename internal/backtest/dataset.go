@@ -104,6 +104,7 @@ func Freeze(c Config, v strategy.Version, bars []domain.Candle) (Inputs, []strin
 		return a.Revision < b.Revision
 	})
 	unique := []domain.Candle{}
+	seenRevisions := map[string]bool{}
 	for _, b := range selected {
 		if len(unique) > 0 {
 			a := unique[len(unique)-1]
@@ -117,11 +118,16 @@ func Freeze(c Config, v strategy.Version, bars []domain.Candle) (Inputs, []strin
 					}
 					continue
 				}
+				revisionKey := string(b.Timeframe) + ":" + b.OpenTime.UTC().Format(time.RFC3339Nano) + ":" + b.Revision
+				if seenRevisions[revisionKey] {
+					return Inputs{}, nil, errors.New("returning historical revision requires unique recorded update identities; unsupported")
+				}
 				if c.ClockMode != "recorded-close" {
 					return Inputs{}, nil, errors.New("multiple known revisions require recorded-close availability")
 				}
 			}
 		}
+		seenRevisions[string(b.Timeframe)+":"+b.OpenTime.UTC().Format(time.RFC3339Nano)+":"+b.Revision] = true
 		unique = append(unique, b)
 	}
 	_, first := v.Definition.Primary.Bounds(c.From)

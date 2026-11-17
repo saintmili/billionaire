@@ -108,6 +108,12 @@ func TestRecordedCloseRevisionClockRetainsFirstAvailability(t *testing.T) {
 	if _, _, e = backtest.Freeze(cfg, v, append(append(bars, corrected), conflict)); e == nil {
 		t.Fatal("same-clock contradictory revisions accepted")
 	}
+
+	repeated := bars[0]
+	repeated.ObservedAt = cfg.To.Add(time.Second)
+	if _, _, e = backtest.Freeze(cfg, v, append(append(bars, corrected), repeated)); e == nil {
+		t.Fatal("returning revision accepted without unique update identity")
+	}
 	cfg.ClockMode = "close"
 	if _, _, e = backtest.Freeze(cfg, v, append(bars, corrected)); e == nil {
 		t.Fatal("known later correction silently backdated")

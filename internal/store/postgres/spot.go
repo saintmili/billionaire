@@ -116,7 +116,7 @@ func submitOrder(ctx context.Context, tx pgx.Tx, order paper.Order, enabled bool
 // for one delivered price together. A failed event remains safely retryable.
 func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation, gate paper.ExecutionGate) (paper.ObservationResult, error) {
 	result := paper.ObservationResult{ObservationID: observation.ID, Orders: []paper.Order{}}
-	if (observation.Phase != "" || gate.ReplayNextOpen) && (o.namespace == "" || !gate.ReplayNextOpen) {
+	if (observation.Phase != "" || gate.ReplayNextOpen || gate.ReplayProtectionOnly) && (o.namespace == "" || !gate.ReplayNextOpen) {
 		return result, errors.New("replay event phases require an isolated backtest execution context")
 	}
 	if err := observation.Validate(); err != nil {
@@ -198,6 +198,9 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 			return orders[i].Request.At.Before(orders[j].Request.At)
 		})
 		for _, order := range orders {
+			if gate.ReplayProtectionOnly {
+				continue
+			}
 			var balanceText string
 			if err := tx.QueryRow(ctx, "SELECT balance::text FROM millionaire.paper_accounts WHERE id=$1 FOR UPDATE", order.Request.AccountID).Scan(&balanceText); err != nil {
 				return result, safeError(ctx, ErrUnavailable)

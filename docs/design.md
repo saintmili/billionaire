@@ -209,3 +209,5 @@ This table summarizes the baseline for navigation, including the approved web sc
 ## Backtest execution isolation
 
 The M5 run/report implementation reuses existing PostgreSQL strategy, risk and execution services inside a retained per-run schema. Main-schema records retain frozen inputs/manifests and results. [ADR 0006](adr/0006-backtest-execution-isolation.md) records the isolation tradeoff, privilege/retention consequences and SQL namespace boundary; [ticket #17 evidence](m5-spot-backtest-report.md) documents the initial spot fixture model.
+
+Historical selection and multi-timeframe availability extend that boundary through `backtest.Queries`/`Freeze`, cached metadata/candle reads and shared synchronization. Replay publishes all same-clock timeframes before primary evaluation, permits pending execution only on actual primary opens, and preserves exact source observations separately from modeled close availability. See [ticket #18 evidence and limitations](m5-historical-replay-report.md).

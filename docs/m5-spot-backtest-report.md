@@ -1,5 +1,7 @@
 # M5 spot fixture backtest — ticket #17
 
+This records the initial #17 boundary; [ticket #18](m5-historical-replay-report.md) supersedes its single-timeframe/fixture-only selection limits.
+
 Ticket #17 supplies the persisted run-to-report path. M5 remains in progress;
 #18–#23 own historical datasets, linear execution, analytics, comparison/export
 and combined acceptance. The pending M2 actual-host gate remains in force.

@@ -19,10 +19,11 @@ import (
 // BuildRevision may be set by release builds with -ldflags -X.
 var BuildRevision = "unavailable"
 
-const ExecutionModel = "spot-ohlcv-close-next-open-phase-v1"
+const ExecutionModel = "spot-ohlcv-multiframe-next-open-phase-v2"
 
 type Config struct {
 	AcknowledgeGaps bool                      `json:"acknowledge_gaps"`
+	SourceURL       string                    `json:"source_url,omitempty"`
 	Source          string                    `json:"dataset_source,omitempty"`
 	ClockMode       string                    `json:"clock_mode,omitempty"`
 	VersionID       string                    `json:"strategy_version"`
@@ -93,7 +94,7 @@ func NewManifest(in Inputs) Manifest {
 	if in.Config.ClockMode == "recorded-close" {
 		m.Clock = "recorded closed-candle observations published at provider observation; later corrections publish without retroactive evaluation"
 	}
-	m.Clock += "; ordering v2: availability, publish all frames, primary interval protection, primary evaluation, next actual open; timeframe/open/revision tie break"
+	m.Clock += "; publications after range end retained as provenance only; ordering v2: availability, publish all frames, primary interval protection, primary evaluation, next actual open; timeframe/open/revision tie break"
 	m.ReproducibilityHash = Hash(m)
 	return m
 }

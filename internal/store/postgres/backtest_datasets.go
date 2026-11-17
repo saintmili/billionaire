@@ -55,6 +55,23 @@ func (s *Store) SelectBacktestDataset(ctx context.Context, cfg backtest.Config, 
 	}
 	bars := []domain.Candle{}
 	for _, q := range queries {
+		if p != nil && cfg.Instrument.Instrument.Provider == "fixture" {
+			// A fixture path selects an exact offline dataset, independent of
+			// other files that happen to share fixture instrument identities.
+			selected, e := p.History(ctx, q)
+			if e != nil {
+				return backtest.Inputs{}, e
+			}
+			if e = s.SaveInstrument(ctx, cfg.Instrument); e != nil {
+				return backtest.Inputs{}, e
+			}
+			if _, e = s.SaveCandles(ctx, selected); e != nil {
+				return backtest.Inputs{}, e
+			}
+			bars = append(bars, selected...)
+			continue
+		}
+
 		if syncer != nil {
 			_, e = syncer.Backfill(ctx, q, refresh)
 			var gap *marketdata.GapError
