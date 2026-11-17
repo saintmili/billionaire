@@ -143,3 +143,21 @@ forward ownership, balances, orders, signals and kill switch.
 
 Final checks are recorded below after execution. This slice does not validate a
 live venue, supply linear funding, claim intrabar equivalence or close M5.
+
+Verified 2026-11-17 against the provided disposable PostgreSQL server, using
+`MILLIONAIRE_TEST_DATABASE_URL` and `GOCACHE=/tmp/billionaire-go-cache`:
+
+- `go test ./...` — passed after the final fixture-selection correction;
+  PostgreSQL package 48.187s, CLI package 13.125s.
+- `go test -race ./internal/backtest ./internal/store/postgres ./internal/cli -run 'TestBacktest|TestFreeze|TestRecorded' -count=1`
+  — passed (1.058s / 6.865s / 6.765s).
+- `go vet ./...` — passed.
+- `go build -o /tmp/billionaire-ticket18 ./cmd/millionaire`, followed by
+  `backtest run --help` — passed; selection, cache, gaps, clock and risk flags
+  are present.
+- `git diff --check` — passed. The assigned branch descends from and was merged
+  with the current `integration/m5-backtesting-analytics` tip before handoff.
+
+No live venue request, tracker mutation, push, PR, daemon or journal delivery was
+performed. Shared analytics helper commits from #20 were incorporated with its
+owner's agreement; #20 retains ownership of metrics and reporting commands.
