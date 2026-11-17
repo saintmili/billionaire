@@ -150,9 +150,104 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 		if e != nil || backtest.Hash(retained) != backtest.Hash(in) {
 			t.Fatal("provider correction changed frozen inputs", e)
 		}
-		rerun, e := s.RunBacktest(ctx, in.Config, in.Candles)
+		rerun, e := s.RunFrozenBacktest(ctx, in)
 		if e != nil || rerun.Balance.String() != r.Balance.String() {
 			t.Fatal("frozen rerun changed", e)
+		}
+	})
+
+	t.Run("cache-only selection retains metadata and exact source payloads", func(t *testing.T) {
+		if e := s.SaveInstrument(ctx, info); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := s.SaveCandles(ctx, bars); e != nil {
+			t.Fatal(e)
+		}
+		metadata, e := s.InstrumentInfo(ctx, info.Instrument)
+		if e != nil || backtest.Hash(metadata) != backtest.Hash(info) {
+			t.Fatal("cached metadata", e)
+		}
+		selected, e := s.SelectBacktestDataset(ctx, cfg, nil, false)
+		if e != nil || len(selected.Candles) != 22 {
+			t.Fatal("cached selection", e)
+		}
+		missing := info.Instrument
+		missing.ID = "UNKNOWN"
+		if _, e = s.InstrumentInfo(ctx, missing); e == nil {
+			t.Fatal("missing metadata accepted")
+		}
+	})
+
+	t.Run("higher frame published at primary boundary without future leakage", func(t *testing.T) {
+		multi := d
+		multi.Timeframes = []domain.Timeframe{"1m", "5m"}
+		multi.Implementation = "rules"
+		multi.Parameters = map[string]string{}
+		threshold := "10"
+		multi.Entry = &strategy.Rule{Op: "gt", Left: strategy.Value{Field: "close", Timeframe: "5m"}, Right: strategy.Value{Constant: &threshold}}
+		mv, e := s.AddStrategyVersion(ctx, multi, strategy.DefaultRegistry())
+		if e != nil {
+			t.Fatal(e)
+		}
+		mc := cfg
+		mc.VersionID = mv.ID
+		mc.Timeframes = []domain.Timeframe{"5m", "1m"}
+		mc.From = from.Add(-2 * time.Minute)
+		higher, e := p.History(ctx, marketdata.Query{Instrument: info.Instrument, Timeframe: "5m", From: from.Add(-10 * time.Minute), To: from})
+		if e != nil {
+			t.Fatal(e)
+		}
+		// Latest higher candle closes at 00:20 with a deliberately strong close.
+		higher[len(higher)-1].Close = spotDecimal("11")
+		higher[len(higher)-1].High = spotDecimal("12")
+		higher[len(higher)-1] = marketdata.Stamp(higher[len(higher)-1])
+		selected := append(append([]domain.Candle{}, bars...), higher...)
+		result, e := s.RunBacktest(ctx, mc, selected)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if len(result.Signals) != 1 || !result.Signals[0].ObservedAt.Equal(from) {
+			t.Fatalf("higher close must be visible at 00:20, not earlier: %+v", result.Signals)
+		}
+		// Reordering frames, events and duplicates cannot change the selected data.
+		for i, j := 0, len(selected)-1; i < j; i, j = i+1, j-1 {
+			selected[i], selected[j] = selected[j], selected[i]
+		}
+		selected = append(selected, selected[0])
+		mc.Timeframes = []domain.Timeframe{"1m", "5m"}
+		again, e := s.RunBacktest(ctx, mc, selected)
+		if e != nil || again.Manifest.DatasetHash != result.Manifest.DatasetHash || again.Balance.String() != result.Balance.String() {
+			t.Fatal("unordered input changes replay", e)
+		}
+	})
+
+	t.Run("frozen version remains runnable without upstream version", func(t *testing.T) {
+		frozen, e := s.BacktestInputs(ctx, r.ID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		frozen.Version.Definition.Name = "Retained only in this frozen dataset"
+		frozen.Version.ID = strategy.ContentHash(frozen.Version.Definition)
+		frozen.Config.VersionID = frozen.Version.ID
+		// This immutable version has never been registered in the upstream store.
+		result, e := s.RunFrozenBacktest(ctx, frozen)
+		if e != nil || result.Balance.String() != r.Balance.String() {
+			t.Fatal("frozen version consulted upstream", e)
+		}
+	})
+	t.Run("acknowledged gap has no invented open or ready strategy", func(t *testing.T) {
+		gap := append(append([]domain.Candle{}, bars[:20]...), bars[21:]...)
+		if _, e := s.RunBacktest(ctx, cfg, gap); e == nil {
+			t.Fatal("unacknowledged gap accepted")
+		}
+		acknowledged := cfg
+		acknowledged.AcknowledgeGaps = true
+		result, e := s.RunBacktest(ctx, acknowledged, gap)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if len(result.Fills) != 0 || len(result.Signals) != 0 || len(result.Warnings) < 4 {
+			t.Fatalf("gap fabricated execution: %+v", result)
 		}
 	})
 	t.Run("end of range retains last signal pending", func(t *testing.T) {
