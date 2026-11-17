@@ -79,6 +79,10 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 			t.Fatal("forward owner accepted replay phase")
 		}
 	}
+
+	if _, e := owner.Observe(ctx, paper.Observation{ID: "forged-close-phase", Instrument: info.Instrument, Source: "fixture", Price: spotDecimal("9"), ObservedAt: from, AvailableAt: from, Ready: true}, paper.ExecutionGate{ReplayProtectionOnly: true, Now: from, StaleAfter: time.Hour, Enabled: true}); e == nil {
+		t.Fatal("forward owner accepted replay protection-only gate")
+	}
 	if err = s.SetKillSwitch(ctx, true); err != nil {
 		t.Fatal(err)
 	}
@@ -206,6 +210,71 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 		}
 	})
 
+	t.Run("recorded higher correction remains absent before availability", func(t *testing.T) {
+		multi := d
+		multi.Implementation = "rules"
+		multi.Parameters = map[string]string{}
+		multi.Timeframes = []domain.Timeframe{"1m", "5m"}
+		threshold := "10"
+		multi.Entry = &strategy.Rule{Op: "gt", Left: strategy.Value{Field: "close", Timeframe: "5m"}, Right: strategy.Value{Constant: &threshold}}
+		mv, e := s.AddStrategyVersion(ctx, multi, strategy.DefaultRegistry())
+		if e != nil {
+			t.Fatal(e)
+		}
+		mc := cfg
+		mc.VersionID = mv.ID
+		mc.Timeframes = []domain.Timeframe{"1m", "5m"}
+		mc.From = from.Add(-2 * time.Minute)
+		mc.ClockMode = "recorded-close"
+		higher, e := p.History(ctx, marketdata.Query{Instrument: info.Instrument, Timeframe: "5m", From: from.Add(-10 * time.Minute), To: from})
+		if e != nil {
+			t.Fatal(e)
+		}
+		selected := append(append([]domain.Candle{}, bars...), higher...)
+		for i := range selected {
+			selected[i].ObservedAt = selected[i].EndTime
+		}
+		corrected := higher[len(higher)-1]
+		corrected.Close = spotDecimal("11")
+		corrected.High = spotDecimal("12")
+		corrected.ObservedAt = from.Add(time.Minute)
+		corrected = marketdata.Stamp(corrected)
+		selected = append(selected, corrected)
+		result, e := s.RunBacktest(ctx, mc, selected)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if len(result.Signals) != 1 || !result.Signals[0].ObservedAt.Equal(from.Add(time.Minute)) {
+			t.Fatalf("correction leaked before its recorded availability: %+v", result.Signals)
+		}
+	})
+
+	t.Run("late close cannot fill an entry at a later close or outside range", func(t *testing.T) {
+		recorded := append([]domain.Candle{}, bars...)
+		for i := range recorded {
+			recorded[i].ObservedAt = recorded[i].EndTime
+		}
+		recorded[20].ObservedAt = from.Add(90 * time.Second)
+		recorded[21].Close = spotDecimal("9.8")
+		recorded[21] = marketdata.Stamp(recorded[21])
+		mc := cfg
+		mc.ClockMode = "recorded-close"
+		result, e := s.RunBacktest(ctx, mc, recorded)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if len(result.Fills) != 0 || len(result.Orders) != 1 || result.Orders[0].Status != "pending" {
+			t.Fatalf("late close consumed intent without next open: %+v", result.Orders)
+		}
+		recorded[20].ObservedAt = cfg.To.Add(time.Minute)
+		result, e = s.RunBacktest(ctx, mc, recorded)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if len(result.Signals) != 0 || len(result.Fills) != 0 {
+			t.Fatal("post-range publication traded")
+		}
+	})
 	t.Run("frozen version remains runnable without upstream version", func(t *testing.T) {
 		frozen, e := s.BacktestInputs(ctx, r.ID)
 		if e != nil {
@@ -271,6 +340,20 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 		}
 		if result, e := s.RunBacktest(ctx, cfg, bars[1:]); e == nil || result.ID != "" {
 			t.Fatal("missing warmup executed")
+		}
+	})
+
+	t.Run("OHLCV cannot reproduce update mode", func(t *testing.T) {
+		update := d
+		update.Evaluation = strategy.OnUpdate
+		uv, e := s.AddStrategyVersion(ctx, update, strategy.DefaultRegistry())
+		if e != nil {
+			t.Fatal(e)
+		}
+		unsupported := cfg
+		unsupported.VersionID = uv.ID
+		if result, e := s.RunBacktest(ctx, unsupported, bars); e == nil || result.ID != "" {
+			t.Fatal("OHLCV update-mode replay accepted")
 		}
 	})
 	t.Run("duplicate delivery and changed assumptions", func(t *testing.T) {

@@ -43,7 +43,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	}
 	id := hex.EncodeToString(random[:])
 	schema := "bt_" + id
-	report = backtest.Report{ID: id, Scope: "backtest", Status: "running", Manifest: backtest.NewManifest(in), Config: cfg, Signals: []strategy.Signal{}, Decisions: []paper.SignalDecision{}, Orders: []paper.Order{}, Fills: []paper.Fill{}, Positions: []paper.Position{}, Ledger: []paper.LedgerEntry{}, Warnings: []string{"OHLCV close model; no intrabar path is inferred", "Open positions and pending intents are retained at range end; final cash is not total equity", "Fixture sample only; no statistical performance claim"}}
+	report = backtest.Report{ID: id, Scope: "backtest", Status: "running", Manifest: backtest.NewManifest(in), Config: cfg, Signals: []strategy.Signal{}, Decisions: []paper.SignalDecision{}, Orders: []paper.Order{}, Fills: []paper.Fill{}, Positions: []paper.Position{}, Ledger: []paper.LedgerEntry{}, Warnings: []string{"OHLCV close model; no intrabar path is inferred", "Open positions and pending intents are retained at range end; final cash is not total equity", "Historical sample only; sample size and survivorship bias limit performance claims"}}
 	report.Warnings = append(report.Warnings, quality...)
 	report.Warnings = append(report.Warnings, "Original provider observation clocks/revisions are retained in frozen inputs; signal source_observed_at uses the explicitly modeled replay view")
 	inputsJSON, _ := json.Marshal(in)
@@ -114,7 +114,11 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	}
 	events := []replayEvent{}
 	for _, raw := range frozen {
-		events = append(events, replayEvent{at: backtest.Availability(cfg, raw), raw: raw})
+		if at := backtest.Availability(cfg, raw); !at.After(cfg.To) {
+			events = append(events, replayEvent{at: at, raw: raw})
+		} else {
+			report.Warnings = append(report.Warnings, "Publication after range retained as provenance only: "+string(raw.Timeframe)+" "+raw.OpenTime.Format(time.RFC3339))
+		}
 		if raw.Timeframe == v.Definition.Primary && !raw.OpenTime.Before(cfg.From) {
 			events = append(events, replayEvent{at: raw.OpenTime, open: true, raw: raw})
 		}
@@ -166,7 +170,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 			evaluated[ev.raw.OpenTime] = true
 			c := ev.raw
 			c.ObservedAt = ev.at
-			gate := paper.ExecutionGate{ReplayNextOpen: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}
+			gate := paper.ExecutionGate{ReplayNextOpen: true, ReplayProtectionOnly: true, Now: ev.at, StaleAfter: 24 * time.Hour, Enabled: true}
 			close := paper.Observation{ID: "close-" + c.Revision, Instrument: c.Instrument, Source: c.Source, Price: c.Close, ObservedAt: ev.at, AvailableAt: ev.at, Ready: true, Bar: &paper.PriceBar{Start: c.OpenTime, End: c.EndTime, Open: c.Open, High: c.High, Low: c.Low, Close: c.Close}}
 			if _, err = owner.Observe(ctx, close, gate); err != nil {
 				return report, err

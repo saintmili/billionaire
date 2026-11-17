@@ -4,7 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/saintmili/billionaire/internal/domain"
+	"github.com/saintmili/billionaire/internal/marketdata"
+	"github.com/saintmili/billionaire/internal/marketdata/fixture"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"encoding/json"
@@ -92,6 +99,64 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 	if _, e = invoke("backtest", "run", "--source-run", r.ID, "--capital", "10"); e == nil {
 		t.Fatal("conflicting frozen inputs accepted")
 	}
+
+	t.Run("public historical selection and network-free cached replay", func(t *testing.T) {
+		source, e := fixture.Open("../../testdata/market/m3.json")
+		if e != nil {
+			t.Fatal(e)
+		}
+		metadata, e := source.Instrument(context.Background(), domain.Spot, "BTC/USDT")
+		if e != nil {
+			t.Fatal(e)
+		}
+		bars, e := source.History(context.Background(), marketdata.Query{Instrument: metadata.Instrument, Timeframe: "1m", From: source.Now().Add(-22 * time.Minute), To: source.Now()})
+		if e != nil {
+			t.Fatal(e)
+		}
+		var requests atomic.Int64
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			requests.Add(1)
+			if req.Header.Get("Authorization") != "" || req.Header.Get("X-BAPI-API-KEY") != "" {
+				t.Error("authenticated trading access")
+			}
+			var result any
+			switch req.URL.Path {
+			case "/v5/market/instruments-info":
+				result = map[string]any{"category": "spot", "list": []any{map[string]any{"symbol": "BTCUSDT", "baseCoin": "BTC", "quoteCoin": "USDT", "status": "Trading", "priceFilter": map[string]string{"tickSize": "0.01"}, "lotSizeFilter": map[string]string{"basePrecision": "0.001", "minOrderAmt": "5"}}}}
+			case "/v5/market/kline":
+				end, _ := strconv.ParseInt(req.URL.Query().Get("end"), 10, 64)
+				rows := [][]string{}
+				for i := len(bars) - 1; i >= 0; i-- {
+					b := bars[i]
+					if b.OpenTime.UnixMilli() <= end {
+						rows = append(rows, []string{strconv.FormatInt(b.OpenTime.UnixMilli(), 10), b.Open.String(), b.High.String(), b.Low.String(), b.Close.String(), b.BaseVolume.String(), "0"})
+					}
+				}
+				result = map[string]any{"category": "spot", "symbol": "BTCUSDT", "list": rows}
+			default:
+				t.Errorf("unexpected public path %s", req.URL.Path)
+			}
+			json.NewEncoder(w).Encode(map[string]any{"retCode": 0, "time": time.Now().UnixMilli(), "result": result})
+		}))
+		defer server.Close()
+		previousTransport := http.DefaultTransport
+		http.DefaultTransport = server.Client().Transport
+		defer func() { http.DefaultTransport = previousTransport }()
+		t.Setenv("MILLIONAIRE_REST_URL", server.URL)
+		args := []string{"backtest", "run", "--strategy", added.Version.ID, "--provider", "bybit", "--from", "2026-01-01T00:20:00Z", "--to", "2026-01-01T00:22:00Z"}
+		output, e := invoke(args...)
+		var public backtest.Report
+		if e != nil || json.Unmarshal(output, &public) != nil || public.Balance.String() != r.Balance.String() {
+			t.Fatalf("public run: %s %v", output, e)
+		}
+		before := requests.Load()
+		server.Close()
+		output, e = invoke(append(args, "--cached")...)
+		var offline backtest.Report
+		if e != nil || json.Unmarshal(output, &offline) != nil || offline.Balance.String() != public.Balance.String() || requests.Load() != before {
+			t.Fatalf("offline run: %s %v", output, e)
+		}
+	})
 	blocker, e := pgx.Connect(context.Background(), os.Getenv("MILLIONAIRE_DATABASE_URL"))
 	if e != nil {
 		t.Fatal(e)

@@ -59,11 +59,14 @@ func (o *options) addBacktestCommands(root *cobra.Command) {
 					return errors.New("historical selection supplies latest OHLCV snapshots, not recorded revisions; recorded-close requires an explicitly supplied complete closed-revision dataset")
 				}
 				cfg.Source = "public-history"
+				cfg.SourceURL = app.MarketData.RESTURL
 				if selected.provider == "fixture" {
 					cfg.Source = "fixture-history"
+					cfg.SourceURL = ""
 				}
 				if cached {
 					cfg.Source = "cache-only"
+					cfg.SourceURL = ""
 				}
 				cfg.VersionID = version
 				cfg.From, e = time.Parse(time.RFC3339, selected.from)

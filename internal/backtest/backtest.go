@@ -23,6 +23,7 @@ const ExecutionModel = "spot-ohlcv-close-next-open-phase-v1"
 
 type Config struct {
 	AcknowledgeGaps bool                      `json:"acknowledge_gaps"`
+	SourceURL       string                    `json:"source_url,omitempty"`
 	Source          string                    `json:"dataset_source,omitempty"`
 	ClockMode       string                    `json:"clock_mode,omitempty"`
 	VersionID       string                    `json:"strategy_version"`
