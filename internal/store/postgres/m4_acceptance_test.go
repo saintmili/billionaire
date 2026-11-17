@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/paper"
@@ -171,6 +172,11 @@ func TestM4SignalLinearJourneyReconcilesAfterRestartAndPausedStop(t *testing.T) 
 					fees = "0.41"
 				}
 				m4Reconcile(t, store, a.ID, pnl, cash, 3)
+				metrics, e := store.PaperTrades(ctx, analytics.Filter{AccountID: a.ID, StrategyVersion: signal.VersionID}, r.At.Add(4*time.Second), time.Minute)
+				if e != nil || metrics.ClosedTrades != 1 || metrics.GrossPnL.String() != "-10" || metrics.NetPnL.String() != pnl || metrics.Fees.String() != fees || metrics.Funding.String() != wantPayment || metrics.LedgerFunding.String() != wantPayment || metrics.LedgerTotal.String() != cash {
+					t.Fatalf("funded trade metrics %+v %v", metrics, e)
+				}
+
 				p, _ = store.PaperPosition(ctx, pid)
 				if p.FeesPaid.String() != fees {
 					t.Fatalf("fees %s", p.FeesPaid)

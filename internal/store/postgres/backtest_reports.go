@@ -9,6 +9,7 @@ import (
 	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/paper"
+	"github.com/saintmili/billionaire/internal/strategy"
 )
 
 // BacktestTrades reads retained results only; it never accesses execution tables
@@ -28,10 +29,15 @@ func (s *Store) BacktestTrades(ctx context.Context, id string, f analytics.Filte
 	if err != nil {
 		return analytics.Report{}, ErrSchema
 	}
-	r, err := analytics.Trades(analytics.Input{Scope: "backtest", Positions: saved.Positions, Orders: saved.Orders, Fills: saved.Fills, Ledger: saved.Ledger, Equity: saved.Equity, InitialCapital: &capital}, f)
+	in, err := s.BacktestInputs(ctx, id)
+	if err != nil {
+		return analytics.Report{}, err
+	}
+	r, err := analytics.Trades(analytics.Input{CashBalance: &saved.Balance, Candles: in.Candles, Scope: "backtest", Signals: saved.Signals, Positions: saved.Positions, Orders: saved.Orders, Fills: saved.Fills, Ledger: saved.Ledger, Equity: saved.Equity, InitialCapital: &capital}, f)
 	if err != nil {
 		return r, err
 	}
+	r.RunID = id
 	r.Warnings = append(r.Warnings, saved.Warnings...)
 	return r, nil
 }
@@ -48,7 +54,10 @@ func (s *Store) CaptureBacktestEquity(ctx context.Context, accountID string, at 
 	if err != nil {
 		return point, err
 	}
-	return point, tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return point, safeError(ctx, ErrUnavailable)
+	}
+	return point, nil
 }
 func accountEquity(ctx context.Context, tx pgx.Tx, accountID string, at time.Time, stale time.Duration) (analytics.EquityPoint, []paper.Position, domain.Decimal, error) {
 	point := analytics.EquityPoint{At: at.UTC()}
@@ -105,7 +114,7 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
 	defer rollback(tx)
-	point, positions, _, err := accountEquity(ctx, tx, f.AccountID, at, stale)
+	point, positions, cash, err := accountEquity(ctx, tx, f.AccountID, at, stale)
 	if err != nil {
 		return analytics.Report{}, err
 	}
@@ -153,10 +162,38 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
-	r, err := analytics.Trades(analytics.Input{Scope: "forward-paper", Positions: positions, Orders: orders, Fills: fills, Ledger: ledger, Equity: []analytics.EquityPoint{point}, InitialCapital: &capital}, f)
+	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE id IN (SELECT payload->'request'->>'signal_id' FROM millionaire.paper_orders WHERE account_id=$1)", f.AccountID)
+	if err != nil {
+		return analytics.Report{}, safeError(ctx, ErrUnavailable)
+	}
+	signals, err := decodePaperRows[strategy.Signal](rows)
+	if err != nil {
+		return analytics.Report{}, ErrSchema
+	}
+
+	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.paper_price_events WHERE accepted AND available_at<=$1 AND instrument_key IN (SELECT instrument_key FROM millionaire.paper_orders WHERE account_id=$2) ORDER BY sequence", at, f.AccountID)
+	if err != nil {
+		return analytics.Report{}, safeError(ctx, ErrUnavailable)
+	}
+	observations, err := decodePaperRows[paper.Observation](rows)
+	if err != nil {
+		return analytics.Report{}, ErrSchema
+	}
+	bars := []domain.Candle{}
+	for _, observation := range observations {
+		b := observation.Bar
+		if b == nil || b.End.After(at) {
+			continue
+		}
+		bars = append(bars, domain.Candle{Instrument: observation.Instrument, OpenTime: b.Start, EndTime: b.End, High: b.High, Low: b.Low, Open: b.Open, Close: b.Close})
+	}
+	r, err := analytics.Trades(analytics.Input{Candles: bars, CashBalance: &cash, Signals: signals, Scope: "forward-paper", Positions: positions, Orders: orders, Fills: fills, Ledger: ledger, Equity: []analytics.EquityPoint{point}, InitialCapital: &capital}, f)
 	if err != nil {
 		return r, err
 	}
 	r.Warnings = append(r.Warnings, "Historical forward-paper equity was not retained; only the current read-time valuation is available")
-	return r, tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return r, safeError(ctx, ErrUnavailable)
+	}
+	return r, nil
 }
