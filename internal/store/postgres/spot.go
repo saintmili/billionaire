@@ -116,6 +116,9 @@ func submitOrder(ctx context.Context, tx pgx.Tx, order paper.Order, enabled bool
 // for one delivered price together. A failed event remains safely retryable.
 func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation, gate paper.ExecutionGate) (paper.ObservationResult, error) {
 	result := paper.ObservationResult{ObservationID: observation.ID, Orders: []paper.Order{}}
+	if (observation.Phase != "" || gate.ReplayNextOpen) && (o.namespace == "" || !gate.ReplayNextOpen) {
+		return result, errors.New("replay event phases require an isolated backtest execution context")
+	}
 	if err := observation.Validate(); err != nil {
 		return result, err
 	}
