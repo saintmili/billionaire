@@ -72,7 +72,7 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 		args = append(args, "--threshold-percent", "100", "--stop-percent", "99", "--window-bars", "2", "--timeframe", "1m", "--strategy-version", added.Version.ID)
 		output, err := invoke(args...)
 		var signals analytics.SignalReport
-		if err != nil || json.Unmarshal(output, &signals) != nil || signals.Scope != "backtest" || signals.RunID != r.ID || len(signals.Groups) != 1 || signals.Groups[0].Generated != 1 || signals.Groups[0].ConversionRate.String() != "1" || signals.Outcomes[0].Status != "incomplete" {
+		if err != nil || json.Unmarshal(output, &signals) != nil || signals.Scope != "backtest" || signals.RunID != r.ID || len(signals.Groups) != 1 || signals.Groups[0].Generated != 1 || signals.Groups[0].Candidates != 1 || signals.Groups[0].SuppressionRate == nil || signals.Groups[0].SuppressionRate.String() != "0" || signals.Groups[0].ConversionRate.String() != "1" || signals.Outcomes[0].Status != "incomplete" {
 			t.Fatalf("signal JSON %s %v", output, err)
 		}
 		read, err := invoke("report", "signals", "--saved", signals.ID)

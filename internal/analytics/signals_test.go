@@ -51,6 +51,7 @@ func TestSignalsHypotheticalOutcomesIgnoreTradeProfitAndPreserveUnknowns(t *test
 		{"stop first", "failure", []domain.Candle{makeBar(0, "102", "94"), makeBar(1, "111", "96")}, at.Add(2 * time.Minute), strategy.Long},
 		{"unknown gap", "missing-data", []domain.Candle{makeBar(1, "111", "96")}, at.Add(2 * time.Minute), strategy.Long},
 		{"range incomplete", "incomplete", []domain.Candle{makeBar(0, "102", "96")}, at.Add(time.Minute), strategy.Long},
+		{"target after requested window", "failure", []domain.Candle{makeBar(0, "102", "96"), makeBar(1, "103", "97"), makeBar(2, "111", "96")}, at.Add(3 * time.Minute), strategy.Long},
 		{"timeout", "failure", []domain.Candle{makeBar(0, "102", "96"), makeBar(1, "103", "97")}, at.Add(2 * time.Minute), strategy.Long},
 		{"short favorable", "success", []domain.Candle{makeBar(0, "101", "89")}, at.Add(2 * time.Minute), strategy.Short},
 	}
@@ -69,5 +70,23 @@ func TestSignalsHypotheticalOutcomesIgnoreTradeProfitAndPreserveUnknowns(t *test
 	r, e := analytics.Signals(analytics.SignalInput{Scope: "forward-paper", Signals: []strategy.Signal{s2, s1, s1}, Orders: []paper.Order{{ID: "entry", Request: paper.OrderRequest{SignalID: "one", Action: "open"}}}, Fills: []paper.Fill{{OrderID: "entry"}, {OrderID: "entry"}}, Through: at.Add(4 * time.Minute)}, analytics.SignalFilter{}, rule)
 	if e != nil || r.Groups[0].ConversionRate.String() != "0.5" || r.Groups[0].IntervalsSeconds[0].String() != "180" || r.Groups[0].SuppressionRate != nil {
 		t.Fatalf("%+v %v", r, e)
+	}
+}
+
+func TestSignalsSeparateMarketTimeframeVersionAndFilter(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	spot := domain.Instrument{Provider: "fixture", Market: domain.Spot, ID: "BTCUSDT", Base: "BTC", Quote: "USDT"}
+	linear := spot
+	linear.Market = domain.Linear
+	signals := []strategy.Signal{{ID: "spot", Kind: "entry", Instrument: spot, Timeframe: "1m", VersionID: "v1", ObservedAt: at}, {ID: "linear", Kind: "entry", Instrument: linear, Timeframe: "1m", VersionID: "v1", ObservedAt: at}, {ID: "frame", Kind: "entry", Instrument: spot, Timeframe: "5m", VersionID: "v1", ObservedAt: at}, {ID: "version", Kind: "entry", Instrument: spot, Timeframe: "1m", VersionID: "v2", ObservedAt: at}}
+	in := analytics.SignalInput{Scope: "backtest", Signals: signals, Through: at.Add(time.Hour)}
+	rule := analytics.SuccessRule{ThresholdPercent: "1", StopPercent: "1", WindowBars: 1, Basis: "subsequent-closed-ohlcv"}
+	r, e := analytics.Signals(in, analytics.SignalFilter{}, rule)
+	if e != nil || len(r.Groups) != 4 {
+		t.Fatalf("groups %+v %v", r, e)
+	}
+	r, e = analytics.Signals(in, analytics.SignalFilter{Filter: analytics.Filter{Instrument: &spot, StrategyVersion: "v1", From: at, To: at.Add(time.Minute)}, Timeframe: "1m"}, rule)
+	if e != nil || len(r.Groups) != 1 || r.Groups[0].Generated != 1 || r.Outcomes[0].SignalID != "spot" {
+		t.Fatalf("filters %+v %v", r, e)
 	}
 }

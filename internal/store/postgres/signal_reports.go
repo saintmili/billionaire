@@ -30,15 +30,6 @@ func (s *Store) BacktestSignals(ctx context.Context, id string, f analytics.Sign
 	if err != nil {
 		return analytics.SignalReport{}, err
 	}
-	// Fields are optional for legacy runs, whose suppression remains unknown.
-	b, _ := json.Marshal(saved)
-	var evidence struct {
-		Candidates []strategy.Candidate `json:"candidates"`
-		Available  bool                 `json:"candidates_available"`
-	}
-	if json.Unmarshal(b, &evidence) != nil {
-		return analytics.SignalReport{}, ErrSchema
-	}
 	if saved.Config.ClockMode == "recorded-close" {
 		bars := []domain.Candle{}
 		for _, c := range frozen.Candles {
@@ -48,7 +39,7 @@ func (s *Store) BacktestSignals(ctx context.Context, id string, f analytics.Sign
 		}
 		frozen.Candles = bars
 	}
-	in := analytics.SignalInput{Scope: "backtest", Signals: saved.Signals, Candidates: evidence.Candidates, CandidatesAvailable: evidence.Available, Candles: frozen.Candles, Through: saved.Config.To, Fills: saved.Fills, Orders: saved.Orders}
+	in := analytics.SignalInput{Scope: "backtest", Signals: saved.Signals, Candidates: saved.Candidates, CandidatesAvailable: saved.CandidatesAvailable, Candles: frozen.Candles, Through: saved.Config.To, Fills: saved.Fills, Orders: saved.Orders}
 	r, err := analytics.Signals(in, f, rule)
 	if err != nil {
 		return r, err
@@ -122,7 +113,7 @@ func (s *Store) PaperSignals(ctx context.Context, f analytics.SignalFilter, rule
 	if err != nil {
 		return analytics.SignalReport{}, err
 	}
-	rows, err = tx.Query(ctx, "SELECT e.result FROM millionaire.strategy_evaluations e JOIN millionaire.strategy_instances i ON i.id=e.instance_id WHERE i.binding->>'account'=$1 AND e.observed_at<=$2 ORDER BY e.observed_at,e.event_id", f.AccountID, through)
+	rows, err = tx.Query(ctx, "SELECT e.result FROM millionaire.strategy_evaluations e JOIN millionaire.strategy_instances i ON i.id=e.instance_id WHERE i.binding->>'account'=$1 AND e.observed_at<=$2 ORDER BY e.observed_at,e.instance_id,e.event_id", f.AccountID, through)
 	if err != nil {
 		return analytics.SignalReport{}, safeError(ctx, ErrUnavailable)
 	}
@@ -138,7 +129,7 @@ func (s *Store) PaperSignals(ctx context.Context, f analytics.SignalFilter, rule
 		}
 		candidates = append(candidates, e.Candidates...)
 	}
-	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.market_candles WHERE end_time<=$1 AND observed_at<=$1 AND source=provider ORDER BY open_time,revision", through)
+	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.market_candles WHERE end_time<=$1 AND observed_at<=$1 AND source=provider ORDER BY provider,market,instrument_id,timeframe,open_time,revision", through)
 	if err != nil {
 		return analytics.SignalReport{}, safeError(ctx, ErrUnavailable)
 	}
@@ -146,7 +137,7 @@ func (s *Store) PaperSignals(ctx context.Context, f analytics.SignalFilter, rule
 	if err != nil {
 		return analytics.SignalReport{}, err
 	}
-	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.paper_orders WHERE account_id=$1", f.AccountID)
+	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.paper_orders WHERE account_id=$1 ORDER BY id", f.AccountID)
 	if err != nil {
 		return analytics.SignalReport{}, safeError(ctx, ErrUnavailable)
 	}
@@ -154,7 +145,7 @@ func (s *Store) PaperSignals(ctx context.Context, f analytics.SignalFilter, rule
 	if err != nil {
 		return analytics.SignalReport{}, err
 	}
-	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.paper_fills WHERE account_id=$1", f.AccountID)
+	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.paper_fills WHERE account_id=$1 ORDER BY id", f.AccountID)
 	if err != nil {
 		return analytics.SignalReport{}, safeError(ctx, ErrUnavailable)
 	}
