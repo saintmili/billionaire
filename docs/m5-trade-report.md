@@ -3,7 +3,13 @@
 The report service reads retained backtest results or a single read-only,
 repeatable-read forward-paper account snapshot. It never reruns a strategy,
 acquires financial ownership, creates fills, or writes financial state. Backtest
-and forward-paper results have explicit, separate `scope` values.
+and forward-paper results have explicit, separate `scope` values. Derived metrics
+are calculated from the retained immutable run/equity evidence on each read,
+without storing another mutable copy. No migration or dependency is added.
+Millionaire owns the financial metrics before M7 journal delivery; the verified
+[StopLore map](stoplore-integration.md) identifies supported completed-trade
+performance and the equity/backtest gaps. Cross-checking actual journal reports
+remains part of M7 once that integration is delivered.
 
 ```sh
 millionaire backtest trades RUN-ID --output json
@@ -80,7 +86,7 @@ past `--stale-after` produce null equity, exposure, leverage and return. Subset
 filters suppress account equity/return/drawdown because account capital cannot
 be attributed to a selected instrument/version/opening cohort.
 
-MAE/MFE are initial-quantity price-P&L bounds from fully held OHLC bars, with an
+MAE (non-positive) and MFE (non-negative) are initial-quantity price-P&L bounds from fully held OHLC bars, with an
 explicit approximation label. Partial-size changes and intrabar order/path are
 unknown; the final-exit bar and bars spanning the entry instant are excluded.
 Backtests use frozen candles; forward paper uses retained accepted full-bar
@@ -119,7 +125,7 @@ local PostgreSQL server configured through `MILLIONAIRE_TEST_DATABASE_URL`:
 go test ./... -count=1
 go vet ./...
 go test -race ./internal/analytics ./internal/store/postgres ./internal/cli \
-  -run 'TestTradeReport|TestOpenTradeReport|TestBacktest|TestM4SignalLinearJourney|TestPartialExits|TestEquity|TestVersionFilter|TestLossBreakeven|TestNoTrades' -count=1
+  -run 'TestTradeReport|TestOpenTradeReport|TestBacktest|TestM4SignalLinearJourney|TestPartialExits|TestEquity|TestVersionFilter|TestLossBreakeven|TestNoTrades|TestOpenEntryCosts' -count=1
 ```
 
 The full PostgreSQL suite passed in approximately 49 seconds; focused race
