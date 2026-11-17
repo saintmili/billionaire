@@ -113,7 +113,11 @@ func Compare(left, right Snapshot) Comparison {
 	walk("config", normalized(lc), normalized(rc))
 	walk("manifest", normalized(left.Report.Manifest), normalized(right.Report.Manifest))
 	diff("strategy_version", left.Version, right.Version)
-	diff("signal_reports", left.SignalReports, right.SignalReports)
+	// Retain audit identities in snapshots/differences, but compare the selected
+	// rules and causal outcomes independently of newly generated execution IDs.
+	if !bytes.Equal(marshal(comparableSignalReports(left)), marshal(comparableSignalReports(right))) {
+		c.Differences = append(c.Differences, Difference{"signal_reports", left.SignalReports, right.SignalReports})
+	}
 	diff("funding_coverage", left.Report.FundingCoverage, right.Report.FundingCoverage)
 	c.DirectlyComparable = len(c.Differences) == 0 && left.EvidenceStatus == "verified" && right.EvidenceStatus == "verified" && left.Metrics != nil && right.Metrics != nil && left.Metrics.ValuationStatus == "complete" && right.Metrics.ValuationStatus == "complete"
 	for _, s := range []Snapshot{left, right} {
@@ -140,3 +144,42 @@ func Compare(left, right Snapshot) Comparison {
 	return c
 }
 func marshal(v any) []byte { b, _ := json.Marshal(v); return b }
+
+// comparableSignalReports removes only execution identity. Unknown outcome
+// references remain literal so missing causal evidence cannot create equality.
+func comparableSignalReports(s Snapshot) []analytics.SignalReport {
+	signals := map[string]string{}
+	for _, signal := range s.Report.Signals {
+		id := signal.ID
+		signal.ID, signal.InstanceID = "", ""
+		signals[id] = Hash(signal)
+	}
+	inherited := map[string]bool{}
+	for _, warning := range s.Report.Warnings {
+		inherited[warning] = true
+	}
+	result := make([]analytics.SignalReport, 0, len(s.SignalReports))
+	for _, saved := range s.SignalReports {
+		r := saved
+		r.ID, r.RunID, r.EvidenceHash = "", "", ""
+		if r.Filter.AccountID == s.Report.AccountID {
+			r.Filter.AccountID = ""
+		}
+		r.Outcomes = append([]analytics.SignalOutcome(nil), saved.Outcomes...)
+		for i := range r.Outcomes {
+			if key, ok := signals[r.Outcomes[i].SignalID]; ok {
+				r.Outcomes[i].SignalID = key
+			}
+		}
+		sort.Slice(r.Outcomes, func(i, j int) bool { return string(marshal(r.Outcomes[i])) < string(marshal(r.Outcomes[j])) })
+		r.Warnings = []string{}
+		for _, warning := range saved.Warnings {
+			if !inherited[warning] {
+				r.Warnings = append(r.Warnings, warning)
+			}
+		}
+		result = append(result, r)
+	}
+	sort.Slice(result, func(i, j int) bool { return string(marshal(result[i])) < string(marshal(result[j])) })
+	return result
+}
