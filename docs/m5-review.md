@@ -83,3 +83,16 @@ Verification outcome: all checks passed. The full real-PostgreSQL suite passed
 checks passed (PostgreSQL: 21.517 seconds; CLI: 6.946 seconds; analytics: 1.018
 seconds; backtest: 1.027 seconds). Vet, build and `git diff --check` passed. These
 are fix-author checks, not a claim that the original reviewers reran acceptance.
+
+## Resolution confirmation
+
+After integration at `a1bb4debf4a7e1e5f12176a7d8abf07a55f06883`, the original
+Standards reviewer confirmed that shared scope, date and instrument helpers
+replace the repeated parsing in all three handlers. Remaining Standards
+findings: **0**.
+
+The original Spec reviewer confirmed that backtest collection uses the complete
+decision query while the interactive cap remains, and that the regression checks
+10,001 saved decisions and late rejection evidence in snapshot/JSON/CSV exports.
+Remaining Spec findings: **0**. Both confirmations were read-only; neither
+reviewer reran the fix author's checks.
