@@ -115,6 +115,16 @@ monitoring is enabled. This exception does not waive that gate. Stop at M5.
 
 **Outcome (2026-11-18):** Offline gate passed against fixtures and real PostgreSQL, including complete forward-state isolation, CLI spot/linear analytics/export, frozen determinism, changed assumptions, compatible normal-paper economic agreement, cancellation/failure/restart and separate chronological sample reports. Full tests, practical race checks, vet and build passed; see [evidence and limitations](m5-report.md). M2 actual-host validation remains pending; live monitoring remains disabled and no later milestone is started.
 
+### Sequencing exception: unblocked offline M6 work
+
+On 2026-11-18, the user invoked `/implement-spec` after M5 acceptance and
+confirmed completing the unblocked M6 work while the intended VPS is unavailable.
+Proceed with #25, #26, #27, #28, #30, #31 and optional #32 using deterministic
+fixtures and PostgreSQL. The native dependency from #29 to the pending M2
+actual-host gate #24 remains authoritative: do not start #29, its downstream
+recovery/health ticket #33, systemd ticket #34 or combined acceptance #35.
+Live monitoring remains disabled. Do not claim M6 acceptance or begin M6W.
+
 ### M6 — Notifications and process operation
 
 **Tasks:** Terminal, Linux desktop and optional Telegram channels, outbox/retry/suppression, application daemon lifecycle, Unix control socket, safe CLI commands, graceful shutdown, single-engine ownership, systemd deployment unit and VPS runbook.
