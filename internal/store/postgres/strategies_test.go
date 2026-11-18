@@ -13,6 +13,7 @@ import (
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/marketdata/fixture"
+	"github.com/saintmili/billionaire/internal/notify"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"github.com/saintmili/billionaire/internal/strategy"
@@ -87,6 +88,9 @@ func TestStrategyVersionsAndRepeatedEventsAreTransactional(t *testing.T) {
 	first = marketdata.Stamp(first)
 	event := marketdata.Event{Kind: "candle", Candle: &first}
 	var group sync.WaitGroup
+	if err := store.SetNotificationPolicy(ctx, notify.Policy{Cooldown: time.Minute}); err != nil {
+		t.Fatal(err)
+	}
 	results := make(chan strategy.Evaluation, 4)
 	failures := make(chan error, 4)
 	for range 4 {
@@ -121,6 +125,10 @@ func TestStrategyVersionsAndRepeatedEventsAreTransactional(t *testing.T) {
 	signals, err := store.StrategySignals(ctx, strategy.SignalFilter{InstanceID: instance.ID})
 	if err != nil || len(signals) != 2 {
 		t.Fatalf("signals not durably distinct: %d %v", len(signals), err)
+	}
+	alerts, err := store.Notifications(ctx, 10)
+	if err != nil || len(alerts) != 2 || alerts[0].Event.VersionID != version.ID || alerts[1].State != "suppressed" {
+		t.Fatalf("signal notifications: %+v %v", alerts, err)
 	}
 }
 

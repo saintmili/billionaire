@@ -23,3 +23,8 @@ market_data:
 paper:
   initial_balance: "10000"
   quote_currency: USDT
+
+# Captured durably at foreground start; delivery runs outside the financial owner.
+notifications:
+  targets: [terminal]
+  cooldown: 0s

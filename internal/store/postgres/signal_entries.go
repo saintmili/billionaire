@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/saintmili/billionaire/internal/marketdata"
+	"github.com/saintmili/billionaire/internal/notify"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/strategy"
 )
@@ -142,6 +143,16 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.signal_decisions(signal_id,status,order_id,payload) VALUES($1,$2,$3,$4) ON CONFLICT(signal_id) DO UPDATE SET status=EXCLUDED.status,order_id=EXCLUDED.order_id,payload=EXCLUDED.payload`, d.SignalID, d.Status, orderID, payload); err != nil {
 		return d, safeError(ctx, ErrUnavailable)
+	}
+	if d.Status == "rejected" && d.Order == nil {
+		e := signalNotification(signal)
+		e.ID = "decision:" + d.SignalID
+		e.Kind = "order_rejected"
+		e.At = request.At
+		e.Reason = d.Reason
+		if err := enqueueNotification(ctx, tx, e, notify.Policy{}); err != nil {
+			return d, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return d, errors.New("decision commit outcome unknown; retry identical inputs")

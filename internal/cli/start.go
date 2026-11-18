@@ -12,6 +12,7 @@ import (
 
 	"github.com/saintmili/billionaire/internal/app"
 	"github.com/saintmili/billionaire/internal/domain"
+	"github.com/saintmili/billionaire/internal/notify"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"github.com/spf13/cobra"
 )
@@ -79,7 +80,28 @@ func (o *options) startCommand() *cobra.Command {
 				if err != nil {
 					return nil, err
 				}
-				return func() { server.Close() }, nil
+				cooldown, _ := time.ParseDuration(cfg.Notifications.Cooldown)
+				if err := store.SetNotificationPolicy(ctx, notify.Policy{Targets: cfg.Notifications.Targets, Cooldown: cooldown}); err != nil {
+					server.Close()
+					return nil, err
+				}
+				deliveryCtx, stopDelivery := context.WithCancel(ctx)
+				deliveryDone := make(chan struct{})
+				go func() {
+					defer close(deliveryDone)
+					notify.Run(deliveryCtx, store, o.notificationSenders(cfg), o.diagnostics)
+				}()
+				return func() {
+					server.Close()
+					stopDelivery()
+					<-deliveryDone
+					finalCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					defer cancel()
+					if _, err := notify.Dispatch(finalCtx, store, o.notificationSenders(cfg), time.Now().UTC(), 16); err != nil {
+						fmt.Fprintln(o.diagnostics, "notification final dispatch unavailable; pending work remains durable")
+					}
+				}, nil
+
 			}}, func(result app.Result) error {
 				return o.write(result, fmt.Sprintf("%s: %s %s, signals=%d", result.Event.Kind, result.Event.Feed.Instrument.ID, result.Event.Feed.Timeframe, len(result.Signals)))
 			})

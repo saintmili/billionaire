@@ -19,6 +19,10 @@ import (
 )
 
 type Config struct {
+	Notifications struct {
+		Targets  []string `yaml:"targets"`
+		Cooldown string   `yaml:"cooldown"`
+	} `yaml:"notifications"`
 	Engine struct {
 		QueueCapacity int    `yaml:"queue_capacity"`
 		Lookback      int    `yaml:"lookback"`
@@ -102,6 +106,21 @@ func (c Config) DatabaseURL(lookup func(string) string) (string, error) {
 var envName = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 func (c Config) Validate() error {
+	if c.Notifications.Cooldown != "" {
+		d, err := time.ParseDuration(c.Notifications.Cooldown)
+		if err != nil || d < 0 || d > 24*time.Hour {
+			return errors.New("notifications.cooldown must be between 0s and 24h")
+		}
+	}
+	if len(c.Notifications.Targets) > 3 {
+		return errors.New("too many notification targets")
+	}
+	for _, target := range c.Notifications.Targets {
+		if target != "terminal" && target != "desktop" && target != "telegram" {
+			return errors.New("invalid notification target")
+		}
+	}
+
 	if c.Engine.QueueCapacity < 0 || c.Engine.QueueCapacity > 4096 || c.Engine.Lookback < 0 || c.Engine.Lookback > 10000 {
 		return errors.New("engine.queue_capacity must be 0..4096 and engine.lookback 0..10000; zero selects defaults")
 	}

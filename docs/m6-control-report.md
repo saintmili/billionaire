@@ -6,7 +6,10 @@ adjustments/strategy exits, or waive the pending M2 actual-host gate.
 
 ## Operation
 
-Initialize storage, then keep the fixture owner available in one terminal:
+Initialize storage, configure `engine.lookback: 1` for the shipped M2 dataset
+(the [runtime guide](m6-runtime-report.md#run) shows the YAML), then keep the fixture
+owner available in one terminal. Initial account/strategy setup may alternatively
+use explicit `--offline` while that owner is stopped:
 
 ```sh
 billionaire init
@@ -66,7 +69,7 @@ Backtests retain their isolated namespaces and account state.
 
 ## Retry and failure contract
 
-Every owner mutation carries a bounded stable request ID. Migration 0012 stores
+Every owner mutation carries a bounded stable request ID. Migration 0013 stores
 the full command JSON and immutable original outcome. Exact JSON payload retries
 return the original receipt; another command kind or changed payload under that
 ID rejects. Decimal strings remain exact. Intent times must remain identical on
@@ -104,3 +107,8 @@ identical requests, response loss, owner/socket restart, conflicting identity,
 original pending receipts after a fill, persistent rejection and injected receipt
 failure with complete financial rollback. Existing offline CLI tests explicitly
 select `--offline`.
+
+Verification completed with `BILLIONAIRE_TEST_DATABASE_URL` pointing to a disposable
+local PostgreSQL database: full `go test ./...`, practical `go test -race` across
+application/control/CLI lifecycle cases, `go vet ./...`, CLI build and
+`git diff --check`. No external delivery or live market access was required.

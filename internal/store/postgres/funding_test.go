@@ -113,6 +113,20 @@ func TestFundingTriggersApproximateLiquidationAndMissingCoverageIsExplicit(t *te
 	if a.Balance.String() != "979.8" || !sum.Equal(a.Balance) {
 		t.Fatalf("cash %+v ledger %s", a, sum)
 	}
+	alerts, e := store.Notifications(ctx, 10)
+	if e != nil || len(alerts) != 2 {
+		t.Fatalf("liquidation alerts %+v %v", alerts, e)
+	}
+	found := false
+	for _, a := range alerts {
+		if a.Event.Kind == "liquidation_approximate" && a.Event.Price == "100" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("liquidation notification missing")
+	}
+
 }
 
 func TestLiquidationGapsCapLossAndBeatCompetingManualClose(t *testing.T) {

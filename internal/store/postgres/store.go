@@ -25,7 +25,7 @@ type Direction string
 const (
 	Up            Direction = "up"
 	Down          Direction = "down"
-	LatestVersion           = 12
+	LatestVersion           = 13
 )
 
 //go:embed migrations/0001_bootstrap.up.sql
@@ -99,13 +99,19 @@ var signalReportsUp string
 //go:embed migrations/0011_signal_reports.down.sql
 var signalReportsDown string
 
-//go:embed migrations/0012_control.up.sql
+//go:embed migrations/0012_notifications.up.sql
+var notificationsUp string
+
+//go:embed migrations/0012_notifications.down.sql
+var notificationsDown string
+
+//go:embed migrations/0013_control.up.sql
 var controlUp string
 
-//go:embed migrations/0012_control.down.sql
+//go:embed migrations/0013_control.down.sql
 var controlDown string
 
-var migrations = []migration{{1, bootstrapUp, bootstrapDown}, {2, marketUp, marketDown}, {3, strategiesUp, strategiesDown}, {4, accountsUp, accountsDown}, {5, spotUp, spotDown}, {6, riskUp, riskDown}, {7, protectionUp, protectionDown}, {8, decisionsUp, decisionsDown}, {9, fundingUp, fundingDown}, {10, backtestsUp, backtestsDown}, {11, signalReportsUp, signalReportsDown}, {12, controlUp, controlDown}}
+var migrations = []migration{{1, bootstrapUp, bootstrapDown}, {2, marketUp, marketDown}, {3, strategiesUp, strategiesDown}, {4, accountsUp, accountsDown}, {5, spotUp, spotDown}, {6, riskUp, riskDown}, {7, protectionUp, protectionDown}, {8, decisionsUp, decisionsDown}, {9, fundingUp, fundingDown}, {10, backtestsUp, backtestsDown}, {11, signalReportsUp, signalReportsDown}, {12, notificationsUp, notificationsDown}, {13, controlUp, controlDown}}
 
 func (m migration) checksum() string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(m.up+"\n--DOWN--\n"+m.down)))

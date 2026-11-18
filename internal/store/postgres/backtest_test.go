@@ -93,6 +93,10 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	alerts, e := s.Notifications(ctx, 100)
+	if e != nil || len(alerts) != 1 || alerts[0].Event.Kind != "backtest_completed" || alerts[0].Event.VersionID != v.ID {
+		t.Fatalf("completion without replay noise: %+v %v", alerts, e)
+	}
 	if r.Status != "completed" || len(r.Signals) != 1 || len(r.Fills) != 2 {
 		t.Fatalf("run: %+v", r)
 	}
@@ -505,6 +509,25 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 	if err != nil || saved.Manifest.DatasetHash != r.Manifest.DatasetHash || len(saved.Fills) != 2 {
 		t.Fatal("saved result unavailable", err)
 	}
+	t.Run("completion alert and retained result roll back together", func(t *testing.T) {
+		conn, e := pgx.Connect(ctx, dsn)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer conn.Close(ctx)
+		if _, e = conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_notification() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_notification BEFORE INSERT ON billionaire.notification_outbox FOR EACH ROW EXECUTE FUNCTION billionaire.fail_notification()`); e != nil {
+			t.Fatal(e)
+		}
+		failed, e := s.RunBacktest(ctx, cfg, bars)
+		if e == nil {
+			t.Fatal("completion notification storage failure was ignored")
+		}
+		retained, e := s.BacktestReport(ctx, failed.ID)
+		if e != nil || retained.Status != "running" {
+			t.Fatalf("result escaped rolled back completion: %+v %v", retained, e)
+		}
+	})
+
 }
 
 // Seed a large decision history at the database boundary rather than replaying

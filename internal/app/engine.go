@@ -40,7 +40,7 @@ type delivery struct {
 // Run applies backpressure at admission and waits for each event's durable
 // outcome before acknowledging it to its feed. Cancellation leaves unacknowledged
 // closed events in the synchronizer's persistent pending checkpoint.
-func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts Options, report func(Result) error) error {
+func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts Options, report func(Result) error) (runErr error) {
 	if len(feeds) == 0 || len(feeds) > 128 || opts.QueueCapacity < 1 || opts.QueueCapacity > 4096 || opts.StaleAfter <= 0 {
 		return errors.New("engine requires 1..128 subscriptions, queue capacity 1..4096 and positive stale duration")
 	}
@@ -77,6 +77,15 @@ func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts 
 		}
 		defer stop()
 	}
+	sessionID := fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+	defer func() {
+		if runErr != nil {
+			failureCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = store.RecordEngineFailure(failureCtx, sessionID, time.Now().UTC(), "foreground engine failed; inspect local command diagnostics")
+		}
+	}()
+
 	running, cancel := context.WithCancel(ctx)
 	defer cancel()
 	queue := make(chan delivery, opts.QueueCapacity)
@@ -125,6 +134,19 @@ func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts 
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+			for _, f := range feeds {
+				state, err := store.FeedState(running, f.Query.Instrument, f.Query.Timeframe)
+				if err != nil {
+					return err
+				}
+				if !state.LastEvent.IsZero() {
+					at := f.Now().UTC()
+					key := fmt.Sprint(f.Query.Instrument, f.Query.Timeframe)
+					if err := store.ObserveFreshness(running, key, fmt.Sprintf("%s:%s:%s", f.Query.Instrument.Provider, f.Query.Instrument.Market, f.Query.Instrument.ID), string(f.Query.Timeframe), state.AllowsEntries(at, opts.StaleAfter), at, "feed readiness changed"); err != nil {
+						return err
+					}
+				}
+			}
 			check, c := context.WithTimeout(running, 2*time.Second)
 			err := owner.Check(check)
 			c()
@@ -164,6 +186,16 @@ func process(ctx context.Context, store *postgres.Store, owner *postgres.PaperOw
 	result := Result{Event: e, Signals: []strategy.Signal{}}
 	if err := owner.Check(ctx); err != nil {
 		return result, err
+	}
+	atFresh := e.AvailableAt
+	if atFresh.IsZero() {
+		atFresh = d.subscription.Now().UTC()
+	}
+	if !e.Feed.LastEvent.IsZero() {
+		key := fmt.Sprint(e.Feed.Instrument, e.Feed.Timeframe)
+		if err := store.ObserveFreshness(ctx, key, fmt.Sprintf("%s:%s:%s", e.Feed.Instrument.Provider, e.Feed.Instrument.Market, e.Feed.Instrument.ID), string(e.Feed.Timeframe), e.AllowsEntries, atFresh, "feed readiness changed"); err != nil {
+			return result, err
+		}
 	}
 	if e.Candle == nil {
 		return result, nil

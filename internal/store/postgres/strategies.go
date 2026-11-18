@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/saintmili/billionaire/internal/notify"
 
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
@@ -284,6 +285,9 @@ func evaluateStrategyEvent(ctx context.Context, tx pgx.Tx, id string, event mark
 		}
 		if _, err := tx.Exec(ctx, "INSERT INTO billionaire.strategy_signals(id,instance_id,event_id,kind,direction,observed_at,payload) VALUES($1,$2,$3,$4,$5,$6,$7)", signal.ID, id, eventID, signal.Kind, signal.Direction, signal.ObservedAt, data); err != nil {
 			return empty, safeError(ctx, ErrUnavailable)
+		}
+		if err := enqueueNotification(ctx, tx, signalNotification(signal), notify.Policy{}); err != nil {
+			return empty, err
 		}
 	}
 	nextState, err := json.Marshal(result.State)

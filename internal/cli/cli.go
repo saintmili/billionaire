@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,12 +23,14 @@ type options struct {
 	offline       bool
 	output        string
 	out           io.Writer
+	diagnostics   io.Writer
 	level         slog.LevelVar
 }
 
 // Execute keeps structured logs on diagnostics and command results on out.
 func Execute(ctx context.Context, args []string, out, diagnostics io.Writer) error {
-	opts := &options{out: out}
+	diagnostics = &synchronizedWriter{Writer: diagnostics}
+	opts := &options{out: out, diagnostics: diagnostics}
 	logger := slog.New(slog.NewJSONHandler(diagnostics, &slog.HandlerOptions{Level: &opts.level, ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 		if len(groups) == 0 && a.Key == slog.TimeKey {
 			return slog.Time(a.Key, a.Value.Time().In(time.UTC))
@@ -62,6 +65,7 @@ func Execute(ctx context.Context, args []string, out, diagnostics io.Writer) err
 	root.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 	configuration.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 	opts.addControlCommands(root)
+	opts.addNotificationCommands(root)
 	opts.addStorageCommands(root)
 	root.AddCommand(opts.startCommand())
 	opts.addMarketCommands(root)
@@ -103,4 +107,16 @@ func (o *options) write(result any, text string) error {
 	}
 	_, err := fmt.Fprintln(o.out, text)
 	return err
+}
+
+// Background terminal alerts and foreground diagnostics share a writer safely.
+type synchronizedWriter struct {
+	sync.Mutex
+	io.Writer
+}
+
+func (w *synchronizedWriter) Write(p []byte) (int, error) {
+	w.Lock()
+	defer w.Unlock()
+	return w.Writer.Write(p)
 }
