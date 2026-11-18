@@ -1,0 +1,826 @@
+{
+  "schema_version": 1,
+  "host": "arch",
+  "host_role": "local",
+  "started_at": "2026-11-18T14:49:49.885677048Z",
+  "finished_at": "2026-11-18T14:54:09.7865375Z",
+  "command": "billionaire market validate-host --allow-network --host-role local --duration 9m0s --output json",
+  "public_endpoints": {
+    "linear_ws": "wss://stream.bybit.com/v5/public/linear",
+    "rest": "https://api.bybit.com",
+    "spot_ws": "wss://stream.bybit.com/v5/public/spot"
+  },
+  "checks_passed": true,
+  "m2_actual_host_gate": "pending",
+  "live_monitoring_enabled": false,
+  "checks": [
+    {
+      "instrument": {
+        "provider": "bybit",
+        "market": "spot",
+        "base": "BTC",
+        "quote": "USDT",
+        "instrument_id": "BTCUSDT"
+      },
+      "timeframe": "1m",
+      "history_from": "2026-11-18T14:46:00Z",
+      "history_to": "2026-11-18T14:49:00Z",
+      "stage": "complete",
+      "metadata": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "price_step": "0.1",
+        "quantity_step": "0.000001",
+        "min_quantity": "0",
+        "min_notional": "5"
+      },
+      "persisted_history_candles": 3,
+      "history_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:46:00Z",
+        "end_time": "2026-11-18T14:47:00Z",
+        "open": "63181.2",
+        "high": "63287.8",
+        "low": "63150.6",
+        "close": "63244.7",
+        "base_volume": "44.457997",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:54.854Z",
+        "revision": "8e0b9d7c36f03b9eb43b0c3006834249adba603118c98fb3f5ceb38c3226dab0"
+      },
+      "duplicate_write_unchanged": true,
+      "partial_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:49:00Z",
+        "end_time": "2026-11-18T14:50:00Z",
+        "open": "63231.3",
+        "high": "63399.9",
+        "low": "63206.6",
+        "close": "63391.3",
+        "base_volume": "17.371667",
+        "closed": false,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:57.94Z",
+        "revision": "de74dd87c5751bf9ec13db851df818baf84c2ba34510746375c6659c3b243854"
+      },
+      "closed_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:49:00Z",
+        "end_time": "2026-11-18T14:50:00Z",
+        "open": "63231.3",
+        "high": "63399.9",
+        "low": "63206.6",
+        "close": "63387.8",
+        "base_volume": "17.64135",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:50:00.94Z",
+        "revision": "938cbb16dc469d65cad3d56f94b1202e8d28f533bc39079f586c57d974754f9a"
+      },
+      "stream_close_persisted": true,
+      "partial_updates": 4,
+      "live_closed_updates": 1,
+      "recovered_closes": 3,
+      "stream_connections": 2,
+      "forced_disconnect": true,
+      "synthetic_stale_rejected": true,
+      "synthetic_gap_rejected": true,
+      "disconnected_rejected": true,
+      "passed": true
+    },
+    {
+      "instrument": {
+        "provider": "bybit",
+        "market": "spot",
+        "base": "BTC",
+        "quote": "USDT",
+        "instrument_id": "BTCUSDT"
+      },
+      "timeframe": "3m",
+      "history_from": "2026-11-18T14:39:00Z",
+      "history_to": "2026-11-18T14:48:00Z",
+      "stage": "complete",
+      "metadata": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "price_step": "0.1",
+        "quantity_step": "0.000001",
+        "min_quantity": "0",
+        "min_notional": "5"
+      },
+      "persisted_history_candles": 3,
+      "history_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:39:00Z",
+        "end_time": "2026-11-18T14:42:00Z",
+        "open": "63252.6",
+        "high": "63420",
+        "low": "63070.7",
+        "close": "63224",
+        "base_volume": "167.233487",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:55.623Z",
+        "revision": "3cfaf99fb9b5373180480c061b31fdf5f4262e8f190c2e7f0ce889ddde966b9b"
+      },
+      "duplicate_write_unchanged": true,
+      "partial_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:48:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "63218.1",
+        "high": "63399.9",
+        "low": "63160",
+        "close": "63389",
+        "base_volume": "40.409426",
+        "closed": false,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:58.94Z",
+        "revision": "075b0a989f2bce1493dedd1b9c38b245dd41b3a570e18959917ba17c0490bb4a"
+      },
+      "closed_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:48:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "63218.1",
+        "high": "63419.9",
+        "low": "63160",
+        "close": "63232.8",
+        "base_volume": "60.92491",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:51:00.94Z",
+        "revision": "118c3858f14a085205ccd0326a19902a28f1256b0d3122e3953876d57b041dfd"
+      },
+      "stream_close_persisted": true,
+      "partial_updates": 62,
+      "live_closed_updates": 1,
+      "recovered_closes": 1,
+      "stream_connections": 2,
+      "forced_disconnect": true,
+      "synthetic_stale_rejected": true,
+      "synthetic_gap_rejected": true,
+      "disconnected_rejected": true,
+      "passed": true
+    },
+    {
+      "instrument": {
+        "provider": "bybit",
+        "market": "spot",
+        "base": "ETH",
+        "quote": "USDT",
+        "instrument_id": "ETHUSDT"
+      },
+      "timeframe": "1m",
+      "history_from": "2026-11-18T14:46:00Z",
+      "history_to": "2026-11-18T14:49:00Z",
+      "stage": "complete",
+      "metadata": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "price_step": "0.01",
+        "quantity_step": "0.00001",
+        "min_quantity": "0",
+        "min_notional": "5"
+      },
+      "persisted_history_candles": 3,
+      "history_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:46:00Z",
+        "end_time": "2026-11-18T14:47:00Z",
+        "open": "1756.66",
+        "high": "1762.01",
+        "low": "1755.85",
+        "close": "1760.43",
+        "base_volume": "306.84121",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:55.14Z",
+        "revision": "5214a0f6a0f76a382436237e4cc3ac85eac57b12db4431911f6f89f806b626c3"
+      },
+      "duplicate_write_unchanged": true,
+      "partial_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:49:00Z",
+        "end_time": "2026-11-18T14:50:00Z",
+        "open": "1759.44",
+        "high": "1764.31",
+        "low": "1756.73",
+        "close": "1764.3",
+        "base_volume": "397.48101",
+        "closed": false,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:57.767Z",
+        "revision": "ba4c5c94068ff7c1386d256ad681e412ef50a314faf10cbf5c5428e62cbdf65e"
+      },
+      "closed_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:49:00Z",
+        "end_time": "2026-11-18T14:50:00Z",
+        "open": "1759.44",
+        "high": "1764.59",
+        "low": "1756.73",
+        "close": "1764.48",
+        "base_volume": "397.84527",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:50:00.767Z",
+        "revision": "8695b65b9bed675cfacfa656cac1d3a7ca5348ed648e9014cce84d36736e165d"
+      },
+      "stream_close_persisted": true,
+      "partial_updates": 2,
+      "live_closed_updates": 1,
+      "recovered_closes": 3,
+      "stream_connections": 2,
+      "forced_disconnect": true,
+      "synthetic_stale_rejected": true,
+      "synthetic_gap_rejected": true,
+      "disconnected_rejected": true,
+      "passed": true
+    },
+    {
+      "instrument": {
+        "provider": "bybit",
+        "market": "spot",
+        "base": "ETH",
+        "quote": "USDT",
+        "instrument_id": "ETHUSDT"
+      },
+      "timeframe": "3m",
+      "history_from": "2026-11-18T14:39:00Z",
+      "history_to": "2026-11-18T14:48:00Z",
+      "stage": "complete",
+      "metadata": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "price_step": "0.01",
+        "quantity_step": "0.00001",
+        "min_quantity": "0",
+        "min_notional": "5"
+      },
+      "persisted_history_candles": 3,
+      "history_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:39:00Z",
+        "end_time": "2026-11-18T14:42:00Z",
+        "open": "1767.33",
+        "high": "1771.36",
+        "low": "1757.26",
+        "close": "1763.76",
+        "base_volume": "1243.75359",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:56.041Z",
+        "revision": "d71cca9791bdac22587bd959eeb3ad1489821443acba0ad919eb463790c24f1c"
+      },
+      "duplicate_write_unchanged": true,
+      "partial_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:48:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "1759.49",
+        "high": "1764.31",
+        "low": "1756.73",
+        "close": "1764.3",
+        "base_volume": "592.2105",
+        "closed": false,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:57.767Z",
+        "revision": "35bf63f42f3a39a31fbc1061f2c423f352dd2c93c3a07095742fd01cd281003a"
+      },
+      "closed_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "spot",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:48:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "1759.49",
+        "high": "1765.5",
+        "low": "1756.73",
+        "close": "1758.81",
+        "base_volume": "836.56439",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:51:00.767Z",
+        "revision": "6462d000d228226b25dac443bb098e06cfa50177d29398c4f829e2f19bbed48c"
+      },
+      "stream_close_persisted": true,
+      "partial_updates": 60,
+      "live_closed_updates": 1,
+      "recovered_closes": 1,
+      "stream_connections": 2,
+      "forced_disconnect": true,
+      "synthetic_stale_rejected": true,
+      "synthetic_gap_rejected": true,
+      "disconnected_rejected": true,
+      "passed": true
+    },
+    {
+      "instrument": {
+        "provider": "bybit",
+        "market": "linear",
+        "base": "BTC",
+        "quote": "USDT",
+        "instrument_id": "BTCUSDT"
+      },
+      "timeframe": "1m",
+      "history_from": "2026-11-18T14:46:00Z",
+      "history_to": "2026-11-18T14:49:00Z",
+      "stage": "complete",
+      "metadata": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "price_step": "0.1",
+        "quantity_step": "0.001",
+        "min_quantity": "0.001",
+        "min_notional": "5"
+      },
+      "persisted_history_candles": 3,
+      "history_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:46:00Z",
+        "end_time": "2026-11-18T14:47:00Z",
+        "open": "63150",
+        "high": "63261.2",
+        "low": "63123.3",
+        "close": "63217.2",
+        "base_volume": "175.345",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:56.426Z",
+        "revision": "97c417c050fa5610b1abde5c6d9b5c3ead3aa34c81f4b6de98799960d6184bbc"
+      },
+      "duplicate_write_unchanged": true,
+      "partial_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:50:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "63360.1",
+        "high": "63380",
+        "low": "63360.1",
+        "close": "63368",
+        "base_volume": "5.168",
+        "closed": false,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:50:01.2Z",
+        "revision": "4df42af18bf51ffbaa683726c81705f2e82f243d3b6799219462c083ac490c14"
+      },
+      "closed_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:50:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "63360.1",
+        "high": "63390.3",
+        "low": "63163.7",
+        "close": "63205.3",
+        "base_volume": "194.904",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:51:00.201Z",
+        "revision": "33dffc4c9836538535f357e138d9d6a444e53ff8824e9e4b2fbda01299158774"
+      },
+      "stream_close_persisted": true,
+      "partial_updates": 60,
+      "live_closed_updates": 1,
+      "recovered_closes": 6,
+      "stream_connections": 2,
+      "forced_disconnect": true,
+      "synthetic_stale_rejected": true,
+      "synthetic_gap_rejected": true,
+      "disconnected_rejected": true,
+      "passed": true
+    },
+    {
+      "instrument": {
+        "provider": "bybit",
+        "market": "linear",
+        "base": "BTC",
+        "quote": "USDT",
+        "instrument_id": "BTCUSDT"
+      },
+      "timeframe": "3m",
+      "history_from": "2026-11-18T14:39:00Z",
+      "history_to": "2026-11-18T14:48:00Z",
+      "stage": "complete",
+      "metadata": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "price_step": "0.1",
+        "quantity_step": "0.001",
+        "min_quantity": "0.001",
+        "min_notional": "5"
+      },
+      "persisted_history_candles": 3,
+      "history_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:39:00Z",
+        "end_time": "2026-11-18T14:42:00Z",
+        "open": "63216.8",
+        "high": "63392.2",
+        "low": "63031.8",
+        "close": "63187.1",
+        "base_volume": "1744.486",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:55.854Z",
+        "revision": "780c511a31456ca35247f00d476df1fc35cac252ac371ef986763278b8136b91"
+      },
+      "duplicate_write_unchanged": true,
+      "partial_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:48:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "63191.5",
+        "high": "63374",
+        "low": "63130",
+        "close": "63368.5",
+        "base_volume": "449.652",
+        "closed": false,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:58.2Z",
+        "revision": "af1360620243c3e7b54fff5988e99167c656446d12a6926d620179285fba83cb"
+      },
+      "closed_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "BTC",
+          "quote": "USDT",
+          "instrument_id": "BTCUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:48:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "63191.5",
+        "high": "63390.3",
+        "low": "63130",
+        "close": "63205.3",
+        "base_volume": "675.51",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:51:00.2Z",
+        "revision": "7eb4c6e931f91855cbf5c3ef51ed4b59abc00d185ec756224966ac7a109a7486"
+      },
+      "stream_close_persisted": true,
+      "partial_updates": 63,
+      "live_closed_updates": 1,
+      "recovered_closes": 2,
+      "stream_connections": 2,
+      "forced_disconnect": true,
+      "synthetic_stale_rejected": true,
+      "synthetic_gap_rejected": true,
+      "disconnected_rejected": true,
+      "passed": true
+    },
+    {
+      "instrument": {
+        "provider": "bybit",
+        "market": "linear",
+        "base": "ETH",
+        "quote": "USDT",
+        "instrument_id": "ETHUSDT"
+      },
+      "timeframe": "1m",
+      "history_from": "2026-11-18T14:46:00Z",
+      "history_to": "2026-11-18T14:49:00Z",
+      "stage": "complete",
+      "metadata": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "price_step": "0.01",
+        "quantity_step": "0.01",
+        "min_quantity": "0.01",
+        "min_notional": "5"
+      },
+      "persisted_history_candles": 3,
+      "history_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:46:00Z",
+        "end_time": "2026-11-18T14:47:00Z",
+        "open": "1755.64",
+        "high": "1760.74",
+        "low": "1754.54",
+        "close": "1759.2",
+        "base_volume": "4052.02",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:56.248Z",
+        "revision": "2a4ea11464c789eb1e8d8f23c2ff068824d5b11c7fa31d8f1cda492f6d14d1d3"
+      },
+      "duplicate_write_unchanged": true,
+      "partial_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:51:00Z",
+        "end_time": "2026-11-18T14:52:00Z",
+        "open": "1757.66",
+        "high": "1760",
+        "low": "1757.66",
+        "close": "1760",
+        "base_volume": "265.22",
+        "closed": false,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:51:08.109Z",
+        "revision": "c831a1ed40a25353ceeaf479121de4f042b0b8d39fcb41112af4ba0af4e1c307"
+      },
+      "closed_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "1m",
+        "open_time": "2026-11-18T14:49:00Z",
+        "end_time": "2026-11-18T14:50:00Z",
+        "open": "1758.28",
+        "high": "1763.64",
+        "low": "1755.17",
+        "close": "1763.19",
+        "base_volume": "4698.04",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:50:01.108Z",
+        "revision": "2550c30541079b8fa74fed380f323aa647ed4e1b13b0a76bb1f5da974d0c3c0c"
+      },
+      "stream_close_persisted": true,
+      "partial_updates": 1,
+      "live_closed_updates": 1,
+      "recovered_closes": 5,
+      "stream_connections": 2,
+      "forced_disconnect": true,
+      "synthetic_stale_rejected": true,
+      "synthetic_gap_rejected": true,
+      "disconnected_rejected": true,
+      "passed": true
+    },
+    {
+      "instrument": {
+        "provider": "bybit",
+        "market": "linear",
+        "base": "ETH",
+        "quote": "USDT",
+        "instrument_id": "ETHUSDT"
+      },
+      "timeframe": "3m",
+      "history_from": "2026-11-18T14:39:00Z",
+      "history_to": "2026-11-18T14:48:00Z",
+      "stage": "complete",
+      "metadata": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "price_step": "0.01",
+        "quantity_step": "0.01",
+        "min_quantity": "0.01",
+        "min_notional": "5"
+      },
+      "persisted_history_candles": 3,
+      "history_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:39:00Z",
+        "end_time": "2026-11-18T14:42:00Z",
+        "open": "1766.1",
+        "high": "1770.48",
+        "low": "1756",
+        "close": "1762.56",
+        "base_volume": "16566.89",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:55.446Z",
+        "revision": "ca774f18438b48d88c04dd3f005e68e8d4c7dccd5019f021e92b9e409df81752"
+      },
+      "duplicate_write_unchanged": true,
+      "partial_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:48:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "1758.28",
+        "high": "1763.22",
+        "low": "1755.17",
+        "close": "1763.19",
+        "base_volume": "6383.7",
+        "closed": false,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:49:58.108Z",
+        "revision": "aeec0d1d2dea0ead2564b183dc9f0defac3ac8c1bc2ff355fbc6a8e4685590c9"
+      },
+      "closed_sample": {
+        "instrument": {
+          "provider": "bybit",
+          "market": "linear",
+          "base": "ETH",
+          "quote": "USDT",
+          "instrument_id": "ETHUSDT"
+        },
+        "timeframe": "3m",
+        "open_time": "2026-11-18T14:48:00Z",
+        "end_time": "2026-11-18T14:51:00Z",
+        "open": "1758.28",
+        "high": "1764.51",
+        "low": "1755.17",
+        "close": "1757.66",
+        "base_volume": "8818.66",
+        "closed": true,
+        "source": "bybit",
+        "observed_at": "2026-11-18T14:51:01.108Z",
+        "revision": "551a5c038f96e6273926efef1504c5dd52b74a4fce902d3f5be1eb049779ba6b"
+      },
+      "stream_close_persisted": true,
+      "partial_updates": 64,
+      "live_closed_updates": 1,
+      "recovered_closes": 2,
+      "stream_connections": 2,
+      "forced_disconnect": true,
+      "synthetic_stale_rejected": true,
+      "synthetic_gap_rejected": true,
+      "disconnected_rejected": true,
+      "passed": true
+    }
+  ]
+}

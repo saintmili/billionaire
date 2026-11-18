@@ -18,6 +18,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 - [M0 report](m0-report.md): bootstrap, provider evidence, commands and remaining gates.
 - [M1 report](m1-report.md): CLI/configuration, PostgreSQL migrations, verification and limitations.
 - [M2 report](m2-report.md): public market data, offline fixtures, candle persistence, synchronization and freshness.
+- [M2 local validation report](m2-local-validation-report.md): ticket #24 local checks and host-discovered stream fix; [repeatable procedure](m2-host-validation.md). VPS acceptance remains pending.
 - [M3 report](m3-report.md): immutable strategies, rules, snapshots, emission policies and signal persistence.
 - [M4 acceptance report](m4-report.md): combined offline lifecycle, CLI/JSON, exact reconciliation, failure/replay/concurrency evidence and operating limits.
 - [M4 account slice report](m4-accounts-report.md): ticket #1 account/ledger, offline ownership and verification.

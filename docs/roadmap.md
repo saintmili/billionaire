@@ -81,6 +81,11 @@ monitoring is enabled. This exception does not waive that gate. Stop at M4.
 
 **Acceptance:** Fetch and persist BTC/USDT and ETH/USDT candles in spot/linear categories, including 2 timeframes; reconnect+gap test; duplicates don't double insert; stale source prevents new auto entries (integrated later). Offline fixtures run without network.
 
+**Local validation follow-up (2026-11-18):** Ticket #24 now provides a repeatable
+opt-in host check and preliminary [local evidence](m2-local-validation-report.md).
+The intended runtime is a separate VPS; its actual-host acceptance remains pending
+and live monitoring stays disabled. See the [VPS/local procedure](m2-host-validation.md).
+
 ### M3 — Strategy runtime and reference strategies
 
 **Tasks:** Registry, YAML schema, built-in predicates, version store, strategy instances, multi-timeframe snapshot, partial/closed evaluation, signal emission policies and dedup, reference breakout + S/R + engulfing strategies.
