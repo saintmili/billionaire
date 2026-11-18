@@ -11,13 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/saintmili/billionaire/internal/cli"
 )
 
 func TestStartDocumentsOfflineGateAndRejectsLiveBeforeDatabase(t *testing.T) {
 	var out, logs bytes.Buffer
-	if err := cli.Execute(context.Background(), []string{"start", "--help"}, &out, &logs); err != nil {
+	if err := executeOffline(context.Background(), []string{"start", "--help"}, &out, &logs); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "--fixture") {
@@ -33,17 +31,17 @@ func TestStartConfiguredFixtureSubscriptionsThroughCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, logs bytes.Buffer
-	if err := cli.Execute(context.Background(), []string{"init", "--config", path}, &out, &logs); err != nil {
+	if err := executeOffline(context.Background(), []string{"init", "--config", path}, &out, &logs); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
 	logs.Reset()
-	if err := cli.Execute(context.Background(), []string{"start", "--config", path, "--output", "json"}, &out, &logs); err == nil || !strings.Contains(err.Error(), "actual-host") {
+	if err := executeOffline(context.Background(), []string{"start", "--config", path, "--output", "json"}, &out, &logs); err == nil || !strings.Contains(err.Error(), "actual-host") {
 		t.Fatalf("live gate: %v", err)
 	}
 	out.Reset()
 	logs.Reset()
-	if err := cli.Execute(context.Background(), []string{"start", "--config", path, "--fixture", "../../testdata/market/m2.json", "--output", "json"}, &out, &logs); err != nil {
+	if err := executeOffline(context.Background(), []string{"start", "--config", path, "--fixture", "../../testdata/market/m2.json", "--output", "json"}, &out, &logs); err != nil {
 		t.Fatal(err)
 	}
 	decoder := json.NewDecoder(&out)

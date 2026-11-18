@@ -13,8 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/saintmili/billionaire/internal/cli"
 )
 
 func TestHostValidationRequiresExplicitNetworkOptInAndBounds(t *testing.T) {
@@ -28,7 +26,7 @@ func TestHostValidationRequiresExplicitNetworkOptInAndBounds(t *testing.T) {
 		{[]string{"--allow-network", "--host-role", "unknown"}, "host-role"},
 	} {
 		var out, logs bytes.Buffer
-		err := cli.Execute(context.Background(), append([]string{"market", "validate-host"}, tc.args...), &out, &logs)
+		err := executeOffline(context.Background(), append([]string{"market", "validate-host"}, tc.args...), &out, &logs)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("%v: %v", tc.args, err)
 		}
@@ -55,13 +53,13 @@ func TestHostValidationRecordsEveryMarketAndSanitizesProviderFailure(t *testing.
 		t.Fatal(err)
 	}
 	var out, logs bytes.Buffer
-	if err := cli.Execute(context.Background(), []string{"init", "--config", path}, &out, &logs); err != nil {
+	if err := executeOffline(context.Background(), []string{"init", "--config", path}, &out, &logs); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 { // Restart repeats explicit evidence without turning a prior failure into acceptance.
 		out.Reset()
 		logs.Reset()
-		err := cli.Execute(context.Background(), []string{"market", "validate-host", "--allow-network", "--duration", "10s", "--host-role", "intended-runtime", "--config", path, "--output", "json"}, &out, &logs)
+		err := executeOffline(context.Background(), []string{"market", "validate-host", "--allow-network", "--duration", "10s", "--host-role", "intended-runtime", "--config", path, "--output", "json"}, &out, &logs)
 		if err == nil {
 			t.Fatal("blocked provider accepted")
 		}

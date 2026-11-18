@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/strategy"
 	"github.com/saintmili/billionaire/internal/testdb"
@@ -23,7 +22,7 @@ func TestSignalEntryFixtureCLI(t *testing.T) {
 			invoke := func(args ...string) []byte {
 				t.Helper()
 				var out, logs bytes.Buffer
-				err := cli.Execute(context.Background(), append(args, "--config", configPath, "--output", "json"), &out, &logs)
+				err := executeOffline(context.Background(), append(args, "--config", configPath, "--output", "json"), &out, &logs)
 				if err != nil {
 					t.Fatalf("%v: %v; %s", args, err, &out)
 				}

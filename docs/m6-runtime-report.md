@@ -9,7 +9,8 @@ The executable is `billionaire` (the ticket's `millionaire` spelling is a typo).
 ## Run
 
 Use a disposable initialized database and the existing paper account/strategy
-commands to create accounts and enable instances. Bind instances to the `fixture`
+commands with explicit `--offline` to create accounts and enable instances while
+the owner is stopped. Bind instances to the `fixture`
 provider when running fixtures. The fixture must cover every configured instrument
 and all warm-up requirements. For the shipped M2 dataset, add this to a copy of
 `configs/example.yaml` (its four subscriptions are supported):
@@ -30,7 +31,8 @@ go run ./cmd/billionaire --config /tmp/engine.yaml --output json status
 
 JSON foreground output is newline-delimited objects: engine starting, feed/event
 results (including emitted signals), and engine stopped. Fixture exhaustion stops
-normally; SIGINT/SIGTERM uses the existing root cancellation context. `status`
+normally; add `--hold` to retain ownership and the private control socket after
+fixture exhaustion until interrupted. SIGINT/SIGTERM uses the existing root cancellation context. `status`
 reports running/stopped by observing the engine ownership fence.
 
 Defaults when `engine` is absent or numeric fields are zero: queue capacity 64,
@@ -54,9 +56,10 @@ strategy evaluation lock on the same pinned, non-reconnecting session. Other
 paper owners and standalone strategy evaluators are rejected while it runs.
 Evaluation and financial writes use that owner session; losing it cannot reconnect
 through a pool and write again. Idle ownership is checked every second with a
-2-second timeout. Independent report reads remain possible. Existing administrative
-risk/strategy configuration commands retain their existing behavior; the control
-socket and command routing belong to subsequent M6 tickets.
+2-second timeout. Independent report reads remain possible. Subsequent ticket #26
+now routes default CLI mutations through the private Unix socket, with atomic
+original-outcome receipts. Explicit `--offline` fixture/setup mutations require
+the owner stopped. See the [control report](m6-control-report.md).
 
 Queue overflow blocks admission until capacity becomes available or cancellation
 occurs. A feed waits for processing acknowledgment before advancing its persisted

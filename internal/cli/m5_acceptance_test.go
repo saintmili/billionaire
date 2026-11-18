@@ -12,7 +12,6 @@ import (
 
 	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/backtest"
-	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata/fixture"
 	"github.com/saintmili/billionaire/internal/paper"
@@ -26,7 +25,7 @@ func TestM5CLICombinedLinearAnalyticsFrozenExportAndTrainTest(t *testing.T) {
 	invoke := func(args ...string) []byte {
 		t.Helper()
 		var out, logs bytes.Buffer
-		if e := cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs); e != nil {
+		if e := executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs); e != nil {
 			t.Fatalf("%v: %s %v", args, out.String(), e)
 		}
 		return out.Bytes()

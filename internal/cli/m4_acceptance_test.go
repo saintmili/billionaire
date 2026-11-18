@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/paper"
@@ -27,7 +26,7 @@ func TestM4CLIJSONSignalLifecycles(t *testing.T) {
 			call := func(args ...string) ([]byte, error) {
 				t.Helper()
 				var out, logs bytes.Buffer
-				err := cli.Execute(context.Background(), append(args, "--config", cfg, "--output", "json"), &out, &logs)
+				err := executeOffline(context.Background(), append(args, "--config", cfg, "--output", "json"), &out, &logs)
 				return out.Bytes(), err
 			}
 			invoke := func(args ...string) []byte {
@@ -193,7 +192,7 @@ func TestM4CLIRejectsSpotShortAndLeverageWithoutMoneyMovement(t *testing.T) {
 	invoke := func(args ...string) ([]byte, error) {
 		t.Helper()
 		var out, logs bytes.Buffer
-		err := cli.Execute(context.Background(), append(args, "--config", cfg, "--output", "json"), &out, &logs)
+		err := executeOffline(context.Background(), append(args, "--config", cfg, "--output", "json"), &out, &logs)
 		return out.Bytes(), err
 	}
 	if _, err := invoke("init"); err != nil {

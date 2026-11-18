@@ -18,11 +18,13 @@ import (
 )
 
 type options struct {
-	configPath  string
-	output      string
-	out         io.Writer
-	diagnostics io.Writer
-	level       slog.LevelVar
+	configPath    string
+	controlSocket string
+	offline       bool
+	output        string
+	out           io.Writer
+	diagnostics   io.Writer
+	level         slog.LevelVar
 }
 
 // Execute keeps structured logs on diagnostics and command results on out.
@@ -62,6 +64,7 @@ func Execute(ctx context.Context, args []string, out, diagnostics io.Writer) err
 	root.AddCommand(configuration)
 	root.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 	configuration.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
+	opts.addControlCommands(root)
 	opts.addNotificationCommands(root)
 	opts.addStorageCommands(root)
 	root.AddCommand(opts.startCommand())

@@ -15,7 +15,7 @@ import (
 func (o *options) addSignalEntryCommands(group *cobra.Command) {
 	for _, approve := range []bool{false, true} {
 		var request paper.SignalEntryRequest
-		var path, at string
+		var path, at, requestID string
 		limit := 100
 		use := "consume"
 		args := cobra.NoArgs
@@ -24,9 +24,16 @@ func (o *options) addSignalEntryCommands(group *cobra.Command) {
 			args = cobra.ExactArgs(1)
 		}
 		cmd := &cobra.Command{Use: use, Short: "Decide persisted fixture signals; entries wait for a later paper observe", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
-			fixture, err := readSpotFixture(path)
-			if err != nil {
-				return err
+			if !approve && !o.offline {
+				return errors.New("paper consume requires explicit --offline; running owner owns automatic decisions")
+			}
+			var fixture spotFixture
+			var err error
+			if o.offline {
+				fixture, err = readSpotFixture(path)
+				if err != nil {
+					return err
+				}
 			}
 			request.At, err = time.Parse(time.RFC3339Nano, at)
 			if err != nil {
@@ -41,6 +48,20 @@ func (o *options) addSignalEntryCommands(group *cobra.Command) {
 				return err
 			}
 			return o.paperDatabaseWithConfig(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
+				if !o.offline {
+					var d paper.SignalDecision
+					err := o.controlMutation(ctx, requestID, "signal.approve", request, &d)
+					if err != nil {
+						return err
+					}
+					if err = o.write(d, decisionText(d)); err != nil {
+						return err
+					}
+					if d.Status == "rejected" || (d.Order != nil && d.Order.Status == "rejected") {
+						return errors.New("signal approval rejected; inspect recorded reason")
+					}
+					return nil
+				}
 				owner, err := store.AcquirePaperOwner(ctx)
 				if err != nil {
 					return err
@@ -82,6 +103,7 @@ func (o *options) addSignalEntryCommands(group *cobra.Command) {
 				return nil
 			})
 		}}
+		cmd.Flags().StringVar(&requestID, "request-id", "", "stable owner control request identity")
 		cmd.Flags().StringVar(&path, "fixture", "", "offline instrument metadata JSON")
 		cmd.Flags().StringVar(&at, "at", "", "explicit RFC3339 decision timestamp; reuse on approval retry")
 		cmd.Flags().StringVar(&request.Quantity, "quantity", "risk", "base quantity or risk for execution-time policy sizing")
@@ -91,7 +113,9 @@ func (o *options) addSignalEntryCommands(group *cobra.Command) {
 		if !approve {
 			cmd.Flags().IntVar(&limit, "limit", 100, "maximum signals consumed, from 1 to 1000")
 		}
-		_ = cmd.MarkFlagRequired("fixture")
+		if !approve {
+			_ = cmd.MarkFlagRequired("fixture")
+		}
 		_ = cmd.MarkFlagRequired("at")
 		group.AddCommand(cmd)
 	}

@@ -22,7 +22,6 @@ import (
 
 	"github.com/saintmili/billionaire/internal/analytics"
 	"github.com/saintmili/billionaire/internal/backtest"
-	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/strategy"
 	"github.com/saintmili/billionaire/internal/testdb"
@@ -33,7 +32,7 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	invoke := func(args ...string) ([]byte, error) {
 		var out, logs bytes.Buffer
-		e := cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+		e := executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
 		return out.Bytes(), e
 	}
 	if _, e := invoke("init"); e != nil {
@@ -283,7 +282,7 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 	cancelled, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	var failedOut, failedLogs bytes.Buffer
-	e = cli.Execute(cancelled, []string{"backtest", "run", "--source-run", r.ID, "--config", path, "--output", "json"}, &failedOut, &failedLogs)
+	e = executeOffline(cancelled, []string{"backtest", "run", "--source-run", r.ID, "--config", path, "--output", "json"}, &failedOut, &failedLogs)
 	var stopped backtest.Report
 	if !errors.Is(e, context.DeadlineExceeded) || json.Unmarshal(failedOut.Bytes(), &stopped) != nil || stopped.ID == "" || stopped.Status != "cancelled" {
 		t.Fatalf("CLI cancelled result: %s %v", &failedOut, e)
@@ -298,7 +297,7 @@ func TestBacktestCLILinearFundingJourney(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	invoke := func(args ...string) ([]byte, error) {
 		var out, logs bytes.Buffer
-		e := cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+		e := executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
 		return out.Bytes(), e
 	}
 	if _, e := invoke("init"); e != nil {
