@@ -14,6 +14,7 @@ import (
 	"github.com/saintmili/billionaire/internal/backtest"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
+	"github.com/saintmili/billionaire/internal/notify"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/strategy"
 )
@@ -70,7 +71,18 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		encoded, _ := json.Marshal(report)
-		if _, saveErr := s.pool.Exec(cleanup, `UPDATE billionaire.backtest_runs SET status=$2,report=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, report.Status, encoded); saveErr != nil {
+		tx, saveErr := s.pool.Begin(cleanup)
+		if saveErr == nil {
+			defer rollback(tx)
+			_, saveErr = tx.Exec(cleanup, `UPDATE billionaire.backtest_runs SET status=$2,report=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, report.Status, encoded)
+			if saveErr == nil && report.Status == "completed" {
+				saveErr = enqueueNotification(cleanup, tx, notify.Event{ID: "backtest:" + id, Kind: "backtest_completed", CorrelationID: id, StrategyID: v.Definition.ID, VersionID: v.ID, Instrument: instrumentKey(cfg.Instrument.Instrument), Timeframe: string(v.Definition.Primary), At: time.Now().UTC(), Reason: "retained backtest report completed"}, notify.Policy{})
+			}
+			if saveErr == nil {
+				saveErr = tx.Commit(cleanup)
+			}
+		}
+		if saveErr != nil {
 			err = fmt.Errorf("run %s result persistence failed; status may remain running: %w", id, ErrUnavailable)
 		}
 	}()
