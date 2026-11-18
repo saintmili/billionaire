@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/saintmili/billionaire/internal/control"
+	"github.com/saintmili/billionaire/internal/marketdata"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/saintmili/billionaire/internal/app"
@@ -14,7 +18,9 @@ import (
 
 func (o *options) startCommand() *cobra.Command {
 	var path string
+	var hold bool
 	cmd := &cobra.Command{Use: "start", Short: "Run the single-owner foreground paper engine", Long: "Run configured subscriptions, strategies and paper processing. Offline --fixture is required while the M2 actual-host validation gate remains pending.", Args: cobra.NoArgs}
+	cmd.Flags().BoolVar(&hold, "hold", false, "keep the fixture owner and control socket running until interrupted")
 	cmd.Flags().StringVar(&path, "fixture", "", "offline market dataset; live monitoring remains gated")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cfg, err := o.load()
@@ -57,7 +63,24 @@ func (o *options) startCommand() *cobra.Command {
 			if err := o.write(map[string]any{"engine": "starting", "fixture": true, "subscriptions": len(feeds), "queue_capacity": capacity, "live_monitoring": false}, fmt.Sprintf("Starting fixture engine with %d subscriptions", len(feeds))); err != nil {
 				return err
 			}
-			err := app.Run(ctx, store, feeds, app.Options{QueueCapacity: capacity, StaleAfter: ttl, Quantity: cfg.Engine.Quantity}, func(result app.Result) error {
+			err := app.Run(ctx, store, feeds, app.Options{KeepAlive: hold, QueueCapacity: capacity, StaleAfter: ttl, Quantity: cfg.Engine.Quantity, OwnerReady: func(owner *postgres.PaperOwner) (func(), error) {
+				if err := os.MkdirAll(filepath.Dir(o.controlSocket), 0700); err != nil {
+					return nil, err
+				}
+				metadata := []marketdata.InstrumentInfo{}
+				for _, feed := range feeds {
+					info, err := feed.Provider.Instrument(ctx, feed.Query.Instrument.Market, feed.Query.Instrument.Base+"/"+feed.Query.Instrument.Quote)
+					if err != nil {
+						return nil, err
+					}
+					metadata = append(metadata, info)
+				}
+				server, err := control.Listen(o.controlSocket, app.NewControl(owner, metadata, ttl))
+				if err != nil {
+					return nil, err
+				}
+				return func() { server.Close() }, nil
+			}}, func(result app.Result) error {
 				return o.write(result, fmt.Sprintf("%s: %s %s, signals=%d", result.Event.Kind, result.Event.Feed.Instrument.ID, result.Event.Feed.Timeframe, len(result.Signals)))
 			})
 			if err != nil {

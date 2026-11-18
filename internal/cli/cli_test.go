@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/saintmili/billionaire/configs"
-	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/testdb"
 )
 
@@ -23,7 +22,7 @@ func TestConfigValidateIsOfflineAndMachineReadable(t *testing.T) {
 	}
 	t.Setenv("BILLIONAIRE_DATABASE_URL", "")
 	var out, logs bytes.Buffer
-	if err := cli.Execute(context.Background(), []string{"config", "validate", "--config", path, "--output", "json"}, &out, &logs); err != nil {
+	if err := executeOffline(context.Background(), []string{"config", "validate", "--config", path, "--output", "json"}, &out, &logs); err != nil {
 		t.Fatal(err)
 	}
 	var result struct {
@@ -50,7 +49,7 @@ func TestInitAndStatusPersistAcrossCommandInvocations(t *testing.T) {
 		t.Helper()
 		var out, logs bytes.Buffer
 		args = append(args, "--config", path, "--output", "json")
-		err := cli.Execute(context.Background(), args, &out, &logs)
+		err := executeOffline(context.Background(), args, &out, &logs)
 		var result map[string]any
 		if out.Len() > 0 {
 			if e := json.Unmarshal(out.Bytes(), &result); e != nil {
@@ -103,7 +102,7 @@ func TestCommandCancellationAndInvalidArguments(t *testing.T) {
 	cancel()
 	path := filepath.Join(t.TempDir(), "new.yaml")
 	var out, logs bytes.Buffer
-	if err := cli.Execute(ctx, []string{"init", "--config", path}, &out, &logs); !errors.Is(err, context.Canceled) {
+	if err := executeOffline(ctx, []string{"init", "--config", path}, &out, &logs); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation lost: %v", err)
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -112,7 +111,7 @@ func TestCommandCancellationAndInvalidArguments(t *testing.T) {
 	for _, args := range [][]string{{"unknown"}, {"config", "unknown"}, {"database", "unknown"}, {"config", "validate", "extra"}, {"status", "--output", "xml"}} {
 		out.Reset()
 		logs.Reset()
-		if err := cli.Execute(context.Background(), args, &out, &logs); err == nil {
+		if err := executeOffline(context.Background(), args, &out, &logs); err == nil {
 			t.Errorf("accepted arguments %v", args)
 		}
 	}
@@ -125,7 +124,7 @@ func TestUnavailableStatusDoesNotDiscloseDatabaseSecrets(t *testing.T) {
 	}
 	t.Setenv("BILLIONAIRE_DATABASE_URL", "postgres://sensitive-marker:%not-a-url@host/db")
 	var out, logs bytes.Buffer
-	err := cli.Execute(context.Background(), []string{"status", "--config", path, "--output", "json"}, &out, &logs)
+	err := executeOffline(context.Background(), []string{"status", "--config", path, "--output", "json"}, &out, &logs)
 	if err == nil {
 		t.Fatal("unavailable database reported healthy")
 	}
@@ -152,7 +151,7 @@ func TestMarketBackfillWatchAndStatusUseOfflineFixture(t *testing.T) {
 	invoke := func(args ...string) error {
 		out.Reset()
 		logs.Reset()
-		return cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+		return executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
 	}
 	if err := invoke("init"); err != nil {
 		t.Fatal(err)
@@ -211,7 +210,7 @@ func TestStrategyCLIRegistersEnablesEvaluatesAndInspectsSignals(t *testing.T) {
 	invoke := func(args ...string) error {
 		out.Reset()
 		logs.Reset()
-		return cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+		return executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
 	}
 	if err := invoke("init"); err != nil {
 		t.Fatal(err)
@@ -267,7 +266,7 @@ func TestStrategyEvaluateCommandIsOfflineAndIdempotent(t *testing.T) {
 	invoke := func(args ...string) error {
 		out.Reset()
 		logs.Reset()
-		return cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+		return executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
 	}
 	if err := invoke("init"); err != nil {
 		t.Fatal(err)

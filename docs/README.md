@@ -12,6 +12,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 
 **Current milestone:** M5 offline acceptance is complete; see the [combined report and operating guide](m5-report.md). M2 actual-host validation remains pending, live monitoring remains disabled, and later milestones remain unstarted.
 
+- [M6 owner control slice](m6-control-report.md): private Unix requests, durable receipts, explicit offline setup and recovery.
 - [M6 foreground runtime slice](m6-runtime-report.md): fixture start, configured subscriptions, single-session ownership, recovery and operating limits.
 
 ## Reconnaissance evidence

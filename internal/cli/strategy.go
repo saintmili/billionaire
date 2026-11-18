@@ -14,6 +14,7 @@ import (
 
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
+	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"github.com/saintmili/billionaire/internal/strategy"
 )
@@ -66,25 +67,26 @@ func (o *options) addStrategyCommands(root *cobra.Command) {
 			return err
 		}
 		return o.database(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
-			version, err := store.AddStrategyVersion(ctx, definition, registry)
+			if !o.offline {
+				return errors.New("strategy add requires explicit --offline setup with owner stopped")
+			}
+			owner, err := store.AcquireEngineOwner(ctx)
+			if err != nil {
+				return err
+			}
+			defer owner.Close()
+			var selected *strategy.Instance
+			if instanceID != "" {
+				selected = &binding
+			}
+			version, instance, err := owner.RegisterStrategy(ctx, definition, selected)
 			if err != nil {
 				return err
 			}
 			result := struct {
 				Version  strategy.Version   `json:"version"`
 				Instance *strategy.Instance `json:"instance,omitempty"`
-			}{Version: version}
-			if instanceID != "" {
-				binding.VersionID = version.ID
-				if err := store.AddStrategyInstance(ctx, binding); err != nil {
-					return err
-				}
-				actual, err := store.StrategyInstance(ctx, binding.ID)
-				if err != nil {
-					return err
-				}
-				result.Instance = &actual
-			}
+			}{version, instance}
 			return o.write(result, fmt.Sprintf("Registered %s version %d (%s)", definition.ID, version.Number, version.ID))
 		})
 	}}
@@ -124,22 +126,36 @@ func (o *options) addStrategyCommands(root *cobra.Command) {
 		if enabled {
 			name = "enable"
 		}
-		group.AddCommand(&cobra.Command{Use: name + " INSTANCE", Short: name + " a strategy instance", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		var requestID string
+		toggle := &cobra.Command{Use: name + " INSTANCE", Short: name + " a strategy instance", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := o.load()
 			if err != nil {
 				return err
 			}
 			return o.database(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
-				if err := store.SetStrategyEnabled(ctx, args[0], enabled); err != nil {
+				if !o.offline {
+					return o.controlMutation(ctx, requestID, "strategy.enabled", map[string]any{"id": args[0], "enabled": enabled}, nil)
+				}
+				owner, err := store.AcquireEngineOwner(ctx)
+				if err != nil {
+					return err
+				}
+				defer owner.Close()
+				if _, err := owner.SetControl(ctx, "strategy.enabled", args[0], "", enabled, paper.RiskPolicy{}); err != nil {
 					return err
 				}
 				return o.write(map[string]any{"instance_id": args[0], "enabled": enabled}, fmt.Sprintf("%s enabled=%v", args[0], enabled))
 			})
-		}})
+		}}
+		toggle.Flags().StringVar(&requestID, "request-id", "", "stable owner control request identity")
+		group.AddCommand(toggle)
 	}
 	var eventPath string
 	var sourceReady bool
 	evaluate := &cobra.Command{Use: "evaluate INSTANCE", Short: "Evaluate one explicit offline candle event; records signals only", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if !o.offline {
+			return errors.New("strategy evaluate requires explicit --offline; running owner owns evaluation")
+		}
 		candle, err := readStrategyEvent(eventPath)
 		if err != nil {
 			return err

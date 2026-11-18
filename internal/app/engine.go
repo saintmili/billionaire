@@ -20,9 +20,11 @@ type Subscription struct {
 	Query    marketdata.Query
 }
 type Options struct {
+	KeepAlive     bool
 	QueueCapacity int
 	StaleAfter    time.Duration
 	Quantity      string
+	OwnerReady    func(*postgres.PaperOwner) (func(), error)
 }
 type Result struct {
 	Event   marketdata.Event  `json:"event"`
@@ -68,6 +70,13 @@ func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts 
 		return err
 	}
 	defer owner.Close()
+	if opts.OwnerReady != nil {
+		stop, err := opts.OwnerReady(owner)
+		if err != nil {
+			return err
+		}
+		defer stop()
+	}
 	running, cancel := context.WithCancel(ctx)
 	defer cancel()
 	queue := make(chan delivery, opts.QueueCapacity)
@@ -111,7 +120,7 @@ func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	remaining := len(feeds)
-	for remaining > 0 {
+	for remaining > 0 || opts.KeepAlive {
 		select {
 		case <-ctx.Done():
 			return nil

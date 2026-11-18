@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/testdb"
@@ -20,7 +19,7 @@ func TestCLIFundingFixturePersistsMissingCoverage(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	invoke := func(args ...string) ([]byte, error) {
 		var out, logs bytes.Buffer
-		err := cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+		err := executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
 		return out.Bytes(), err
 	}
 	if _, err := invoke("init"); err != nil {

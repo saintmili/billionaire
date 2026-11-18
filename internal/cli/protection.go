@@ -39,12 +39,18 @@ func (o *options) addProtectionCommand(group *cobra.Command) {
 			return err
 		}
 		return o.paperDatabaseWithConfig(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
-			owner, err := store.AcquirePaperOwner(ctx)
-			if err != nil {
-				return err
+			var p paper.Position
+			var err error
+			if !o.offline {
+				err = o.controlMutation(ctx, r.RequestID, "position.adjust", r, &p)
+			} else {
+				owner, e := store.AcquirePaperOwner(ctx)
+				if e != nil {
+					return e
+				}
+				defer owner.Close()
+				p, err = owner.AdjustProtection(ctx, r)
 			}
-			defer owner.Close()
-			p, err := owner.AdjustProtection(ctx, r)
 			if err != nil {
 				return err
 			}

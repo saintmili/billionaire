@@ -25,7 +25,7 @@ type Direction string
 const (
 	Up            Direction = "up"
 	Down          Direction = "down"
-	LatestVersion           = 11
+	LatestVersion           = 12
 )
 
 //go:embed migrations/0001_bootstrap.up.sql
@@ -99,7 +99,13 @@ var signalReportsUp string
 //go:embed migrations/0011_signal_reports.down.sql
 var signalReportsDown string
 
-var migrations = []migration{{1, bootstrapUp, bootstrapDown}, {2, marketUp, marketDown}, {3, strategiesUp, strategiesDown}, {4, accountsUp, accountsDown}, {5, spotUp, spotDown}, {6, riskUp, riskDown}, {7, protectionUp, protectionDown}, {8, decisionsUp, decisionsDown}, {9, fundingUp, fundingDown}, {10, backtestsUp, backtestsDown}, {11, signalReportsUp, signalReportsDown}}
+//go:embed migrations/0012_control.up.sql
+var controlUp string
+
+//go:embed migrations/0012_control.down.sql
+var controlDown string
+
+var migrations = []migration{{1, bootstrapUp, bootstrapDown}, {2, marketUp, marketDown}, {3, strategiesUp, strategiesDown}, {4, accountsUp, accountsDown}, {5, spotUp, spotDown}, {6, riskUp, riskDown}, {7, protectionUp, protectionDown}, {8, decisionsUp, decisionsDown}, {9, fundingUp, fundingDown}, {10, backtestsUp, backtestsDown}, {11, signalReportsUp, signalReportsDown}, {12, controlUp, controlDown}}
 
 func (m migration) checksum() string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(m.up+"\n--DOWN--\n"+m.down)))
@@ -207,6 +213,13 @@ func (s *Store) Migrate(ctx context.Context, direction Direction) error {
 		return safeError(ctx, ErrUnavailable)
 	}
 	defer rollback(tx)
+	var admitted bool
+	if err := tx.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock_shared(7341928602)").Scan(&admitted); err != nil {
+		return safeError(ctx, ErrUnavailable)
+	}
+	if !admitted {
+		return ErrPaperOwned
+	}
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(7341928601)"); err != nil {
 		return safeError(ctx, ErrMigration)
 	}

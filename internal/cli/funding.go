@@ -19,6 +19,9 @@ func (o *options) addFundingCommands(parent *cobra.Command) {
 	group := &cobra.Command{Use: "funding", Short: "Apply and inspect explicit offline funding intervals and missing coverage"}
 	var path string
 	apply := &cobra.Command{Use: "apply", Short: "Apply one deterministic funding fixture before later prices", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if !o.offline {
+			return errors.New("funding apply requires explicit --offline; running owner owns funding")
+		}
 		f, err := os.Open(path)
 		if err != nil {
 			return errors.New("cannot open funding fixture")
