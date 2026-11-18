@@ -14,7 +14,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
 | M4 — Paper accounts, orders, risk, and position lifecycle | Complete under offline sequencing exception — [combined acceptance evidence](m4-report.md); M2 live-host gate remains pending |
 | M5 — First-class backtesting and analytics | Complete under offline sequencing exception — [combined acceptance and operating guide](m5-report.md), including #17–#22 slices; M2 live-host gate remains pending; stop at M5 |
-| M6 — Notifications and process operation | Not started |
+| M6 — Notifications and process operation | Unblocked offline work in progress — [runtime #25](m6-runtime-report.md); #29 and downstream acceptance remain blocked by M2 actual-host validation |
 | M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
 | M7 — StopLore journaling | Not started |
 | M8 — Production hardening and MVP release | Not started |

@@ -10,7 +10,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 | [Glossary](../GLOSSARY.md) | Established domain terms |
 | [Agent configuration](../AGENTS.md) | When to read tracker, triage, domain, and project instructions |
 
-**Current milestone:** M5 offline acceptance is complete; see the [combined report and operating guide](m5-report.md). M2 actual-host validation remains pending, live monitoring remains disabled, and later milestones remain unstarted.
+**Current milestone:** M5 offline acceptance is complete; see the [combined report and operating guide](m5-report.md). Unblocked offline M6 work is in progress under the [roadmap exception](roadmap.md#sequencing-exception-unblocked-offline-m6-work), beginning with the [foreground runtime](m6-runtime-report.md). M2 actual-host validation remains pending and live monitoring remains disabled. M6 acceptance and later milestones remain blocked.
 
 - [M6 foreground runtime slice](m6-runtime-report.md): fixture start, configured subscriptions, single-session ownership, recovery and operating limits.
 
