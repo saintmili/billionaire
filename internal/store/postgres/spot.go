@@ -109,6 +109,11 @@ func submitOrder(ctx context.Context, tx pgx.Tx, order paper.Order, enabled bool
 	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_orders(id,account_id,instrument_key,intent_at,status,payload) VALUES($1,$2,$3,$4,$5,$6)`, order.ID, order.Request.AccountID, instrumentKey(order.Request.Instrument), order.Request.At, order.Status, payload); err != nil {
 		return order, safeError(ctx, ErrUnavailable)
 	}
+	if order.Status == "rejected" {
+		if err := orderNotification(ctx, tx, order, nil); err != nil {
+			return order, err
+		}
+	}
 	return order, nil
 }
 
@@ -268,6 +273,9 @@ func commitExecutionPlan(ctx context.Context, tx pgx.Tx, plan paper.Execution) e
 		return err
 	}
 	if plan.Fill == nil {
+		if plan.Order.Status == "rejected" {
+			return orderNotification(ctx, tx, plan.Order, nil)
+		}
 		return nil
 	}
 	p := plan.Position
@@ -293,6 +301,9 @@ func commitExecutionPlan(ctx context.Context, tx pgx.Tx, plan paper.Execution) e
 		if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_ledger_entries(id,account_id,kind,amount,fill_id) VALUES($1,$2,$3,$4,$5)`, f.ID+":"+movement.Kind, p.AccountID, movement.Kind, movement.Amount.String(), f.ID); err != nil {
 			return err
 		}
+	}
+	if err := orderNotification(ctx, tx, plan.Order, f); err != nil {
+		return err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO billionaire.journal_outbox(event_id,kind,payload) VALUES($1,'paper_fill',$2)`, f.ID, fillPayload)
 	return err

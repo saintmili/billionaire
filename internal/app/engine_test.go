@@ -82,6 +82,24 @@ func TestForegroundSignalFillsOnlyOnNextObservationAndRestartDoesNotDuplicate(t 
 		} else if err != nil {
 			t.Fatal(err)
 		}
+		if attempt == 0 {
+			alerts, e := s.Notifications(ctx, 100)
+			if e != nil {
+				t.Fatal(e)
+			}
+			found := false
+			for _, alert := range alerts {
+				if alert.Event.Kind == "engine_failure" {
+					found = true
+					if alert.Event.Reason != "foreground engine failed; inspect local command diagnostics" {
+						t.Fatal("unsafe engine failure reason")
+					}
+				}
+			}
+			if !found {
+				t.Fatal("foreground failure missing durable notification")
+			}
+		}
 	}
 	fills, err := s.PaperFills(ctx, a.ID)
 	if err != nil || len(fills) != 1 || fills[0].Price.String() != "102" || fills[0].LatencyMillis != 60000 {

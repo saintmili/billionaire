@@ -65,6 +65,20 @@ func TestProtectionPartialTargetPersistsAndStopClosesRemainder(t *testing.T) {
 	if err != nil || len(fills) != 3 {
 		t.Fatalf("fills: %+v %v", fills, err)
 	}
+	alerts, e := store.Notifications(ctx, 10)
+	if e != nil || len(alerts) != 3 {
+		t.Fatalf("protection alerts %+v %v", alerts, e)
+	}
+	kinds := map[string]int{}
+	for _, a := range alerts {
+		kinds[a.Event.Kind]++
+		if a.Event.CorrelationID == "" || a.Event.Instrument == "" || a.Event.At.IsZero() {
+			t.Fatal("missing financial context")
+		}
+	}
+	if kinds["order_opened"] != 1 || kinds["take_profit"] != 1 || kinds["stop_loss"] != 1 {
+		t.Fatal(kinds)
+	}
 	saved, err := store.PaperAccount(ctx, account.ID)
 	if err != nil || saved.Balance.String() != "979.62" {
 		t.Fatalf("balance: %+v %v", saved, err)
@@ -102,7 +116,7 @@ func TestProtectionRollbackAndConcurrentManualCloseCannotOverclose(t *testing.T)
 	defer conn.Close(ctx)
 	o, g = spotObservation(2)
 	o.Price = spotDecimal("85")
-	for _, fault := range []struct{ table, operation string }{{"paper_orders", "INSERT"}, {"paper_positions", "INSERT"}, {"paper_fills", "INSERT"}, {"paper_accounts", "UPDATE"}, {"paper_ledger_entries", "INSERT"}, {"journal_outbox", "INSERT"}, {"paper_price_events", "INSERT"}} {
+	for _, fault := range []struct{ table, operation string }{{"paper_orders", "INSERT"}, {"paper_positions", "INSERT"}, {"paper_fills", "INSERT"}, {"paper_accounts", "UPDATE"}, {"paper_ledger_entries", "INSERT"}, {"journal_outbox", "INSERT"}, {"notification_outbox", "INSERT"}, {"paper_price_events", "INSERT"}} {
 		_, err := conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_protection() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_protection BEFORE `+fault.operation+` ON billionaire.`+fault.table+` FOR EACH ROW EXECUTE FUNCTION billionaire.fail_protection()`)
 		if err != nil {
 			t.Fatal(err)
