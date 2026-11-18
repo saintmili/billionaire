@@ -55,7 +55,7 @@ func (f marketFlags) identity(provider string) (domain.Instrument, domain.Timefr
 }
 func (o *options) addMarketCommands(root *cobra.Command) {
 	market := &cobra.Command{Use: "market", Short: "Backfill, watch and inspect public market data", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() }}
-	market.AddCommand(o.backfillCommand(), o.watchCommand(), o.feedStatusCommand())
+	market.AddCommand(o.backfillCommand(), o.watchCommand(), o.feedStatusCommand(), o.hostValidationCommand())
 	root.AddCommand(market)
 	o.addProviderCommands(root)
 }

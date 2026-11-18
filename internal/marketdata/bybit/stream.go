@@ -71,8 +71,14 @@ func (c *Client) Stream(ctx context.Context, q marketdata.Query, consume func(do
 		}
 	}()
 	subscribed := false
+	// Bybit may send the initial snapshot before the subscription acknowledgment.
+	// Retain a bounded set until success; never publish unacknowledged data.
+	var pending []domain.Candle
 	acknowledgmentDeadline := time.Now().Add(10 * time.Second)
 	for {
+		if !subscribed && !time.Now().Before(acknowledgmentDeadline) {
+			return errors.New("public subscription acknowledgment timed out")
+		}
 		deadline := time.Now().Add(c.opts.ReadTimeout)
 		if !subscribed && acknowledgmentDeadline.Before(deadline) {
 			deadline = acknowledgmentDeadline
@@ -99,12 +105,18 @@ func (c *Client) Stream(ctx context.Context, q marketdata.Query, consume func(do
 				return errors.New("public subscription rejected")
 			}
 			subscribed = true
+			for _, candle := range pending {
+				if err := consume(candle); err != nil {
+					return err
+				}
+			}
+			pending = nil
 			continue
 		}
 		if message.Op == "ping" || message.Op == "pong" {
 			continue
 		}
-		if !subscribed || message.Topic != topic || len(message.Data) == 0 {
+		if message.Topic != topic || len(message.Data) == 0 {
 			return errors.New("unexpected public candle message")
 		}
 		if err := c.checkClock(message.TS); err != nil {
@@ -120,7 +132,12 @@ func (c *Client) Stream(ctx context.Context, q marketdata.Query, consume func(do
 			if err != nil {
 				return err
 			}
-			if err := consume(candle); err != nil {
+			if !subscribed {
+				if len(pending) >= 64 {
+					return errors.New("public subscription pre-ack candle limit exceeded")
+				}
+				pending = append(pending, candle)
+			} else if err := consume(candle); err != nil {
 				return err
 			}
 		}
