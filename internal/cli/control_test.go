@@ -162,6 +162,12 @@ func TestCLIControlsHeldOwnerAndPreservesPendingReceiptAfterFill(t *testing.T) {
 	if _, err = invoke("paper", "adjust", positions[0].ID, "--stop-loss", "95", "--at", "2026-11-12T10:00:02Z", "--request-id", "cli-adjust"); err != nil {
 		t.Fatal(err)
 	}
+	server.Close()
+	server, err = control.Listen(path, app.NewControl(owner, nil, time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
 	if _, err = invoke("paper", "close", positions[0].ID, "--quantity", "0.5", "--at", "2026-11-12T10:00:03Z", "--request-id", "cli-close"); err != nil {
 		t.Fatal(err)
 	}

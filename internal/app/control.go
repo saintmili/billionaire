@@ -64,6 +64,17 @@ func (c *Control) Execute(ctx context.Context, command Command) (paper.ControlOu
 			if err := DecodeControl(command.Payload, &r); err != nil {
 				return nil, err
 			}
+			if r.Action == "close" {
+				position, err := owner.ControlPosition(ctx, r.PositionID)
+				if err != nil {
+					return nil, err
+				}
+				r.AccountID = position.AccountID
+				r.Instrument = position.Instrument
+				r.Side = position.Direction()
+				r.Leverage = position.EffectiveLeverage()
+				return owner.SubmitOrder(ctx, r, position.Metadata, true)
+			}
 			info, ok := c.instruments[r.Instrument.ID+":"+string(r.Instrument.Market)]
 			if !ok || info.Instrument != r.Instrument {
 				return nil, errors.New("instrument is not configured by owner")

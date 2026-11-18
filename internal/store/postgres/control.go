@@ -226,3 +226,21 @@ func (o *PaperOwner) RegisterStrategy(ctx context.Context, definition strategy.D
 	}
 	return version, instance, nil
 }
+
+// ControlPosition resolves close metadata from authoritative persisted exposure,
+// including positions whose instruments were removed from startup subscriptions.
+func (o *PaperOwner) ControlPosition(ctx context.Context, id string) (paper.Position, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.conn == nil {
+		return paper.Position{}, ErrUnavailable
+	}
+	position, err := decodePaperRow[paper.Position](o.conn.QueryRow(ctx, "SELECT payload FROM billionaire.paper_positions WHERE id=$1", id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return paper.Position{}, errors.New("paper position not found")
+	}
+	if err != nil {
+		return paper.Position{}, ErrUnavailable
+	}
+	return position, nil
+}
