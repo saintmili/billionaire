@@ -199,19 +199,30 @@ func strategyHistory(ctx context.Context, tx pgx.Tx, i domain.Instrument, frames
 // EvaluateStrategyEvent locks one instance, then commits dedup, state and signals
 // together. Retrying after a lost acknowledgment cannot create a second signal.
 func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event marketdata.Event, registry *strategy.Registry) (strategy.Evaluation, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return strategy.Evaluation{}, safeError(ctx, ErrUnavailable)
+	}
+	defer rollback(tx)
+	var admitted bool
+	if err := tx.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock_shared(7341928603)").Scan(&admitted); err != nil {
+		return strategy.Evaluation{}, safeError(ctx, ErrUnavailable)
+	}
+	if !admitted {
+		return strategy.Evaluation{}, ErrPaperOwned
+	}
+	return evaluateStrategyEvent(ctx, tx, id, event, registry)
+}
+
+func evaluateStrategyEvent(ctx context.Context, tx pgx.Tx, id string, event marketdata.Event, registry *strategy.Registry) (strategy.Evaluation, error) {
 	empty := strategy.Evaluation{Signals: []strategy.Signal{}}
 	if event.Candle == nil {
 		return empty, errors.New("strategy evaluation requires a candle")
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return empty, safeError(ctx, ErrUnavailable)
-	}
-	defer rollback(tx)
 	var binding, statePayload []byte
 	var enabled bool
 	var versionID string
-	err = tx.QueryRow(ctx, "SELECT binding,enabled,version_id,runtime_state FROM billionaire.strategy_instances WHERE id=$1 FOR UPDATE", id).Scan(&binding, &enabled, &versionID, &statePayload)
+	err := tx.QueryRow(ctx, "SELECT binding,enabled,version_id,runtime_state FROM billionaire.strategy_instances WHERE id=$1 FOR UPDATE", id).Scan(&binding, &enabled, &versionID, &statePayload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return empty, errors.New("strategy instance not found")
 	}

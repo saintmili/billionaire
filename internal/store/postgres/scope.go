@@ -19,7 +19,8 @@ func scopeSQL(sql, schema string) string {
 	}
 	sql = strings.ReplaceAll(sql, "billionaire.", schema+".")
 	sql = strings.ReplaceAll(sql, "SCHEMA IF NOT EXISTS billionaire", "SCHEMA IF NOT EXISTS "+schema)
-	return strings.ReplaceAll(sql, "7341928602", "hashtextextended('"+schema+"',7341928602)")
+	sql = strings.ReplaceAll(sql, "7341928602", "hashtextextended('"+schema+"',7341928602)")
+	return strings.ReplaceAll(sql, "7341928603", "hashtextextended('"+schema+"',7341928603)")
 }
 
 type scopedPool struct {
