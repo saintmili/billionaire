@@ -172,3 +172,14 @@ The two initial P2 findings, including the older-correction replay case identifi
 on recheck, are resolved. The Spec reviewer verified `7209773...3fbe3a3` and
 reported no new findings. Zero outstanding code/spec findings. Actual-host live
 validation remains a pending external milestone gate, as shown in the roadmap.
+
+## Ticket #24 host-check tooling (2026-11-18)
+
+The opt-in `market validate-host --allow-network --output json` command now
+collects bounded REST, PostgreSQL and interrupted-stream evidence for all eight
+BTC/ETH × spot/linear × 1m/3m combinations. See the
+[host validation procedure](m2-host-validation.md) for commands, sanitized evidence,
+synthetic versus provider checks, failure handling and the later fail-closed engine
+startup prerequisite. This workstation is local and the eventual runtime is a
+separate VPS; local results do not accept M2. Actual intended-host validation
+remains pending and live monitoring remains disabled. This adds no M6 engine work.

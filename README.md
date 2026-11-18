@@ -693,3 +693,13 @@ valuation labels.
 Signal behavior and hypothetical success: `billionaire backtest signals RUN-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json`. Forward scope uses `billionaire report signals --scope forward-paper --account ACCOUNT-ID` with the same explicit rule flags. Read saved definitions/results with `billionaire report signals --saved REPORT-ID --output json`. See [signal report semantics and evidence](docs/m5-signal-report.md).
 
 Linear historical runs add `--market linear --leverage 2 --funding-file testdata/backtest/m5-linear-funding.json`; the JSON file declares expected funding intervals and contemporaneous explicit events. Missing/unknown funding stays labeled. Optional partial-target/trailing and frozen approximate-liquidation flags use the common paper services; see [linear replay assumptions and examples](docs/m5-linear-replay-report.md).
+
+## Opt-in host checks (M2, ticket #24)
+
+`billionaire market validate-host --allow-network --host-role local --duration 12m
+--output json` collects public REST/stream and PostgreSQL evidence for BTC/ETH,
+spot/linear and 1m/3m. Run against a dedicated initialized disposable database.
+It deliberately interrupts streams to exercise backfill; default CI stays offline.
+See the [host validation procedure](docs/m2-host-validation.md) before running or
+sharing evidence. Repeat on the intended VPS; local results leave M2 acceptance
+pending and live monitoring disabled.
