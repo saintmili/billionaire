@@ -150,7 +150,7 @@ func (s *Store) ClaimNotifications(ctx context.Context, now time.Time, limit int
 func (s *Store) FinishNotification(ctx context.Context, d notify.Delivery, state, category string, next time.Time) error {
 	// Store only a finite, safe category: never persist external error messages/URLs.
 	switch category {
-	case "", "delivery_failed", "target_unavailable", "terminal_unavailable", "rate_limited", "temporary", "permanent", "timeout", "unavailable", "attempts_exhausted":
+	case "", "delivery_failed", "target_unavailable", "terminal_unavailable", "rate_limited", "temporary", "permanent", "timeout", "unavailable", "attempts_exhausted", "desktop_missing_binary", "desktop_session_unavailable", "desktop_timeout", "desktop_failed", "desktop_invalid_event":
 	default:
 		category = "delivery_failed"
 	}

@@ -710,3 +710,5 @@ pending and live monitoring disabled.
 subscriptions, strategies and paper execution under a single PostgreSQL owner.
 See [runtime configuration, commands, recovery and verification](docs/m6-runtime-report.md).
 M2 actual-host acceptance remains pending; live start is disabled.
+
+Optional Linux desktop alerts use `notifications.targets: [terminal, desktop]`; see the [desktop setup and failure guide](docs/m6-desktop-report.md).

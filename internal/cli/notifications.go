@@ -44,5 +44,5 @@ func (o *options) addNotificationCommands(root *cobra.Command) {
 }
 
 func (o *options) notificationSenders(cfg config.Config) map[string]notify.Sender {
-	return map[string]notify.Sender{"terminal": notify.Terminal{Writer: o.diagnostics}}
+	return map[string]notify.Sender{"terminal": notify.Terminal{Writer: o.diagnostics}, "desktop": notify.Desktop{}}
 }
