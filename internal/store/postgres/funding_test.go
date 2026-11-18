@@ -242,7 +242,7 @@ func TestFundingAndLiquidationRollbackWhenOutboxFails(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer conn.Close(ctx)
-			if _, err = conn.Exec(ctx, `CREATE FUNCTION millionaire.fail_finance() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected-private-detail'; END; $$; CREATE TRIGGER fail_finance BEFORE INSERT ON millionaire.journal_outbox FOR EACH ROW EXECUTE FUNCTION millionaire.fail_finance()`); err != nil {
+			if _, err = conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_finance() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected-private-detail'; END; $$; CREATE TRIGGER fail_finance BEFORE INSERT ON billionaire.journal_outbox FOR EACH ROW EXECUTE FUNCTION billionaire.fail_finance()`); err != nil {
 				t.Fatal(err)
 			}
 			obs, gate = spotObservation(2)
@@ -281,7 +281,7 @@ func TestFundingAndLiquidationRollbackWhenOutboxFails(t *testing.T) {
 			if len(history) != 0 {
 				t.Fatalf("outcome leaked %+v", history)
 			}
-			if _, err = conn.Exec(ctx, `DROP TRIGGER fail_finance ON millionaire.journal_outbox; DROP FUNCTION millionaire.fail_finance()`); err != nil {
+			if _, err = conn.Exec(ctx, `DROP TRIGGER fail_finance ON billionaire.journal_outbox; DROP FUNCTION billionaire.fail_finance()`); err != nil {
 				t.Fatal(err)
 			}
 			if err = apply(); err != nil {
@@ -378,7 +378,7 @@ func TestFundingUpgradeRecoversEntryClockAndApproximateModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err = conn.Exec(ctx, `UPDATE millionaire.paper_positions SET payload=payload-'opened_at'-'liquidation'`); err != nil {
+	if _, err = conn.Exec(ctx, `UPDATE billionaire.paper_positions SET payload=payload-'opened_at'-'liquidation'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = store.Migrate(ctx, postgres.Up); err != nil {

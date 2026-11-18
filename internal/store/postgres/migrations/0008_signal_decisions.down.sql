@@ -1,1 +1,1 @@
-DROP TABLE millionaire.signal_decisions;
+DROP TABLE billionaire.signal_decisions;

@@ -10,14 +10,14 @@ monitoring stays disabled. Every operation is simulated.
 ## Run and inspect
 
 ```sh
-millionaire backtest run --strategy VERSION --provider fixture \
+billionaire backtest run --strategy VERSION --provider fixture \
   --fixture testdata/market/m3.json --market linear --symbol BTC/USDT \
   --timeframes 1m --from 2026-01-01T00:20:00Z --to 2026-01-01T00:22:00Z \
   --capital 10000 --fee-rate 0.001 --slippage-bps 0 --leverage 2 \
   --funding-file testdata/backtest/m5-linear-funding.json --output json
-millionaire backtest report RUN_ID --output json
-millionaire backtest trades RUN_ID --output json
-millionaire backtest run --source-run RUN_ID --output json
+billionaire backtest report RUN_ID --output json
+billionaire backtest trades RUN_ID --output json
+billionaire backtest run --source-run RUN_ID --output json
 ```
 
 Public and cached selection use the existing historical-data boundaries. Neither
@@ -133,13 +133,13 @@ is involved; this slice does not claim M5 combined acceptance or any later
 milestone.
 
 Verified on 2026-11-17 against the provided disposable PostgreSQL server with
-`MILLIONAIRE_TEST_DATABASE_URL` configured and `GOCACHE=/tmp/billionaire-go-cache`:
+`BILLIONAIRE_TEST_DATABASE_URL` configured and `GOCACHE=/tmp/billionaire-go-cache`:
 
 - `go test ./...` — passed, including real PostgreSQL (66.117s) and CLI (15.415s).
 - `go test -race ./internal/backtest ./internal/paper ./internal/store/postgres ./internal/cli -run 'TestBacktest|TestFunding|TestLinear|TestTrailing|TestRecorded|TestFreeze' -count=1`
   — passed; PostgreSQL 27.553s and CLI 5.685s.
 - `go vet ./...` — passed.
-- `go build -o /tmp/billionaire-ticket19 ./cmd/millionaire` and the resulting
+- `go build -o /tmp/billionaire-ticket19 ./cmd/billionaire` and the resulting
   `backtest run --help` — passed; linear, funding, protection, leverage and
   liquidation assumptions are exposed.
 - `git diff --check` — passed.

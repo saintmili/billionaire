@@ -74,7 +74,7 @@ liquidation, and isolated deficit `44.625`. The write-off protects available cas
 
 All required checks passed on 2026-11-14 using Go `1.27.2-X:nodwarf5`,
 `GOCACHE=/tmp/m4-go-cache` and an isolated local PostgreSQL test cluster supplied
-through `MILLIONAIRE_TEST_DATABASE_URL` (no credentials recorded here):
+through `BILLIONAIRE_TEST_DATABASE_URL` (no credentials recorded here):
 
 ```sh
 go test ./...

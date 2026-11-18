@@ -10,18 +10,18 @@ This workflow uses fixtures and simulated trading only.
 ## Run and inspect
 
 ```sh
-go build -o ./bin/millionaire ./cmd/millionaire
-./bin/millionaire init
-./bin/millionaire strategy add examples/strategies/breakout.yaml --output json
+go build -o ./bin/billionaire ./cmd/billionaire
+./bin/billionaire init
+./bin/billionaire strategy add examples/strategies/breakout.yaml --output json
 # Substitute the immutable version.id printed above.
-./bin/millionaire backtest run --strategy VERSION_ID \
+./bin/billionaire backtest run --strategy VERSION_ID \
   --provider fixture --fixture testdata/market/m3.json \
   --market spot --symbol BTC/USDT --timeframes 1m \
   --from 2026-01-01T00:20:00Z --to 2026-01-01T00:22:00Z \
   --seed 7 --capital 10000 --fee-rate 0.001 --slippage-bps 0 --output json
-./bin/millionaire backtest report RUN_ID --output json
-./bin/millionaire backtest run --source-run RUN_ID --output json
-./bin/millionaire backtest run --help
+./bin/billionaire backtest report RUN_ID --output json
+./bin/billionaire backtest run --source-run RUN_ID --output json
+./bin/billionaire backtest run --help
 ```
 
 `--strategy` accepts an immutable version ID. The run creates a fresh automatic
@@ -112,7 +112,7 @@ set the revision when producing the artifact:
 
 ```sh
 go build -ldflags "-X github.com/saintmili/billionaire/internal/backtest.BuildRevision=$(git rev-parse HEAD)" \
-  -o ./bin/millionaire ./cmd/millionaire
+  -o ./bin/billionaire ./cmd/billionaire
 ```
 
 ## Verification and extension boundaries
@@ -145,14 +145,14 @@ The spot-only slice does not claim this is solved; do not hide it with +1ns.
 Final command outcomes are appended after the full verification run.
 
 Verified on 2026-11-17 against the disposable PostgreSQL 17 server, with
-`MILLIONAIRE_TEST_DATABASE_URL` configured and `GOCACHE=/tmp/billionaire-go-cache`:
+`BILLIONAIRE_TEST_DATABASE_URL` configured and `GOCACHE=/tmp/billionaire-go-cache`:
 
 - `go test ./...` — passed, including all real PostgreSQL tests (PostgreSQL
   package 47.069s; CLI package 12.068s).
 - `go test -race ./internal/store/postgres ./internal/cli -run TestBacktest -count=1`
   — passed (4.109s / 3.267s).
 - `go vet ./...` — passed.
-- `go build -o /tmp/billionaire-ticket17 ./cmd/millionaire` and the resulting
+- `go build -o /tmp/billionaire-ticket17 ./cmd/billionaire` and the resulting
   `backtest run --help` — passed; all run/risk/recovery flags are documented.
 - `git diff --check` — passed.
 

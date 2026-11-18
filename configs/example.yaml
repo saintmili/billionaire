@@ -5,7 +5,7 @@ app:
   log_level: info
 storage:
   driver: postgres
-  dsn_env: MILLIONAIRE_DATABASE_URL
+  dsn_env: BILLIONAIRE_DATABASE_URL
   timeout: 5s
 market_data:
   provider: bybit

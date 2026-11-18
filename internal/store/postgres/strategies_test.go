@@ -153,7 +153,7 @@ func TestStrategyVersionProtectionAndEvaluationRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, "UPDATE millionaire.strategy_versions SET number=number+1 WHERE id=$1", version.ID); err == nil {
+	if _, err := conn.Exec(ctx, "UPDATE billionaire.strategy_versions SET number=number+1 WHERE id=$1", version.ID); err == nil {
 		t.Fatal("database allowed an immutable version update")
 	}
 	provider, err := fixture.Open("../../../testdata/market/m3.json")
@@ -178,7 +178,7 @@ func TestStrategyVersionProtectionAndEvaluationRollback(t *testing.T) {
 	if err := store.SetStrategyEnabled(ctx, i.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conn.Exec(ctx, `CREATE FUNCTION millionaire.fail_signal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END; $$; CREATE TRIGGER fail_signal BEFORE INSERT ON millionaire.strategy_signals FOR EACH ROW EXECUTE FUNCTION millionaire.fail_signal()`); err != nil {
+	if _, err := conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_signal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END; $$; CREATE TRIGGER fail_signal BEFORE INSERT ON billionaire.strategy_signals FOR EACH ROW EXECUTE FUNCTION billionaire.fail_signal()`); err != nil {
 		t.Fatal(err)
 	}
 	event := marketdata.Event{Kind: "candle", Candle: &bars[20]}
@@ -189,7 +189,7 @@ func TestStrategyVersionProtectionAndEvaluationRollback(t *testing.T) {
 	if err != nil || len(signals) != 0 {
 		t.Fatal("failed transaction exposed signals")
 	}
-	if _, err := conn.Exec(ctx, "DROP TRIGGER fail_signal ON millionaire.strategy_signals; DROP FUNCTION millionaire.fail_signal()"); err != nil {
+	if _, err := conn.Exec(ctx, "DROP TRIGGER fail_signal ON billionaire.strategy_signals; DROP FUNCTION billionaire.fail_signal()"); err != nil {
 		t.Fatal(err)
 	}
 	result, err := store.EvaluateStrategyEvent(ctx, i.ID, event, registry)

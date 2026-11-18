@@ -17,8 +17,8 @@ func scopeSQL(sql, schema string) string {
 	if schema == "" {
 		return sql
 	}
-	sql = strings.ReplaceAll(sql, "millionaire.", schema+".")
-	sql = strings.ReplaceAll(sql, "SCHEMA IF NOT EXISTS millionaire", "SCHEMA IF NOT EXISTS "+schema)
+	sql = strings.ReplaceAll(sql, "billionaire.", schema+".")
+	sql = strings.ReplaceAll(sql, "SCHEMA IF NOT EXISTS billionaire", "SCHEMA IF NOT EXISTS "+schema)
 	return strings.ReplaceAll(sql, "7341928602", "hashtextextended('"+schema+"',7341928602)")
 }
 

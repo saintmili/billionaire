@@ -64,15 +64,15 @@ Existing CLI boundary tests passed after the parsing refactor. Verification uses
 server at `127.0.0.1:55435`, with a fresh isolated database per integration test.
 
 ```sh
-MILLIONAIRE_TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55435/postgres?sslmode=disable' \
+BILLIONAIRE_TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55435/postgres?sslmode=disable' \
   GOCACHE=/tmp/billionaire-go-cache go test ./internal/store/postgres \
   -run TestBacktestRetainsDecisionsBeyondInteractiveLimit -count=1
 GOCACHE=/tmp/billionaire-go-cache go test ./internal/cli
-MILLIONAIRE_TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55435/postgres?sslmode=disable' \
+BILLIONAIRE_TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55435/postgres?sslmode=disable' \
   GOCACHE=/tmp/billionaire-go-cache go test ./...
 GOCACHE=/tmp/billionaire-go-cache go vet ./...
 GOCACHE=/tmp/billionaire-go-cache go build ./...
-MILLIONAIRE_TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55435/postgres?sslmode=disable' \
+BILLIONAIRE_TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55435/postgres?sslmode=disable' \
   GOCACHE=/tmp/billionaire-go-cache go test -race ./internal/store/postgres \
   ./internal/cli ./internal/analytics ./internal/backtest \
   -run 'TestBacktestRetainsDecisionsBeyondInteractiveLimit|TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper|Test.*(Report|Compare|Export)' -count=1

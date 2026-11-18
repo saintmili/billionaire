@@ -1,4 +1,4 @@
-# Millionaire roadmap
+# Billionaire roadmap
 
 **Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending because access is geographically blocked here. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. M4 offline paper lifecycle and combined acceptance are complete under its approved sequencing exception; see the [M4 report](m4-report.md). M5 offline backtesting/analytics and combined acceptance are complete under the approved sequencing exception; see the [M5 report](m5-report.md). Stop at M5. Live monitoring remains disabled pending the M2 gate. See [M0 evidence and limitations](m0-report.md), the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
 
@@ -65,7 +65,7 @@ monitoring is enabled. This exception does not waive that gate. Stop at M4.
 
 ### M0 — Repository reconnaissance and technical design
 
-**Tasks:** Inspect existing Millionaire repo (if any), StopLore API/storage and license, pin supported Go release and dependencies, verify Bybit public spot/linear endpoints and regional connectivity for intended runtime, document final ports and MVP constraints, note StopLore capability gaps. Produce `docs/adr/` decisions covering PostgreSQL, execution separation and candle/replay semantics.
+**Tasks:** Inspect existing Billionaire repo (if any), StopLore API/storage and license, pin supported Go release and dependencies, verify Bybit public spot/linear endpoints and regional connectivity for intended runtime, document final ports and MVP constraints, note StopLore capability gaps. Produce `docs/adr/` decisions covering PostgreSQL, execution separation and candle/replay semantics.
 
 **Acceptance:** Source-backed StopLore integration map; working technical spike reading one sample historical candle (or a fully documented connectivity limitation + offline fixture); no guessed StopLore methods; codebase bootstraps.
 
@@ -73,7 +73,7 @@ monitoring is enabled. This exception does not waive that gate. Stop at M4.
 
 **Tasks:** `go.mod`, CLI root, config loader/validator, structured logging, context cancellation, PostgreSQL Compose, migration runner, core domain types, decimal handling, health/status, CI (`go test`, `go vet`), `README`.
 
-**Acceptance:** `millionaire init`, `config validate`, `status` work; database migrates up/down in clean test environment; invalid config rejected; local install documented.
+**Acceptance:** `billionaire init`, `config validate`, `status` work; database migrates up/down in clean test environment; invalid config rejected; local install documented.
 
 ### M2 — Market data and historical synchronization
 
@@ -132,7 +132,7 @@ monitoring is enabled. This exception does not waive that gate. Stop at M5.
 
 **Tasks:** End-to-end scenario tests, `go test -race`, provider failure injection, financial invariant tests, performance tests for configured streams/backtest sizes, backup/restore, secrets redaction, release binaries, systemd/Compose docs, operational observability and release notes.
 
-**Acceptance:** End-to-end: market fixture → breakout signal → auto/manual paper position → risk management → exit → journal → report; no exchange credentials anywhere; restart and outage simulations pass; `millionaire --help` documents runnable MVP; M6W browser workflows, themes and responsive checks pass under the specification's release scenario; private web access documented; no blocking P0 defects.
+**Acceptance:** End-to-end: market fixture → breakout signal → auto/manual paper position → risk management → exit → journal → report; no exchange credentials anywhere; restart and outage simulations pass; `billionaire --help` documents runnable MVP; M6W browser workflows, themes and responsive checks pass under the specification's release scenario; private web access documented; no blocking P0 defects.
 
 **Milestone gate:** Don't begin the next milestone in the documented execution order if tests or core acceptance for its predecessor fail; M6W sits between M6 and M7. If a dependency forces changing the sequence, document why and update this roadmap first.
 

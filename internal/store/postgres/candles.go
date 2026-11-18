@@ -21,7 +21,7 @@ func (s *Store) SaveInstrument(ctx context.Context, info marketdata.InstrumentIn
 		return errors.New("invalid instrument metadata")
 	}
 	i := info.Instrument
-	tag, err := s.pool.Exec(ctx, `INSERT INTO millionaire.market_instruments(provider,market,instrument_id,base,quote,metadata) VALUES($1,$2,$3,$4,$5,$6)
+	tag, err := s.pool.Exec(ctx, `INSERT INTO billionaire.market_instruments(provider,market,instrument_id,base,quote,metadata) VALUES($1,$2,$3,$4,$5,$6)
  ON CONFLICT(provider,market,instrument_id) DO UPDATE SET metadata=EXCLUDED.metadata WHERE market_instruments.base=EXCLUDED.base AND market_instruments.quote=EXCLUDED.quote`, i.Provider, i.Market, i.ID, i.Base, i.Quote, payload)
 	if err != nil {
 		return safeError(ctx, ErrUnavailable)
@@ -47,7 +47,7 @@ func writeCandles(ctx context.Context, tx pgx.Tx, bars []domain.Candle) (int, er
 	changed := 0
 	for _, c := range bars {
 		i := c.Instrument
-		tag, err := tx.Exec(ctx, `INSERT INTO millionaire.market_instruments(provider,market,instrument_id,base,quote) VALUES($1,$2,$3,$4,$5)
+		tag, err := tx.Exec(ctx, `INSERT INTO billionaire.market_instruments(provider,market,instrument_id,base,quote) VALUES($1,$2,$3,$4,$5)
    ON CONFLICT(provider,market,instrument_id) DO UPDATE SET base=EXCLUDED.base WHERE market_instruments.base=EXCLUDED.base AND market_instruments.quote=EXCLUDED.quote`, i.Provider, i.Market, i.ID, i.Base, i.Quote)
 		if err != nil {
 			return 0, safeError(ctx, ErrUnavailable)
@@ -59,11 +59,11 @@ func writeCandles(ctx context.Context, tx pgx.Tx, bars []domain.Candle) (int, er
 		if err != nil {
 			return 0, errors.New("invalid candle payload")
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO millionaire.market_candle_revisions VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime, c.Revision, payload)
+		_, err = tx.Exec(ctx, `INSERT INTO billionaire.market_candle_revisions VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime, c.Revision, payload)
 		if err != nil {
 			return 0, safeError(ctx, ErrUnavailable)
 		}
-		tag, err = tx.Exec(ctx, `INSERT INTO millionaire.market_candles(source,provider,market,instrument_id,timeframe,open_time,end_time,open,high,low,close,base_volume,revision,observed_at,payload)
+		tag, err = tx.Exec(ctx, `INSERT INTO billionaire.market_candles(source,provider,market,instrument_id,timeframe,open_time,end_time,open,high,low,close,base_volume,revision,observed_at,payload)
    VALUES($1,$2,$3,$4,$5,$6,$7,$8::numeric,$9::numeric,$10::numeric,$11::numeric,$12::numeric,$13,$14,$15)
    ON CONFLICT(source,provider,market,instrument_id,timeframe,open_time) DO UPDATE SET end_time=EXCLUDED.end_time,open=EXCLUDED.open,high=EXCLUDED.high,low=EXCLUDED.low,close=EXCLUDED.close,base_volume=EXCLUDED.base_volume,revision=EXCLUDED.revision,observed_at=EXCLUDED.observed_at,payload=EXCLUDED.payload
    WHERE market_candles.observed_at<EXCLUDED.observed_at AND market_candles.revision<>EXCLUDED.revision`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime, c.EndTime, c.Open.String(), c.High.String(), c.Low.String(), c.Close.String(), c.BaseVolume.String(), c.Revision, c.ObservedAt, payload)
@@ -76,7 +76,7 @@ func writeCandles(ctx context.Context, tx pgx.Tx, bars []domain.Candle) (int, er
 		if tag.RowsAffected() == 0 {
 			var observed time.Time
 			var revision string
-			err := tx.QueryRow(ctx, `SELECT observed_at,revision FROM millionaire.market_candles WHERE source=$1 AND provider=$2 AND market=$3 AND instrument_id=$4 AND timeframe=$5 AND open_time=$6`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime).Scan(&observed, &revision)
+			err := tx.QueryRow(ctx, `SELECT observed_at,revision FROM billionaire.market_candles WHERE source=$1 AND provider=$2 AND market=$3 AND instrument_id=$4 AND timeframe=$5 AND open_time=$6`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime).Scan(&observed, &revision)
 			if err != nil {
 				return 0, safeError(ctx, ErrUnavailable)
 			}
@@ -84,7 +84,7 @@ func writeCandles(ctx context.Context, tx pgx.Tx, bars []domain.Candle) (int, er
 				return 0, errors.New("conflicting candle revisions at the same observation time")
 			}
 			if revision == c.Revision && c.ObservedAt.After(observed) {
-				if _, err := tx.Exec(ctx, `UPDATE millionaire.market_candles SET observed_at=$7,payload=$8 WHERE source=$1 AND provider=$2 AND market=$3 AND instrument_id=$4 AND timeframe=$5 AND open_time=$6`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime, c.ObservedAt, payload); err != nil {
+				if _, err := tx.Exec(ctx, `UPDATE billionaire.market_candles SET observed_at=$7,payload=$8 WHERE source=$1 AND provider=$2 AND market=$3 AND instrument_id=$4 AND timeframe=$5 AND open_time=$6`, c.Source, i.Provider, i.Market, i.ID, c.Timeframe, c.OpenTime, c.ObservedAt, payload); err != nil {
 					return 0, safeError(ctx, ErrUnavailable)
 				}
 			}
@@ -157,7 +157,7 @@ func (s *Store) Candles(ctx context.Context, q marketdata.Query) ([]domain.Candl
 	if err := q.Validate(); err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT payload FROM millionaire.market_candles WHERE source=$1 AND provider=$1 AND market=$2 AND instrument_id=$3 AND timeframe=$4 AND open_time>=$5 AND open_time<$6 AND payload->'instrument'->>'base'=$7 AND payload->'instrument'->>'quote'=$8 ORDER BY open_time`, q.Instrument.Provider, q.Instrument.Market, q.Instrument.ID, q.Timeframe, q.From, q.To, q.Instrument.Base, q.Instrument.Quote)
+	rows, err := s.pool.Query(ctx, `SELECT payload FROM billionaire.market_candles WHERE source=$1 AND provider=$1 AND market=$2 AND instrument_id=$3 AND timeframe=$4 AND open_time>=$5 AND open_time<$6 AND payload->'instrument'->>'base'=$7 AND payload->'instrument'->>'quote'=$8 ORDER BY open_time`, q.Instrument.Provider, q.Instrument.Market, q.Instrument.ID, q.Timeframe, q.From, q.To, q.Instrument.Base, q.Instrument.Quote)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -168,7 +168,7 @@ func (s *Store) CandleRevisions(ctx context.Context, q marketdata.Query, at time
 	if err := q.Validate(); err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT payload FROM millionaire.market_candle_revisions WHERE source=$1 AND provider=$1 AND market=$2 AND instrument_id=$3 AND timeframe=$4 AND open_time=$5 ORDER BY revision`, q.Instrument.Provider, q.Instrument.Market, q.Instrument.ID, q.Timeframe, at)
+	rows, err := s.pool.Query(ctx, `SELECT payload FROM billionaire.market_candle_revisions WHERE source=$1 AND provider=$1 AND market=$2 AND instrument_id=$3 AND timeframe=$4 AND open_time=$5 ORDER BY revision`, q.Instrument.Provider, q.Instrument.Market, q.Instrument.ID, q.Timeframe, at)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -191,7 +191,7 @@ func readCandles(ctx context.Context, rows pgx.Rows) ([]domain.Candle, error) {
 	return result, nil
 }
 
-const saveFeedSQL = `INSERT INTO millionaire.market_feed_state VALUES($1,$2,$3,$4,$5) ON CONFLICT(provider,market,instrument_id,timeframe) DO UPDATE SET payload=EXCLUDED.payload`
+const saveFeedSQL = `INSERT INTO billionaire.market_feed_state VALUES($1,$2,$3,$4,$5) ON CONFLICT(provider,market,instrument_id,timeframe) DO UPDATE SET payload=EXCLUDED.payload`
 
 func marshalFeedState(state marketdata.FeedState) ([]byte, error) {
 	if err := state.Instrument.Validate(); err != nil {
@@ -220,7 +220,7 @@ func (s *Store) SaveFeedState(ctx context.Context, state marketdata.FeedState) e
 func (s *Store) FeedState(ctx context.Context, i domain.Instrument, frame domain.Timeframe) (marketdata.FeedState, error) {
 	state := marketdata.FeedState{Instrument: i, Timeframe: frame, Reason: "no observations"}
 	var payload []byte
-	err := s.pool.QueryRow(ctx, `SELECT payload FROM millionaire.market_feed_state WHERE provider=$1 AND market=$2 AND instrument_id=$3 AND timeframe=$4`, i.Provider, i.Market, i.ID, frame).Scan(&payload)
+	err := s.pool.QueryRow(ctx, `SELECT payload FROM billionaire.market_feed_state WHERE provider=$1 AND market=$2 AND instrument_id=$3 AND timeframe=$4`, i.Provider, i.Market, i.ID, frame).Scan(&payload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return state, nil
 	}

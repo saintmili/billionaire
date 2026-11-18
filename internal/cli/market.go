@@ -85,7 +85,7 @@ func (o *options) withSynchronizer(ctx context.Context, cfg config.Config, f mar
 			return err
 		}
 		if !state.Initialized {
-			return errors.New("storage requires migration; run millionaire init")
+			return errors.New("storage requires migration; run billionaire init")
 		}
 		ttl, _ := time.ParseDuration(cfg.MarketData.StaleAfter)
 		syncer, err := marketdata.NewSynchronizer(request.provider, store, marketdata.SyncOptions{Now: request.now, MaxRetries: f.retries, StaleAfter: ttl})

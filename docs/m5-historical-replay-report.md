@@ -11,23 +11,23 @@ disabled; every financial operation is simulated.
 
 ```sh
 # VERSION must select exactly these timeframes in its immutable definition.
-millionaire backtest run --strategy VERSION --provider fixture \
+billionaire backtest run --strategy VERSION --provider fixture \
   --fixture testdata/market/m3.json --market spot --symbol BTC/USDT \
   --timeframes 1m --from 2026-01-01T00:20:00Z --to 2026-01-01T00:22:00Z \
   --capital 10000 --fee-rate 0.001 --slippage-bps 0 --seed 7 --output json
 
 # The same market-specific identity must already have metadata and candles.
-millionaire backtest run --strategy VERSION --provider fixture --cached \
+billionaire backtest run --strategy VERSION --provider fixture --cached \
   --timeframes 1m --from 2026-01-01T00:20:00Z --to 2026-01-01T00:22:00Z --output json
 
 # Uses configured public HTTPS REST endpoint and the existing retry/pagination,
 # precision, closed-candle and synchronization boundaries. Requires venue access.
-millionaire backtest run --strategy VERSION --provider bybit --market spot \
+billionaire backtest run --strategy VERSION --provider bybit --market spot \
   --symbol BTC/USDT --timeframes 1m,5m \
   --from 2026-01-01T00:20:00Z --to 2026-01-01T01:00:00Z --output json
 
-millionaire backtest report RUN_ID --output json
-millionaire backtest run --source-run RUN_ID --output json
+billionaire backtest report RUN_ID --output json
+billionaire backtest run --source-run RUN_ID --output json
 ```
 
 Public history warms the PostgreSQL cache through the shared synchronizer;
@@ -145,14 +145,14 @@ Final checks are recorded below after execution. This slice does not validate a
 live venue, supply linear funding, claim intrabar equivalence or close M5.
 
 Verified 2026-11-17 against the provided disposable PostgreSQL server, using
-`MILLIONAIRE_TEST_DATABASE_URL` and `GOCACHE=/tmp/billionaire-go-cache`:
+`BILLIONAIRE_TEST_DATABASE_URL` and `GOCACHE=/tmp/billionaire-go-cache`:
 
 - `go test ./...` — passed after the final fixture-selection correction;
   PostgreSQL package 48.187s, CLI package 13.125s.
 - `go test -race ./internal/backtest ./internal/store/postgres ./internal/cli -run 'TestBacktest|TestFreeze|TestRecorded' -count=1`
   — passed (1.058s / 6.865s / 6.765s).
 - `go vet ./...` — passed.
-- `go build -o /tmp/billionaire-ticket18 ./cmd/millionaire`, followed by
+- `go build -o /tmp/billionaire-ticket18 ./cmd/billionaire`, followed by
   `backtest run --help` — passed; selection, cache, gaps, clock and risk flags
   are present.
 - `git diff --check` — passed. The assigned branch descends from and was merged

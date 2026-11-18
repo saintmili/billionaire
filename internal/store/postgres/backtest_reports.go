@@ -64,11 +64,11 @@ func accountEquity(ctx context.Context, tx pgx.Tx, accountID string, at time.Tim
 	if at.IsZero() || stale <= 0 {
 		return point, nil, domain.Decimal{}, errors.New("valuation requires a clock and positive stale threshold")
 	}
-	a, err := scanPaperAccount(tx.QueryRow(ctx, "SELECT id,name,currency,balance::text,created_at FROM millionaire.paper_accounts WHERE id=$1", accountID))
+	a, err := scanPaperAccount(tx.QueryRow(ctx, "SELECT id,name,currency,balance::text,created_at FROM billionaire.paper_accounts WHERE id=$1", accountID))
 	if err != nil {
 		return point, nil, domain.Decimal{}, errors.New("paper account unavailable")
 	}
-	rows, err := tx.Query(ctx, "SELECT payload FROM millionaire.paper_positions WHERE account_id=$1", accountID)
+	rows, err := tx.Query(ctx, "SELECT payload FROM billionaire.paper_positions WHERE account_id=$1", accountID)
 	if err != nil {
 		return point, nil, a.Balance, safeError(ctx, ErrUnavailable)
 	}
@@ -118,7 +118,7 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 	if err != nil {
 		return analytics.Report{}, err
 	}
-	rows, err := tx.Query(ctx, "SELECT payload FROM millionaire.paper_orders WHERE account_id=$1", f.AccountID)
+	rows, err := tx.Query(ctx, "SELECT payload FROM billionaire.paper_orders WHERE account_id=$1", f.AccountID)
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
@@ -126,7 +126,7 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 	if err != nil {
 		return analytics.Report{}, ErrSchema
 	}
-	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.paper_fills WHERE account_id=$1", f.AccountID)
+	rows, err = tx.Query(ctx, "SELECT payload FROM billionaire.paper_fills WHERE account_id=$1", f.AccountID)
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
@@ -134,7 +134,7 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 	if err != nil {
 		return analytics.Report{}, ErrSchema
 	}
-	rows, err = tx.Query(ctx, "SELECT id,account_id,kind,amount::text,created_at FROM millionaire.paper_ledger_entries WHERE account_id=$1 ORDER BY created_at,id", f.AccountID)
+	rows, err = tx.Query(ctx, "SELECT id,account_id,kind,amount::text,created_at FROM billionaire.paper_ledger_entries WHERE account_id=$1 ORDER BY created_at,id", f.AccountID)
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
@@ -162,7 +162,7 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
-	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE id IN (SELECT payload->'request'->>'signal_id' FROM millionaire.paper_orders WHERE account_id=$1)", f.AccountID)
+	rows, err = tx.Query(ctx, "SELECT payload FROM billionaire.strategy_signals WHERE id IN (SELECT payload->'request'->>'signal_id' FROM billionaire.paper_orders WHERE account_id=$1)", f.AccountID)
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}
@@ -171,7 +171,7 @@ func (s *Store) PaperTrades(ctx context.Context, f analytics.Filter, at time.Tim
 		return analytics.Report{}, ErrSchema
 	}
 
-	rows, err = tx.Query(ctx, "SELECT payload FROM millionaire.paper_price_events WHERE accepted AND available_at<=$1 AND instrument_key IN (SELECT instrument_key FROM millionaire.paper_orders WHERE account_id=$2) ORDER BY sequence", at, f.AccountID)
+	rows, err = tx.Query(ctx, "SELECT payload FROM billionaire.paper_price_events WHERE accepted AND available_at<=$1 AND instrument_key IN (SELECT instrument_key FROM billionaire.paper_orders WHERE account_id=$2) ORDER BY sequence", at, f.AccountID)
 	if err != nil {
 		return analytics.Report{}, safeError(ctx, ErrUnavailable)
 	}

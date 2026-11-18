@@ -98,7 +98,7 @@ See the [README funding workflow](../README.md#funding-and-approximate-liquidati
 the existing entry fixture; `linear-funding-missing.json` records explicit later
 missing coverage. The rate is deliberately conspicuous and is not venue data.
 
-Verification uses `MILLIONAIRE_TEST_DATABASE_URL` for an isolated local PostgreSQL
+Verification uses `BILLIONAIRE_TEST_DATABASE_URL` for an isolated local PostgreSQL
 cluster and `GOCACHE=/tmp/m4-go-cache` in this sandbox:
 
 ```sh

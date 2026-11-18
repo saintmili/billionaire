@@ -69,15 +69,15 @@ func Load(input io.Reader, lookup func(string) string) (Config, error) {
 		return cfg, errors.New("config: expected one YAML document")
 	}
 	for name, target := range map[string]*string{
-		"MILLIONAIRE_MODE":             &cfg.App.Mode,
-		"MILLIONAIRE_LOG_LEVEL":        &cfg.App.LogLevel,
-		"MILLIONAIRE_DATABASE_TIMEOUT": &cfg.Storage.Timeout,
-		"MILLIONAIRE_PROVIDER":         &cfg.MarketData.Provider,
-		"MILLIONAIRE_REST_URL":         &cfg.MarketData.RESTURL,
-		"MILLIONAIRE_SPOT_WS_URL":      &cfg.MarketData.SpotWSURL,
-		"MILLIONAIRE_LINEAR_WS_URL":    &cfg.MarketData.LinearWSURL,
-		"MILLIONAIRE_STALE_AFTER":      &cfg.MarketData.StaleAfter,
-		"MILLIONAIRE_INITIAL_BALANCE":  &cfg.Paper.InitialBalance,
+		"BILLIONAIRE_MODE":             &cfg.App.Mode,
+		"BILLIONAIRE_LOG_LEVEL":        &cfg.App.LogLevel,
+		"BILLIONAIRE_DATABASE_TIMEOUT": &cfg.Storage.Timeout,
+		"BILLIONAIRE_PROVIDER":         &cfg.MarketData.Provider,
+		"BILLIONAIRE_REST_URL":         &cfg.MarketData.RESTURL,
+		"BILLIONAIRE_SPOT_WS_URL":      &cfg.MarketData.SpotWSURL,
+		"BILLIONAIRE_LINEAR_WS_URL":    &cfg.MarketData.LinearWSURL,
+		"BILLIONAIRE_STALE_AFTER":      &cfg.MarketData.StaleAfter,
+		"BILLIONAIRE_INITIAL_BALANCE":  &cfg.Paper.InitialBalance,
 	} {
 		if value := lookup(name); value != "" {
 			*target = value

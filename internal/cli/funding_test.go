@@ -16,7 +16,7 @@ import (
 )
 
 func TestCLIFundingFixturePersistsMissingCoverage(t *testing.T) {
-	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+	t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	invoke := func(args ...string) ([]byte, error) {
 		var out, logs bytes.Buffer

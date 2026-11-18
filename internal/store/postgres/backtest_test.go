@@ -444,7 +444,7 @@ func TestBacktestRunPersistsCausalSpotResultsAndIsolatesPaper(t *testing.T) {
 			t.Fatal(e)
 		}
 		defer func() { admin.Exec(ctx, "DROP OWNED BY "+quoted); admin.Exec(ctx, "DROP ROLE "+quoted) }()
-		for _, sql := range []string{"GRANT USAGE ON SCHEMA millionaire TO " + quoted, "GRANT SELECT ON millionaire.strategy_versions TO " + quoted, "GRANT SELECT, INSERT, UPDATE ON millionaire.backtest_runs TO " + quoted} {
+		for _, sql := range []string{"GRANT USAGE ON SCHEMA billionaire TO " + quoted, "GRANT SELECT ON billionaire.strategy_versions TO " + quoted, "GRANT SELECT, INSERT, UPDATE ON billionaire.backtest_runs TO " + quoted} {
 			if _, e = admin.Exec(ctx, sql); e != nil {
 				t.Fatal(e)
 			}

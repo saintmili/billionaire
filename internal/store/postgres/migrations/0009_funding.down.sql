@@ -1,1 +1,1 @@
-DROP TABLE millionaire.paper_funding_events;
+DROP TABLE billionaire.paper_funding_events;

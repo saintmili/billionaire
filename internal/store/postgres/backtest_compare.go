@@ -21,7 +21,7 @@ func (s *Store) BacktestSnapshot(ctx context.Context, id string) (backtest.Snaps
 	} else if r.Config.Instrument.Instrument.Market == domain.Linear && r.FundingCoverage.Status != "" {
 		out.FundingStatus = r.FundingCoverage.Status
 	}
-	rows, err := s.pool.Query(ctx, "SELECT report FROM millionaire.signal_reports WHERE run_id=$1 ORDER BY id", id)
+	rows, err := s.pool.Query(ctx, "SELECT report FROM billionaire.signal_reports WHERE run_id=$1 ORDER BY id", id)
 	if err != nil {
 		return out, safeError(ctx, ErrUnavailable)
 	}
@@ -117,7 +117,7 @@ func (s *Store) BacktestStrategies(ctx context.Context, f StrategyReportFilter) 
 	}
 	ids := f.RunIDs
 	if len(ids) == 0 {
-		rows, e := s.pool.Query(ctx, "SELECT id FROM millionaire.backtest_runs ORDER BY created_at,id")
+		rows, e := s.pool.Query(ctx, "SELECT id FROM billionaire.backtest_runs ORDER BY created_at,id")
 		if e != nil {
 			return nil, safeError(ctx, ErrUnavailable)
 		}

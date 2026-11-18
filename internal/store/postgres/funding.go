@@ -45,7 +45,7 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 	}
 	defer rollback(tx)
 	var prior, recorded []byte
-	err = tx.QueryRow(ctx, `SELECT payload,result FROM millionaire.paper_funding_events WHERE id=$1`, e.ID).Scan(&prior, &recorded)
+	err = tx.QueryRow(ctx, `SELECT payload,result FROM billionaire.paper_funding_events WHERE id=$1`, e.ID).Scan(&prior, &recorded)
 	if err == nil {
 		var old paper.FundingEvent
 		var replay paper.FundingResult
@@ -62,14 +62,14 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 		return result, safeError(ctx, ErrUnavailable)
 	}
 	key := instrumentKey(e.Instrument)
-	last, err := decodePaperRow[paper.Observation](tx.QueryRow(ctx, `SELECT payload FROM millionaire.paper_price_events WHERE instrument_key=$1 AND accepted ORDER BY sequence DESC LIMIT 1`, key))
+	last, err := decodePaperRow[paper.Observation](tx.QueryRow(ctx, `SELECT payload FROM billionaire.paper_price_events WHERE instrument_key=$1 AND accepted ORDER BY sequence DESC LIMIT 1`, key))
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return result, safeError(ctx, ErrUnavailable)
 	}
 	if err == nil && !e.EffectiveAt.After(last.AvailableAt) && !(replay && last.Phase == "completed_interval" && last.Bar != nil && last.Bar.End.Equal(e.EffectiveAt) && last.AvailableAt.Equal(e.EffectiveAt)) {
 		return result, errors.New("funding must precede price observations at or after its effective time; retroactive funding is unsupported")
 	}
-	previous, err := decodePaperRow[paper.FundingEvent](tx.QueryRow(ctx, `SELECT payload FROM millionaire.paper_funding_events WHERE instrument_key=$1 ORDER BY effective_at DESC LIMIT 1`, key))
+	previous, err := decodePaperRow[paper.FundingEvent](tx.QueryRow(ctx, `SELECT payload FROM billionaire.paper_funding_events WHERE instrument_key=$1 ORDER BY effective_at DESC LIMIT 1`, key))
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return result, safeError(ctx, ErrUnavailable)
 	}
@@ -79,7 +79,7 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 	if e.Rate == nil {
 		result.Warning = "missing funding data: " + e.MissingReason + "; results are approximate"
 	} else {
-		rows, err := tx.Query(ctx, `SELECT payload FROM millionaire.paper_positions WHERE status='open' ORDER BY id FOR UPDATE`)
+		rows, err := tx.Query(ctx, `SELECT payload FROM billionaire.paper_positions WHERE status='open' ORDER BY id FOR UPDATE`)
 		if err != nil {
 			return result, safeError(ctx, ErrUnavailable)
 		}
@@ -115,7 +115,7 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 				movements = append(movements, paper.Movement{Kind: "isolated_deficit", Amount: deficit})
 			}
 			for _, m := range movements {
-				_, err = tx.Exec(ctx, `INSERT INTO millionaire.paper_ledger_entries(id,account_id,kind,amount) VALUES($1,$2,$3,$4)`, paper.Identity("funding", e.ID+":"+p.ID+":"+m.Kind), p.AccountID, m.Kind, m.Amount.String())
+				_, err = tx.Exec(ctx, `INSERT INTO billionaire.paper_ledger_entries(id,account_id,kind,amount) VALUES($1,$2,$3,$4)`, paper.Identity("funding", e.ID+":"+p.ID+":"+m.Kind), p.AccountID, m.Kind, m.Amount.String())
 				if err != nil {
 					return result, safeError(ctx, ErrUnavailable)
 				}
@@ -130,7 +130,7 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 				Application paper.FundingApplication `json:"application"`
 				Position    paper.Position           `json:"position"`
 			}{e, application, p})
-			if _, err = tx.Exec(ctx, `INSERT INTO millionaire.journal_outbox(event_id,kind,payload) VALUES($1,'paper_funding',$2)`, paper.Identity("funding", e.ID+":"+p.ID), outbox); err != nil {
+			if _, err = tx.Exec(ctx, `INSERT INTO billionaire.journal_outbox(event_id,kind,payload) VALUES($1,'paper_funding',$2)`, paper.Identity("funding", e.ID+":"+p.ID), outbox); err != nil {
 				return result, safeError(ctx, ErrUnavailable)
 			}
 		}
@@ -146,7 +146,7 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 		result.Orders = append(result.Orders, orders...)
 	}
 	encoded, _ := json.Marshal(result)
-	if _, err = tx.Exec(ctx, `INSERT INTO millionaire.paper_funding_events(id,instrument_key,effective_at,payload,result) VALUES($1,$2,$3,$4,$5)`, e.ID, key, e.EffectiveAt, payload, encoded); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO billionaire.paper_funding_events(id,instrument_key,effective_at,payload,result) VALUES($1,$2,$3,$4,$5)`, e.ID, key, e.EffectiveAt, payload, encoded); err != nil {
 		return result, safeError(ctx, ErrUnavailable)
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -155,7 +155,7 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 	return result, nil
 }
 func (s *Store) PaperFunding(ctx context.Context) ([]paper.FundingResult, error) {
-	rows, err := s.pool.Query(ctx, `SELECT result FROM millionaire.paper_funding_events ORDER BY effective_at,id`)
+	rows, err := s.pool.Query(ctx, `SELECT result FROM billionaire.paper_funding_events ORDER BY effective_at,id`)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}

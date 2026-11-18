@@ -21,7 +21,7 @@ import (
 func TestM4CLIJSONSignalLifecycles(t *testing.T) {
 	for _, test := range []struct{ action, side string }{{"manual_paper", "long"}, {"auto_paper", "short"}} {
 		t.Run(test.action+"/"+test.side, func(t *testing.T) {
-			t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+			t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
 			dir := t.TempDir()
 			cfg := filepath.Join(dir, "config.yaml")
 			call := func(args ...string) ([]byte, error) {
@@ -188,7 +188,7 @@ func TestM4CLIJSONSignalLifecycles(t *testing.T) {
 }
 
 func TestM4CLIRejectsSpotShortAndLeverageWithoutMoneyMovement(t *testing.T) {
-	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+	t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
 	cfg := filepath.Join(t.TempDir(), "config.yaml")
 	invoke := func(args ...string) ([]byte, error) {
 		t.Helper()

@@ -17,9 +17,9 @@ import (
 // server whose user can create databases. Existing databases are never modified.
 func New(t *testing.T) string {
 	t.Helper()
-	dsn := os.Getenv("MILLIONAIRE_TEST_DATABASE_URL")
+	dsn := os.Getenv("BILLIONAIRE_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("set MILLIONAIRE_TEST_DATABASE_URL to run PostgreSQL integration tests")
+		t.Skip("set BILLIONAIRE_TEST_DATABASE_URL to run PostgreSQL integration tests")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -31,7 +31,7 @@ func New(t *testing.T) string {
 	if _, err := rand.Read(random[:]); err != nil {
 		t.Fatal(err)
 	}
-	name := "millionaire_test_" + hex.EncodeToString(random[:])
+	name := "billionaire_test_" + hex.EncodeToString(random[:])
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()); err != nil {
 		admin.Close(ctx)
 		t.Fatal("cannot create isolated test database")

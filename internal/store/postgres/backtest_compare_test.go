@@ -56,7 +56,7 @@ func TestBacktestSnapshotsPreserveMissingAndIncompleteEvidenceWithoutExecution(t
 		report, _ := json.Marshal(r)
 		m, _ := json.Marshal(r.Manifest)
 		// Fixture deliberately has no execution schema. Read paths must use retained artifacts.
-		if _, e = db.Exec(ctx, "INSERT INTO millionaire.backtest_runs(id,execution_schema,status,inputs,manifest,report) VALUES($1,$2,$3,$4,$5,$6)", tc.id, "absent_"+tc.id, tc.status, inputs, m, report); e != nil {
+		if _, e = db.Exec(ctx, "INSERT INTO billionaire.backtest_runs(id,execution_schema,status,inputs,manifest,report) VALUES($1,$2,$3,$4,$5,$6)", tc.id, "absent_"+tc.id, tc.status, inputs, m, report); e != nil {
 			t.Fatal(e)
 		}
 		got, e := s.BacktestSnapshot(ctx, tc.id)

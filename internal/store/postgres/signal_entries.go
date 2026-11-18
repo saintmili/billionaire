@@ -32,7 +32,7 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 		return d, safeError(ctx, ErrUnavailable)
 	}
 	defer rollback(tx)
-	signal, err := decodePaperRow[strategy.Signal](tx.QueryRow(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE id=$1 FOR UPDATE", request.SignalID))
+	signal, err := decodePaperRow[strategy.Signal](tx.QueryRow(ctx, "SELECT payload FROM billionaire.strategy_signals WHERE id=$1 FOR UPDATE", request.SignalID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, errors.New("signal not found")
 	}
@@ -42,7 +42,7 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 	if info.Instrument != signal.Instrument {
 		return d, errors.New("signal instrument does not match metadata")
 	}
-	previous, err := decodePaperRow[paper.SignalDecision](tx.QueryRow(ctx, "SELECT payload FROM millionaire.signal_decisions WHERE signal_id=$1", signal.ID))
+	previous, err := decodePaperRow[paper.SignalDecision](tx.QueryRow(ctx, "SELECT payload FROM billionaire.signal_decisions WHERE signal_id=$1", signal.ID))
 	if err == nil && !(previous.Status == "awaiting_approval" && request.Approve) {
 		// An exact approval retry returns the current order outcome, including after a lost response.
 		if request.Approve && previous.Status != "observed" {
@@ -53,7 +53,7 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 			}
 		}
 		if previous.Order != nil {
-			order, e := decodePaperRow[paper.Order](tx.QueryRow(ctx, "SELECT payload FROM millionaire.paper_orders WHERE id=$1", previous.Order.ID))
+			order, e := decodePaperRow[paper.Order](tx.QueryRow(ctx, "SELECT payload FROM billionaire.paper_orders WHERE id=$1", previous.Order.ID))
 			if e != nil {
 				return d, safeError(ctx, ErrUnavailable)
 			}
@@ -74,12 +74,12 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 	if request.At.Before(signal.ObservedAt) {
 		return d, errors.New("decision precedes signal availability")
 	}
-	instance, err := decodePaperRow[strategy.Instance](tx.QueryRow(ctx, "SELECT binding FROM millionaire.strategy_instances WHERE id=$1", signal.InstanceID))
+	instance, err := decodePaperRow[strategy.Instance](tx.QueryRow(ctx, "SELECT binding FROM billionaire.strategy_instances WHERE id=$1", signal.InstanceID))
 	if err != nil {
 		return d, safeError(ctx, ErrUnavailable)
 	}
 	var active bool
-	if err := tx.QueryRow(ctx, "SELECT enabled FROM millionaire.strategy_instances WHERE id=$1 FOR SHARE", signal.InstanceID).Scan(&active); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT enabled FROM billionaire.strategy_instances WHERE id=$1 FOR SHARE", signal.InstanceID).Scan(&active); err != nil {
 		return d, safeError(ctx, ErrUnavailable)
 	}
 	switch {
@@ -140,7 +140,7 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 	if d.Order != nil {
 		orderID = &d.Order.ID
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.signal_decisions(signal_id,status,order_id,payload) VALUES($1,$2,$3,$4) ON CONFLICT(signal_id) DO UPDATE SET status=EXCLUDED.status,order_id=EXCLUDED.order_id,payload=EXCLUDED.payload`, d.SignalID, d.Status, orderID, payload); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.signal_decisions(signal_id,status,order_id,payload) VALUES($1,$2,$3,$4) ON CONFLICT(signal_id) DO UPDATE SET status=EXCLUDED.status,order_id=EXCLUDED.order_id,payload=EXCLUDED.payload`, d.SignalID, d.Status, orderID, payload); err != nil {
 		return d, safeError(ctx, ErrUnavailable)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -155,7 +155,7 @@ func (s *Store) PendingSignalEntries(ctx context.Context, info marketdata.Instru
 	if limit < 1 || limit > 1000 {
 		return nil, errors.New("signal consumption limit must be 1-1000")
 	}
-	rows, err := s.pool.Query(ctx, `SELECT s.payload FROM millionaire.strategy_signals s LEFT JOIN millionaire.signal_decisions d ON d.signal_id=s.id WHERE d.signal_id IS NULL AND s.payload->'instrument'=$1::jsonb ORDER BY s.observed_at,s.id LIMIT $2`, jsonInstrument(info.Instrument), limit)
+	rows, err := s.pool.Query(ctx, `SELECT s.payload FROM billionaire.strategy_signals s LEFT JOIN billionaire.signal_decisions d ON d.signal_id=s.id WHERE d.signal_id IS NULL AND s.payload->'instrument'=$1::jsonb ORDER BY s.observed_at,s.id LIMIT $2`, jsonInstrument(info.Instrument), limit)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -173,7 +173,7 @@ func (s *Store) SignalDecisions(ctx context.Context) ([]paper.SignalDecision, er
 }
 
 func (s *Store) signalDecisions(ctx context.Context, bounded bool) ([]paper.SignalDecision, error) {
-	query := `SELECT d.payload,o.payload FROM millionaire.signal_decisions d LEFT JOIN millionaire.paper_orders o ON o.id=d.order_id ORDER BY d.signal_id`
+	query := `SELECT d.payload,o.payload FROM billionaire.signal_decisions d LEFT JOIN billionaire.paper_orders o ON o.id=d.order_id ORDER BY d.signal_id`
 	if bounded {
 		query += " LIMIT 10000"
 	}

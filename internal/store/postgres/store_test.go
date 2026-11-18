@@ -66,7 +66,7 @@ func TestFailedMigrationLeavesDatabaseUninitialized(t *testing.T) {
 		t.Fatal("cannot inject database fault")
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, "CREATE SCHEMA millionaire; CREATE TABLE millionaire.app_metadata(id integer)"); err != nil {
+	if _, err := conn.Exec(ctx, "CREATE SCHEMA billionaire; CREATE TABLE billionaire.app_metadata(id integer)"); err != nil {
 		t.Fatal(err)
 	}
 	store, err := postgres.Open(ctx, dsn)
@@ -81,7 +81,7 @@ func TestFailedMigrationLeavesDatabaseUninitialized(t *testing.T) {
 	if err != nil || state.Initialized || state.Version != 0 {
 		t.Fatalf("failed migration advanced state: %+v %v", state, err)
 	}
-	if _, err := conn.Exec(ctx, "DROP TABLE millionaire.app_metadata"); err != nil {
+	if _, err := conn.Exec(ctx, "DROP TABLE billionaire.app_metadata"); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Migrate(ctx, postgres.Up); err != nil {
@@ -151,7 +151,7 @@ func TestIncompatibleSchemaIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, "UPDATE millionaire.schema_migrations SET checksum='changed'"); err != nil {
+	if _, err := conn.Exec(ctx, "UPDATE billionaire.schema_migrations SET checksum='changed'"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Status(ctx); !errors.Is(err, postgres.ErrSchema) {

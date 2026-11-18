@@ -19,27 +19,27 @@ needs database CREATE privilege for retained per-run schemas as well as normal
 schema/table rights. The initialized forward account is never the replay account.
 
 ```sh
-go build -o ./bin/millionaire ./cmd/millionaire
-export MILLIONAIRE_DATABASE_URL='postgres://USER:PASSWORD@HOST:5432/DATABASE?sslmode=disable'
-./bin/millionaire init
-./bin/millionaire strategy add examples/strategies/breakout.yaml --output json
+go build -o ./bin/billionaire ./cmd/billionaire
+export BILLIONAIRE_DATABASE_URL='postgres://USER:PASSWORD@HOST:5432/DATABASE?sslmode=disable'
+./bin/billionaire init
+./bin/billionaire strategy add examples/strategies/breakout.yaml --output json
 # VERSION is version.id, the immutable content hash from strategy add.
-./bin/millionaire backtest run --strategy VERSION \
+./bin/billionaire backtest run --strategy VERSION \
   --provider fixture --fixture testdata/market/m3.json --market spot \
   --symbol BTC/USDT --timeframes 1m \
   --from 2026-01-01T00:20:00Z --to 2026-01-01T00:22:00Z \
   --seed 7 --capital 10000 --fee-rate 0.001 --slippage-bps 0 --output json
 # RUN is id from the completed run. RERUN is the new id from --source-run.
-./bin/millionaire backtest report RUN --output json
-./bin/millionaire backtest trades RUN --output json
-./bin/millionaire backtest signals RUN --threshold-percent 5 \
+./bin/billionaire backtest report RUN --output json
+./bin/billionaire backtest trades RUN --output json
+./bin/billionaire backtest signals RUN --threshold-percent 5 \
   --stop-percent 50 --window-bars 1 --output json
-./bin/millionaire backtest run --source-run RUN --output json
-./bin/millionaire backtest compare RUN RERUN --output json
-./bin/millionaire report strategies --scope backtest --run RUN,RERUN --output json
-./bin/millionaire backtest export RUN --kind report --format json > report.json
-./bin/millionaire backtest export RUN --kind trades --format csv > trades.csv
-./bin/millionaire backtest export RUN --kind equity --format csv > equity.csv
+./bin/billionaire backtest run --source-run RUN --output json
+./bin/billionaire backtest compare RUN RERUN --output json
+./bin/billionaire report strategies --scope backtest --run RUN,RERUN --output json
+./bin/billionaire backtest export RUN --kind report --format json > report.json
+./bin/billionaire backtest export RUN --kind trades --format csv > trades.csv
+./bin/billionaire backtest export RUN --kind equity --format csv > equity.csv
 ```
 
 Signal reports require an explicit hypothetical rule and persist that rule and
@@ -192,13 +192,13 @@ No live venue, real execution or investment-performance claim follows.
 ## Verification
 
 Commands ran with `GOCACHE=/tmp/billionaire-go-cache` and
-`MILLIONAIRE_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55435/postgres?sslmode=disable`
+`BILLIONAIRE_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55435/postgres?sslmode=disable`
 on the disposable local PostgreSQL server. Integration tests created/dropped
 independent databases; none were skipped for an unset URL.
 
 - `go test ./... -count=1` — passed; PostgreSQL `112.364s`, CLI `20.064s`.
 - `go vet ./...` — passed.
-- `go build -o /tmp/billionaire-m5-acceptance ./cmd/millionaire` — passed;
+- `go build -o /tmp/billionaire-m5-acceptance ./cmd/billionaire` — passed;
   built-binary run/compare/export/strategies help passed.
 - Separate built-binary processes executed init, immutable strategy add, both
   chronological fixture runs, trade and signal reports, comparison and JSON/CSV

@@ -121,7 +121,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		return nil, ErrUnavailable
 	}
 	cfg.MaxConns = 4
-	cfg.ConnConfig.RuntimeParams["application_name"] = "millionaire"
+	cfg.ConnConfig.RuntimeParams["application_name"] = "billionaire"
 	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -150,7 +150,7 @@ func (s *Store) Status(ctx context.Context) (Status, error) {
 	}
 	defer rollback(tx)
 	var exists bool
-	if err := tx.QueryRow(ctx, "SELECT to_regclass('millionaire.schema_migrations') IS NOT NULL").Scan(&exists); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT to_regclass('billionaire.schema_migrations') IS NOT NULL").Scan(&exists); err != nil {
 		return state, safeError(ctx, ErrUnavailable)
 	}
 	if !exists {
@@ -163,7 +163,7 @@ func (s *Store) Status(ctx context.Context) (Status, error) {
 	state.Version = version
 	if version == LatestVersion {
 		var mode string
-		if err := tx.QueryRow(ctx, "SELECT mode FROM millionaire.app_metadata WHERE id=TRUE").Scan(&mode); err != nil || mode != "paper" {
+		if err := tx.QueryRow(ctx, "SELECT mode FROM billionaire.app_metadata WHERE id=TRUE").Scan(&mode); err != nil || mode != "paper" {
 			return state, safeError(ctx, ErrSchema)
 		}
 		state.Initialized = true
@@ -172,7 +172,7 @@ func (s *Store) Status(ctx context.Context) (Status, error) {
 }
 
 func readVersion(ctx context.Context, tx pgx.Tx) (int, error) {
-	rows, err := tx.Query(ctx, "SELECT version,checksum FROM millionaire.schema_migrations ORDER BY version")
+	rows, err := tx.Query(ctx, "SELECT version,checksum FROM billionaire.schema_migrations ORDER BY version")
 	if err != nil {
 		return 0, safeError(ctx, ErrSchema)
 	}
@@ -210,8 +210,8 @@ func (s *Store) Migrate(ctx context.Context, direction Direction) error {
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(7341928601)"); err != nil {
 		return safeError(ctx, ErrMigration)
 	}
-	if _, err := tx.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS millionaire;
- CREATE TABLE IF NOT EXISTS millionaire.schema_migrations (
+	if _, err := tx.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS billionaire;
+ CREATE TABLE IF NOT EXISTS billionaire.schema_migrations (
  version INTEGER PRIMARY KEY CHECK(version>0), checksum TEXT NOT NULL
  )`); err != nil {
 		return safeError(ctx, ErrMigration)
@@ -225,7 +225,7 @@ func (s *Store) Migrate(ctx context.Context, direction Direction) error {
 			if _, err := tx.Exec(ctx, m.up); err != nil {
 				return safeError(ctx, ErrMigration)
 			}
-			if _, err := tx.Exec(ctx, "INSERT INTO millionaire.schema_migrations(version,checksum) VALUES($1,$2)", m.version, m.checksum()); err != nil {
+			if _, err := tx.Exec(ctx, "INSERT INTO billionaire.schema_migrations(version,checksum) VALUES($1,$2)", m.version, m.checksum()); err != nil {
 				return safeError(ctx, ErrMigration)
 			}
 		}
@@ -234,7 +234,7 @@ func (s *Store) Migrate(ctx context.Context, direction Direction) error {
 		if _, err := tx.Exec(ctx, m.down); err != nil {
 			return safeError(ctx, ErrMigration)
 		}
-		if _, err := tx.Exec(ctx, "DELETE FROM millionaire.schema_migrations WHERE version=$1", version); err != nil {
+		if _, err := tx.Exec(ctx, "DELETE FROM billionaire.schema_migrations WHERE version=$1", version); err != nil {
 			return safeError(ctx, ErrMigration)
 		}
 	}

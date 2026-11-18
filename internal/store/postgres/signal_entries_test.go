@@ -208,7 +208,7 @@ func TestSignalDecisionRollbackLeavesWorkRetryable(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer conn.Close(ctx)
-			_, err = conn.Exec(ctx, `CREATE FUNCTION millionaire.fail_decision() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_decision BEFORE INSERT ON millionaire.`+table+` FOR EACH ROW EXECUTE FUNCTION millionaire.fail_decision()`)
+			_, err = conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_decision() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_decision BEFORE INSERT ON billionaire.`+table+` FOR EACH ROW EXECUTE FUNCTION billionaire.fail_decision()`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -228,7 +228,7 @@ func TestSignalDecisionRollbackLeavesWorkRetryable(t *testing.T) {
 			if err != nil || len(pending) != 1 {
 				t.Fatalf("lost work: %+v %v", pending, err)
 			}
-			if _, err := conn.Exec(ctx, `DROP TRIGGER fail_decision ON millionaire.`+table+`; DROP FUNCTION millionaire.fail_decision()`); err != nil {
+			if _, err := conn.Exec(ctx, `DROP TRIGGER fail_decision ON billionaire.`+table+`; DROP FUNCTION billionaire.fail_decision()`); err != nil {
 				t.Fatal(err)
 			}
 			d, err := owner.DecideSignal(ctx, r, spotInfo(), true)

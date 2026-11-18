@@ -1,6 +1,6 @@
-# Millionaire
+# Billionaire
 
-Millionaire monitors markets, evaluates strategies, simulates trading, and reports results. All trading in the MVP is paper trading.
+Billionaire monitors markets, evaluates strategies, simulates trading, and reports results. All trading in the MVP is paper trading.
 
 ## Language
 

@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoadPaperConfigWithEnvironmentOverrides(t *testing.T) {
-	env := map[string]string{"MILLIONAIRE_LOG_LEVEL": "debug", "MILLIONAIRE_INITIAL_BALANCE": "12345.67"}
+	env := map[string]string{"BILLIONAIRE_LOG_LEVEL": "debug", "BILLIONAIRE_INITIAL_BALANCE": "12345.67"}
 	cfg, err := config.Load(strings.NewReader(configs.Example), func(k string) string { return env[k] })
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestLoadRejectsUnsafeOrInvalidConfiguration(t *testing.T) {
 		{"schema", "schema_version: 1", "schema_version: 2", "schema_version"},
 		{"storage", "driver: postgres", "driver: sqlite", "storage.driver"},
 		{"timeout", "timeout: 5s", "timeout: -1s", "storage.timeout"},
-		{"DSN literal", "dsn_env: MILLIONAIRE_DATABASE_URL", "dsn_env: postgres://secret@host/db", "storage.dsn_env"},
+		{"DSN literal", "dsn_env: BILLIONAIRE_DATABASE_URL", "dsn_env: postgres://secret@host/db", "storage.dsn_env"},
 		{"provider", "provider: bybit", "provider: unknown", "market_data.provider"},
 		{"URL credentials", "https://api.bybit.com", "https://secret@api.bybit.com", "market_data.rest_url"},
 		{"stale duration", "stale_after: 60s", "stale_after: 0s", "market_data.stale_after"},
@@ -66,7 +66,7 @@ func TestLoadRejectsPrivateSocketAndDuplicateInstrument(t *testing.T) {
 		}
 	}
 	if _, err := config.Load(strings.NewReader(configs.Example), func(k string) string {
-		if k == "MILLIONAIRE_MODE" {
+		if k == "BILLIONAIRE_MODE" {
 			return "live"
 		}
 		return ""

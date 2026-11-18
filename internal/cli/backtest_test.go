@@ -29,7 +29,7 @@ import (
 )
 
 func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
-	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+	t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	invoke := func(args ...string) ([]byte, error) {
 		var out, logs bytes.Buffer
@@ -256,7 +256,7 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 		previousTransport := http.DefaultTransport
 		http.DefaultTransport = server.Client().Transport
 		defer func() { http.DefaultTransport = previousTransport }()
-		t.Setenv("MILLIONAIRE_REST_URL", server.URL)
+		t.Setenv("BILLIONAIRE_REST_URL", server.URL)
 		args := []string{"backtest", "run", "--strategy", added.Version.ID, "--provider", "bybit", "--from", "2026-01-01T00:20:00Z", "--to", "2026-01-01T00:22:00Z"}
 		output, e := invoke(args...)
 		var public backtest.Report
@@ -271,7 +271,7 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 			t.Fatalf("offline run: %s %v", output, e)
 		}
 	})
-	blocker, e := pgx.Connect(context.Background(), os.Getenv("MILLIONAIRE_DATABASE_URL"))
+	blocker, e := pgx.Connect(context.Background(), os.Getenv("BILLIONAIRE_DATABASE_URL"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -294,7 +294,7 @@ func TestBacktestCLICompleteFixtureJourney(t *testing.T) {
 }
 
 func TestBacktestCLILinearFundingJourney(t *testing.T) {
-	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+	t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	invoke := func(args ...string) ([]byte, error) {
 		var out, logs bytes.Buffer

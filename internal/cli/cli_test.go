@@ -17,11 +17,11 @@ import (
 )
 
 func TestConfigValidateIsOfflineAndMachineReadable(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "millionaire.yaml")
+	path := filepath.Join(t.TempDir(), "billionaire.yaml")
 	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MILLIONAIRE_DATABASE_URL", "")
+	t.Setenv("BILLIONAIRE_DATABASE_URL", "")
 	var out, logs bytes.Buffer
 	if err := cli.Execute(context.Background(), []string{"config", "validate", "--config", path, "--output", "json"}, &out, &logs); err != nil {
 		t.Fatal(err)
@@ -44,8 +44,8 @@ func TestConfigValidateIsOfflineAndMachineReadable(t *testing.T) {
 
 func TestInitAndStatusPersistAcrossCommandInvocations(t *testing.T) {
 	dsn := testdb.New(t)
-	t.Setenv("MILLIONAIRE_DATABASE_URL", dsn)
-	path := filepath.Join(t.TempDir(), "config", "millionaire.yaml")
+	t.Setenv("BILLIONAIRE_DATABASE_URL", dsn)
+	path := filepath.Join(t.TempDir(), "config", "billionaire.yaml")
 	invoke := func(args ...string) (map[string]any, error) {
 		t.Helper()
 		var out, logs bytes.Buffer
@@ -119,11 +119,11 @@ func TestCommandCancellationAndInvalidArguments(t *testing.T) {
 }
 
 func TestUnavailableStatusDoesNotDiscloseDatabaseSecrets(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "millionaire.yaml")
+	path := filepath.Join(t.TempDir(), "billionaire.yaml")
 	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MILLIONAIRE_DATABASE_URL", "postgres://sensitive-marker:%not-a-url@host/db")
+	t.Setenv("BILLIONAIRE_DATABASE_URL", "postgres://sensitive-marker:%not-a-url@host/db")
 	var out, logs bytes.Buffer
 	err := cli.Execute(context.Background(), []string{"status", "--config", path, "--output", "json"}, &out, &logs)
 	if err == nil {
@@ -143,8 +143,8 @@ func TestUnavailableStatusDoesNotDiscloseDatabaseSecrets(t *testing.T) {
 
 func TestMarketBackfillWatchAndStatusUseOfflineFixture(t *testing.T) {
 	dsn := testdb.New(t)
-	t.Setenv("MILLIONAIRE_DATABASE_URL", dsn)
-	path := filepath.Join(t.TempDir(), "millionaire.yaml")
+	t.Setenv("BILLIONAIRE_DATABASE_URL", dsn)
+	path := filepath.Join(t.TempDir(), "billionaire.yaml")
 	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -202,8 +202,8 @@ func TestMarketBackfillWatchAndStatusUseOfflineFixture(t *testing.T) {
 }
 
 func TestStrategyCLIRegistersEnablesEvaluatesAndInspectsSignals(t *testing.T) {
-	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
-	path := filepath.Join(t.TempDir(), "millionaire.yaml")
+	t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
+	path := filepath.Join(t.TempDir(), "billionaire.yaml")
 	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -257,9 +257,9 @@ func TestStrategyCLIRegistersEnablesEvaluatesAndInspectsSignals(t *testing.T) {
 }
 
 func TestStrategyEvaluateCommandIsOfflineAndIdempotent(t *testing.T) {
-	t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+	t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
 	directory := t.TempDir()
-	path := filepath.Join(directory, "millionaire.yaml")
+	path := filepath.Join(directory, "billionaire.yaml")
 	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
 		t.Fatal(err)
 	}

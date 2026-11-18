@@ -315,7 +315,7 @@ func TestM4JoinedSignalExitsRollbackAndIdenticalEventRetries(t *testing.T) {
 			}
 			for _, fault := range []struct{ table, op string }{{"paper_fills", "INSERT"}, {"paper_accounts", "UPDATE"}, {"paper_positions", "INSERT"}, {"paper_ledger_entries", "INSERT"}, {"journal_outbox", "INSERT"}, {outcome, "INSERT"}} {
 				before := m4PublicSnapshot(t, s, a.ID)
-				_, err := conn.Exec(ctx, `CREATE FUNCTION millionaire.m4_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER m4_fail BEFORE `+fault.op+` ON millionaire.`+fault.table+` FOR EACH ROW EXECUTE FUNCTION millionaire.m4_fail()`)
+				_, err := conn.Exec(ctx, `CREATE FUNCTION billionaire.m4_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER m4_fail BEFORE `+fault.op+` ON billionaire.`+fault.table+` FOR EACH ROW EXECUTE FUNCTION billionaire.m4_fail()`)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -325,7 +325,7 @@ func TestM4JoinedSignalExitsRollbackAndIdenticalEventRetries(t *testing.T) {
 				if after := m4PublicSnapshot(t, s, a.ID); after != before {
 					t.Fatalf("%s exposed partial state", fault.table)
 				}
-				if _, err := conn.Exec(ctx, `DROP TRIGGER m4_fail ON millionaire.`+fault.table+`; DROP FUNCTION millionaire.m4_fail()`); err != nil {
+				if _, err := conn.Exec(ctx, `DROP TRIGGER m4_fail ON billionaire.`+fault.table+`; DROP FUNCTION billionaire.m4_fail()`); err != nil {
 					t.Fatal(err)
 				}
 			}

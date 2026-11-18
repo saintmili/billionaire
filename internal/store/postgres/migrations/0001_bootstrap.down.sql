@@ -1,1 +1,1 @@
-DROP TABLE millionaire.app_metadata;
+DROP TABLE billionaire.app_metadata;

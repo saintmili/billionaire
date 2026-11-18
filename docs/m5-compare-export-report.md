@@ -10,15 +10,15 @@ does not optimize strategies or enable monitoring; the M2 actual-host gate remai
 ## Commands
 
 ```sh
-millionaire backtest compare LEFT_RUN RIGHT_RUN --output json
-millionaire report strategies --scope backtest --output json
-millionaire report strategies --scope backtest --run RUN_A,RUN_B \
+billionaire backtest compare LEFT_RUN RIGHT_RUN --output json
+billionaire report strategies --scope backtest --output json
+billionaire report strategies --scope backtest --run RUN_A,RUN_B \
   --strategy-version VERSION --provider fixture --market spot --symbol BTC/USDT \
   --timeframe 1m --from 2026-01-01T00:20:00Z --to 2026-01-02T00:00:00Z \
   --output json
-millionaire backtest export RUN_ID --kind report --format json
-millionaire backtest export RUN_ID --kind trades --format csv > trades.csv
-millionaire backtest export RUN_ID --kind equity --format csv > equity.csv
+billionaire backtest export RUN_ID --kind report --format json
+billionaire backtest export RUN_ID --kind trades --format csv > trades.csv
+billionaire backtest export RUN_ID --kind equity --format csv > equity.csv
 ```
 
 `--account` selects an isolated account identity. Repeated/comma-separated `--run`
@@ -130,7 +130,7 @@ values, escaped JSON/CSV, nanosecond times, equal-time phase order, empty contex
 rows and writer errors.
 
 Final checks run on 2026-11-17 with `GOCACHE=/tmp/billionaire-go-cache` and the
-provided disposable `MILLIONAIRE_TEST_DATABASE_URL`. The pre-linear full suite
+provided disposable `BILLIONAIRE_TEST_DATABASE_URL`. The pre-linear full suite
 passed (PostgreSQL 45.970s; CLI 12.675s), vet passed, focused backtest/analytics/
 PostgreSQL/CLI race checks passed, and CLI build plus compare/export/strategies
 help passed. Final checks after merging #19 are recorded below.

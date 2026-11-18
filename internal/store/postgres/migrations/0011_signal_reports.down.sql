@@ -1,2 +1,2 @@
-DROP TABLE millionaire.signal_reports;
-DROP FUNCTION millionaire.reject_signal_report_change();
+DROP TABLE billionaire.signal_reports;
+DROP FUNCTION billionaire.reject_signal_report_change();

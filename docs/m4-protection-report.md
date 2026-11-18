@@ -70,7 +70,7 @@ rounding, persistent partial targets, manual stop adjustment, CLI execution,
 legacy upgrades and journal rollback.
 
 Verification uses a temporary PostgreSQL 17 container on loopback port 55436 and
-uniquely created disposable databases via `MILLIONAIRE_TEST_DATABASE_URL`; existing
+uniquely created disposable databases via `BILLIONAIRE_TEST_DATABASE_URL`; existing
 application databases are never used.
 
 - Public policy tests cover exact boundaries, invalid/off-tick geometry, partial

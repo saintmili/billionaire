@@ -14,7 +14,7 @@ import (
 func (s *Store) InstrumentInfo(ctx context.Context, i domain.Instrument) (marketdata.InstrumentInfo, error) {
 	var payload []byte
 	var info marketdata.InstrumentInfo
-	e := s.pool.QueryRow(ctx, `SELECT metadata FROM millionaire.market_instruments WHERE provider=$1 AND market=$2 AND instrument_id=$3 AND base=$4 AND quote=$5`, i.Provider, i.Market, i.ID, i.Base, i.Quote).Scan(&payload)
+	e := s.pool.QueryRow(ctx, `SELECT metadata FROM billionaire.market_instruments WHERE provider=$1 AND market=$2 AND instrument_id=$3 AND base=$4 AND quote=$5`, i.Provider, i.Market, i.ID, i.Base, i.Quote).Scan(&payload)
 	if errors.Is(e, pgx.ErrNoRows) || e == nil && len(payload) == 0 {
 		return info, errors.New("cached instrument metadata unavailable")
 	}

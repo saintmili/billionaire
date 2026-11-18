@@ -144,7 +144,7 @@ func (o *options) paperDatabaseWithConfig(ctx context.Context, cfg config.Config
 			return err
 		}
 		if !state.Initialized {
-			return errors.New("database is not initialized; run millionaire init")
+			return errors.New("database is not initialized; run billionaire init")
 		}
 		return operation(ctx, store)
 	})

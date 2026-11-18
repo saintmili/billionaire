@@ -152,7 +152,7 @@ func TestFinancialFailureRollsBackAndSameObservationRecovers(t *testing.T) {
 			observation.Instrument = info.Instrument
 			for _, fault := range []struct{ table, operation string }{{"paper_orders", "UPDATE"}, {"paper_accounts", "UPDATE"}, {"paper_fills", "INSERT"}, {"paper_positions", "INSERT"}, {"paper_ledger_entries", "INSERT"}, {"journal_outbox", "INSERT"}, {"paper_price_events", "INSERT"}} {
 				table := fault.table
-				_, err := conn.Exec(ctx, `CREATE FUNCTION millionaire.fail_spot_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END; $$; CREATE TRIGGER fail_write BEFORE `+fault.operation+` ON millionaire.`+table+` FOR EACH ROW EXECUTE FUNCTION millionaire.fail_spot_write()`)
+				_, err := conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_spot_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END; $$; CREATE TRIGGER fail_write BEFORE `+fault.operation+` ON billionaire.`+table+` FOR EACH ROW EXECUTE FUNCTION billionaire.fail_spot_write()`)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -179,7 +179,7 @@ func TestFinancialFailureRollsBackAndSameObservationRecovers(t *testing.T) {
 				if err != nil || len(ledger) != 1 {
 					t.Fatalf("ledger after %s: %+v %v", table, ledger, err)
 				}
-				if _, err := conn.Exec(ctx, `DROP TRIGGER fail_write ON millionaire.`+table+`; DROP FUNCTION millionaire.fail_spot_write()`); err != nil {
+				if _, err := conn.Exec(ctx, `DROP TRIGGER fail_write ON billionaire.`+table+`; DROP FUNCTION billionaire.fail_spot_write()`); err != nil {
 					t.Fatal(err)
 				}
 			}

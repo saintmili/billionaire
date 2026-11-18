@@ -75,7 +75,7 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 			return err
 		}
 		if !result.Initialized {
-			return errors.New("database is not initialized; run millionaire init")
+			return errors.New("database is not initialized; run billionaire init")
 		}
 		return nil
 	}})

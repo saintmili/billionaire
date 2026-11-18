@@ -6,16 +6,16 @@ acquires financial ownership, creates fills, or writes financial state. Backtest
 and forward-paper results have explicit, separate `scope` values. Derived metrics
 are calculated from the retained immutable run/equity evidence on each read,
 without storing another mutable copy. No migration or dependency is added.
-Millionaire owns the financial metrics before M7 journal delivery; the verified
+Billionaire owns the financial metrics before M7 journal delivery; the verified
 [StopLore map](stoplore-integration.md) identifies supported completed-trade
 performance and the equity/backtest gaps. Cross-checking actual journal reports
 remains part of M7 once that integration is delivered.
 
 ```sh
-millionaire backtest trades RUN-ID --output json
-millionaire report trades --scope backtest --run RUN-ID --output json
-millionaire report trades --scope forward-paper --account ACCOUNT-ID --output json
-millionaire backtest trades RUN-ID --strategy-version VERSION-ID \
+billionaire backtest trades RUN-ID --output json
+billionaire report trades --scope backtest --run RUN-ID --output json
+billionaire report trades --scope forward-paper --account ACCOUNT-ID --output json
+billionaire backtest trades RUN-ID --strategy-version VERSION-ID \
   --provider fixture --market spot --symbol BTC/USDT \
   --from 2026-01-01T00:20:00Z --to 2026-01-01T00:22:00Z --output json
 ```
@@ -119,7 +119,7 @@ and cash after repeated reads. CLI tests exercise both scopes, filters, exact
 JSON decimals, persisted equity and invalid inputs.
 
 Checks passed with `GOCACHE=/tmp/billionaire-gocache` and the authorized disposable
-local PostgreSQL server configured through `MILLIONAIRE_TEST_DATABASE_URL`:
+local PostgreSQL server configured through `BILLIONAIRE_TEST_DATABASE_URL`:
 
 ```sh
 go test ./... -count=1

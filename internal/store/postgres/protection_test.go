@@ -103,7 +103,7 @@ func TestProtectionRollbackAndConcurrentManualCloseCannotOverclose(t *testing.T)
 	o, g = spotObservation(2)
 	o.Price = spotDecimal("85")
 	for _, fault := range []struct{ table, operation string }{{"paper_orders", "INSERT"}, {"paper_positions", "INSERT"}, {"paper_fills", "INSERT"}, {"paper_accounts", "UPDATE"}, {"paper_ledger_entries", "INSERT"}, {"journal_outbox", "INSERT"}, {"paper_price_events", "INSERT"}} {
-		_, err := conn.Exec(ctx, `CREATE FUNCTION millionaire.fail_protection() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_protection BEFORE `+fault.operation+` ON millionaire.`+fault.table+` FOR EACH ROW EXECUTE FUNCTION millionaire.fail_protection()`)
+		_, err := conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_protection() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_protection BEFORE `+fault.operation+` ON billionaire.`+fault.table+` FOR EACH ROW EXECUTE FUNCTION billionaire.fail_protection()`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestProtectionRollbackAndConcurrentManualCloseCannotOverclose(t *testing.T)
 		if err != nil || a.Balance.String() != "799.8" {
 			t.Fatalf("cash rollback: %+v %v", a, err)
 		}
-		if _, err := conn.Exec(ctx, `DROP TRIGGER fail_protection ON millionaire.`+fault.table+`; DROP FUNCTION millionaire.fail_protection()`); err != nil {
+		if _, err := conn.Exec(ctx, `DROP TRIGGER fail_protection ON billionaire.`+fault.table+`; DROP FUNCTION billionaire.fail_protection()`); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -183,7 +183,7 @@ func TestAdjustmentPersistsConflictsAndRollsBackWithOutbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, `CREATE FUNCTION millionaire.fail_adjustment() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_adjustment BEFORE INSERT ON millionaire.journal_outbox FOR EACH ROW EXECUTE FUNCTION millionaire.fail_adjustment()`); err != nil {
+	if _, err := conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_adjustment() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_adjustment BEFORE INSERT ON billionaire.journal_outbox FOR EACH ROW EXECUTE FUNCTION billionaire.fail_adjustment()`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := owner.AdjustProtection(ctx, a); err == nil {
@@ -193,7 +193,7 @@ func TestAdjustmentPersistsConflictsAndRollsBackWithOutbox(t *testing.T) {
 	if err != nil || p.Protection.StopPrice != "" {
 		t.Fatalf("adjustment leaked: %+v %v", p, err)
 	}
-	if _, err := conn.Exec(ctx, `DROP TRIGGER fail_adjustment ON millionaire.journal_outbox; DROP FUNCTION millionaire.fail_adjustment()`); err != nil {
+	if _, err := conn.Exec(ctx, `DROP TRIGGER fail_adjustment ON billionaire.journal_outbox; DROP FUNCTION billionaire.fail_adjustment()`); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -322,7 +322,7 @@ func TestProtectionUpgradeAllowsAdjustingLegacyPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, `UPDATE millionaire.paper_positions SET payload=payload-'protection'`); err != nil {
+	if _, err := conn.Exec(ctx, `UPDATE billionaire.paper_positions SET payload=payload-'protection'`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Migrate(ctx, postgres.Up); err != nil {
@@ -364,7 +364,7 @@ func TestTrailingUpdateRollsBackWhenJournalOutboxFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, `CREATE FUNCTION millionaire.fail_trailing() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_trailing BEFORE INSERT ON millionaire.journal_outbox FOR EACH ROW EXECUTE FUNCTION millionaire.fail_trailing()`); err != nil {
+	if _, err := conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_trailing() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_trailing BEFORE INSERT ON billionaire.journal_outbox FOR EACH ROW EXECUTE FUNCTION billionaire.fail_trailing()`); err != nil {
 		t.Fatal(err)
 	}
 	o, g = spotObservation(2)
@@ -376,7 +376,7 @@ func TestTrailingUpdateRollsBackWhenJournalOutboxFails(t *testing.T) {
 	if err != nil || p.Protection.StopPrice != "" {
 		t.Fatalf("trailing update leaked: %+v %v", p, err)
 	}
-	if _, err := conn.Exec(ctx, `DROP TRIGGER fail_trailing ON millionaire.journal_outbox; DROP FUNCTION millionaire.fail_trailing()`); err != nil {
+	if _, err := conn.Exec(ctx, `DROP TRIGGER fail_trailing ON billionaire.journal_outbox; DROP FUNCTION billionaire.fail_trailing()`); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {

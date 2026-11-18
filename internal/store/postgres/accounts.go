@@ -84,10 +84,10 @@ func (o *PaperOwner) CreateAccount(ctx context.Context, request paper.CreateAcco
 		return paper.Account{}, safeError(ctx, ErrUnavailable)
 	}
 	defer rollback(tx)
-	account, err := scanPaperAccount(tx.QueryRow(ctx, `SELECT id,name,currency,balance::text,created_at FROM millionaire.paper_accounts WHERE request_id=$1`, request.RequestID))
+	account, err := scanPaperAccount(tx.QueryRow(ctx, `SELECT id,name,currency,balance::text,created_at FROM billionaire.paper_accounts WHERE request_id=$1`, request.RequestID))
 	if err == nil {
 		var initial string
-		if err := tx.QueryRow(ctx, "SELECT initial_balance::text FROM millionaire.paper_accounts WHERE id=$1", account.ID).Scan(&initial); err != nil {
+		if err := tx.QueryRow(ctx, "SELECT initial_balance::text FROM billionaire.paper_accounts WHERE id=$1", account.ID).Scan(&initial); err != nil {
 			return paper.Account{}, safeError(ctx, ErrUnavailable)
 		}
 		original, err := domain.ParseDecimal(initial)
@@ -103,18 +103,18 @@ func (o *PaperOwner) CreateAccount(ctx context.Context, request paper.CreateAcco
 		return paper.Account{}, safeError(ctx, ErrUnavailable)
 	}
 	id := fmt.Sprintf("account_%x", sha256.Sum256([]byte(request.RequestID)))
-	account, err = scanPaperAccount(tx.QueryRow(ctx, `INSERT INTO millionaire.paper_accounts(id,request_id,name,currency,initial_balance,balance) VALUES($1,$2,$3,$4,$5,$5) RETURNING id,name,currency,balance::text,created_at`, id, request.RequestID, request.Name, request.Currency, balance.String()))
+	account, err = scanPaperAccount(tx.QueryRow(ctx, `INSERT INTO billionaire.paper_accounts(id,request_id,name,currency,initial_balance,balance) VALUES($1,$2,$3,$4,$5,$5) RETURNING id,name,currency,balance::text,created_at`, id, request.RequestID, request.Name, request.Currency, balance.String()))
 	if err != nil {
 		return paper.Account{}, safeError(ctx, ErrUnavailable)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.paper_ledger_entries(id,account_id,kind,amount) VALUES($1,$2,'opening',$3)`, id+":opening", id, balance.String()); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_ledger_entries(id,account_id,kind,amount) VALUES($1,$2,'opening',$3)`, id+":opening", id, balance.String()); err != nil {
 		return paper.Account{}, safeError(ctx, ErrUnavailable)
 	}
 	payload, err := json.Marshal(account)
 	if err != nil {
 		return paper.Account{}, errors.New("cannot encode account event")
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.journal_outbox(event_id,kind,payload) VALUES($1,'account_opened',$2)`, id+":opening", payload); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.journal_outbox(event_id,kind,payload) VALUES($1,'account_opened',$2)`, id+":opening", payload); err != nil {
 		return paper.Account{}, safeError(ctx, ErrUnavailable)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -138,7 +138,7 @@ func scanPaperAccount(row pgx.Row) (paper.Account, error) {
 }
 
 func (s *Store) PaperAccount(ctx context.Context, id string) (paper.Account, error) {
-	a, err := scanPaperAccount(s.pool.QueryRow(ctx, `SELECT id,name,currency,balance::text,created_at FROM millionaire.paper_accounts WHERE id=$1`, id))
+	a, err := scanPaperAccount(s.pool.QueryRow(ctx, `SELECT id,name,currency,balance::text,created_at FROM billionaire.paper_accounts WHERE id=$1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return a, errors.New("paper account not found")
 	}
@@ -149,7 +149,7 @@ func (s *Store) PaperAccount(ctx context.Context, id string) (paper.Account, err
 }
 
 func (s *Store) PaperAccounts(ctx context.Context) ([]paper.Account, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id,name,currency,balance::text,created_at FROM millionaire.paper_accounts ORDER BY created_at,id`)
+	rows, err := s.pool.Query(ctx, `SELECT id,name,currency,balance::text,created_at FROM billionaire.paper_accounts ORDER BY created_at,id`)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -169,7 +169,7 @@ func (s *Store) PaperAccounts(ctx context.Context) ([]paper.Account, error) {
 }
 
 func (s *Store) PaperLedger(ctx context.Context, id string) ([]paper.LedgerEntry, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id,account_id,kind,amount::text,created_at FROM millionaire.paper_ledger_entries WHERE account_id=$1 ORDER BY created_at,id`, id)
+	rows, err := s.pool.Query(ctx, `SELECT id,account_id,kind,amount::text,created_at FROM billionaire.paper_ledger_entries WHERE account_id=$1 ORDER BY created_at,id`, id)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}

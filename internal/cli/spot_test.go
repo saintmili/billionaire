@@ -29,8 +29,8 @@ func TestManualPaperCLIEntryPartialAndFinalClose(t *testing.T) {
 		{"linear short", domain.Linear, "short", "5", "ETH", "1009.61", "9.61", 9},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
-			path := filepath.Join(t.TempDir(), "millionaire.yaml")
+			t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
+			path := filepath.Join(t.TempDir(), "billionaire.yaml")
 			invoke := func(args ...string) ([]byte, error) {
 				t.Helper()
 				var out, logs bytes.Buffer

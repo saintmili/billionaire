@@ -56,7 +56,7 @@ Bybit [integration guidance](https://bybit-exchange.github.io/docs/v5/guide) doc
 
 ## Ports and accepted decisions
 
-These are Millionaire-owned boundaries to implement incrementally, not StopLore interfaces or new packages created by the spike:
+These are Billionaire-owned boundaries to implement incrementally, not StopLore interfaces or new packages created by the spike:
 
 | Port/boundary | Responsibility and failure contract |
 | --- | --- |

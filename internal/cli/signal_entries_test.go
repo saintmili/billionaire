@@ -18,7 +18,7 @@ import (
 func TestSignalEntryFixtureCLI(t *testing.T) {
 	for _, action := range []string{"manual_paper", "auto_paper", "alert_only"} {
 		t.Run(action, func(t *testing.T) {
-			t.Setenv("MILLIONAIRE_DATABASE_URL", testdb.New(t))
+			t.Setenv("BILLIONAIRE_DATABASE_URL", testdb.New(t))
 			configPath := filepath.Join(t.TempDir(), "config.yaml")
 			invoke := func(args ...string) []byte {
 				t.Helper()

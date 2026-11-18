@@ -1,7 +1,7 @@
-# Millionaire product specification
+# Billionaire product specification
 
 **Status:** Approved product requirements; technical defaults remain subject to M0 inspection.
-**Product:** `millionaire`, a Go application with CLI and private web interfaces for MVP; a native TUI is deferred.
+**Product:** `billionaire`, a Go application with CLI and private web interfaces for MVP; a native TUI is deferred.
 
 This document owns product behavior, constraints, test requirements, and release acceptance. See [the roadmap](roadmap.md) for milestone order and progress, [technical design](design.md) for proposed implementation details, and [the glossary](../GLOSSARY.md) for domain terms.
 
@@ -175,35 +175,35 @@ Metrics plus input data quality, execution assumptions, rejected signals, missed
 Use Cobra (or a similar justified framework), with subcommands rather than a monolithic interactive UI. All commands have `--help`, meaningful exit codes and `--output json` when returning structured data.
 
 ```text
-millionaire init
-millionaire config validate
-millionaire provider list
-millionaire provider test --provider bybit
-millionaire market watch --market spot --symbol BTC/USDT --timeframe 1m
-millionaire market backfill --market linear --symbol ETH/USDT --timeframe 15m --from ... --to ...
-millionaire strategy list
-millionaire strategy validate examples/strategies/breakout.yaml
-millionaire strategy add examples/strategies/breakout.yaml
-millionaire strategy enable <instance-id>
-millionaire strategy disable <instance-id>
-millionaire start
-millionaire status
-millionaire signals list --strategy <id>
-millionaire paper account create --name demo --balance 10000
-millionaire paper accounts
-millionaire paper positions
-millionaire paper approve <signal-id>
-millionaire paper open --account <id> --market spot --symbol BTC/USDT --side long --quantity <qty>
-millionaire paper close <position-id> --quantity <qty>
-millionaire paper adjust <position-id> --stop-loss <price>
-millionaire paper kill-switch on|off
-millionaire backtest run --strategy <version-id> --symbol BTC/USDT --market spot --from ... --to ...
-millionaire backtest report <run-id>
-millionaire backtest compare <run-id> <run-id>
-millionaire report signals|trades|strategies
-millionaire journal status
-millionaire journal sync
-millionaire journal reconcile
+billionaire init
+billionaire config validate
+billionaire provider list
+billionaire provider test --provider bybit
+billionaire market watch --market spot --symbol BTC/USDT --timeframe 1m
+billionaire market backfill --market linear --symbol ETH/USDT --timeframe 15m --from ... --to ...
+billionaire strategy list
+billionaire strategy validate examples/strategies/breakout.yaml
+billionaire strategy add examples/strategies/breakout.yaml
+billionaire strategy enable <instance-id>
+billionaire strategy disable <instance-id>
+billionaire start
+billionaire status
+billionaire signals list --strategy <id>
+billionaire paper account create --name demo --balance 10000
+billionaire paper accounts
+billionaire paper positions
+billionaire paper approve <signal-id>
+billionaire paper open --account <id> --market spot --symbol BTC/USDT --side long --quantity <qty>
+billionaire paper close <position-id> --quantity <qty>
+billionaire paper adjust <position-id> --stop-loss <price>
+billionaire paper kill-switch on|off
+billionaire backtest run --strategy <version-id> --symbol BTC/USDT --market spot --from ... --to ...
+billionaire backtest report <run-id>
+billionaire backtest compare <run-id> <run-id>
+billionaire report signals|trades|strategies
+billionaire journal status
+billionaire journal sync
+billionaire journal reconcile
 ```
 
 For commands affecting the running engine, provide safe single-owner coordination. Preferred first step: daemon maintains the only active runtime; CLI uses a Unix-domain control socket for mutations. Separate CLI processes must not independently evaluate/process live events against the same account. VPS access via SSH rather than publicly exposed control endpoints. Reading reports can use read-only database queries or the same control API, but keep write semantics consistent.
@@ -239,7 +239,7 @@ Use deterministic fixture data for core tests; external-provider network tests m
 
 ## Deployment and operations
 
-- Local: PostgreSQL via Compose or installed service, `millionaire start` foreground initially; desktop notifications optional; no publicly exposed control API.
+- Local: PostgreSQL via Compose or installed service, `billionaire start` foreground initially; desktop notifications optional; no publicly exposed control API.
 - VPS: dedicated OS user, env file mode 0600, systemd unit for engine, PostgreSQL with authentication and backup schedule, journal file/report retention, logs through journald or structured files; Telegram for off-device notifications.
 - Do not place PostgreSQL or the control socket on a public internet interface.
 - Web access must remain private: loopback with SSH forwarding, or an explicitly configured private-network listener. Document the access setup and browser request protections; a private network does not replace validation of browser-originated mutations.

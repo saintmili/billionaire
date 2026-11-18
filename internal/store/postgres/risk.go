@@ -14,7 +14,7 @@ import (
 
 func (s *Store) KillSwitch(ctx context.Context) (bool, error) {
 	var on bool
-	err := s.pool.QueryRow(ctx, "SELECT kill_switch FROM millionaire.paper_controls WHERE id").Scan(&on)
+	err := s.pool.QueryRow(ctx, "SELECT kill_switch FROM billionaire.paper_controls WHERE id").Scan(&on)
 	if err != nil {
 		return false, safeError(ctx, ErrUnavailable)
 	}
@@ -23,14 +23,14 @@ func (s *Store) KillSwitch(ctx context.Context) (bool, error) {
 
 // SetKillSwitch serializes with entry transactions, without requiring engine ownership.
 func (s *Store) SetKillSwitch(ctx context.Context, on bool) error {
-	_, err := s.pool.Exec(ctx, "UPDATE millionaire.paper_controls SET kill_switch=$1 WHERE id", on)
+	_, err := s.pool.Exec(ctx, "UPDATE billionaire.paper_controls SET kill_switch=$1 WHERE id", on)
 	if err != nil {
 		return safeError(ctx, ErrUnavailable)
 	}
 	return nil
 }
 func (s *Store) RiskPolicy(ctx context.Context, accountID, strategyID string) (paper.RiskPolicy, error) {
-	p, err := decodePaperRow[paper.RiskPolicy](s.pool.QueryRow(ctx, "SELECT policy FROM millionaire.paper_risk_policies WHERE account_id=$1 AND strategy_id=$2", accountID, strategyID))
+	p, err := decodePaperRow[paper.RiskPolicy](s.pool.QueryRow(ctx, "SELECT policy FROM billionaire.paper_risk_policies WHERE account_id=$1 AND strategy_id=$2", accountID, strategyID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return paper.RiskPolicy{}, nil
 	}
@@ -49,11 +49,11 @@ func (s *Store) SetRiskPolicy(ctx context.Context, accountID, strategyID string,
 	}
 	defer rollback(tx)
 	var id string
-	if err := tx.QueryRow(ctx, "SELECT id FROM millionaire.paper_accounts WHERE id=$1 FOR UPDATE", accountID).Scan(&id); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT id FROM billionaire.paper_accounts WHERE id=$1 FOR UPDATE", accountID).Scan(&id); err != nil {
 		return errors.New("paper account unavailable")
 	}
 	if strategyID != "" {
-		if err := tx.QueryRow(ctx, "SELECT id FROM millionaire.strategy_definitions WHERE id=$1", strategyID).Scan(&id); err != nil {
+		if err := tx.QueryRow(ctx, "SELECT id FROM billionaire.strategy_definitions WHERE id=$1", strategyID).Scan(&id); err != nil {
 			return errors.New("strategy definition unavailable")
 		}
 	}
@@ -61,7 +61,7 @@ func (s *Store) SetRiskPolicy(ctx context.Context, accountID, strategyID string,
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO millionaire.paper_risk_policies(account_id,strategy_id,policy) VALUES($1,$2,$3) ON CONFLICT(account_id,strategy_id) DO UPDATE SET policy=EXCLUDED.policy`, accountID, strategyID, data); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO billionaire.paper_risk_policies(account_id,strategy_id,policy) VALUES($1,$2,$3) ON CONFLICT(account_id,strategy_id) DO UPDATE SET policy=EXCLUDED.policy`, accountID, strategyID, data); err != nil {
 		return safeError(ctx, ErrUnavailable)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -74,7 +74,7 @@ func entryAdmission(ctx context.Context, tx pgx.Tx, order paper.Order) (string, 
 		return "", nil
 	}
 	var on bool
-	if err := tx.QueryRow(ctx, "SELECT kill_switch FROM millionaire.paper_controls WHERE id FOR SHARE").Scan(&on); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT kill_switch FROM billionaire.paper_controls WHERE id FOR SHARE").Scan(&on); err != nil {
 		return "", err
 	}
 	if on {
@@ -82,7 +82,7 @@ func entryAdmission(ctx context.Context, tx pgx.Tx, order paper.Order) (string, 
 	}
 	if order.Request.StrategyID != "" {
 		var id string
-		if err := tx.QueryRow(ctx, "SELECT id FROM millionaire.strategy_definitions WHERE id=$1", order.Request.StrategyID).Scan(&id); errors.Is(err, pgx.ErrNoRows) {
+		if err := tx.QueryRow(ctx, "SELECT id FROM billionaire.strategy_definitions WHERE id=$1", order.Request.StrategyID).Scan(&id); errors.Is(err, pgx.ErrNoRows) {
 			return "strategy unavailable", nil
 		} else if err != nil {
 			return "", err
@@ -90,7 +90,7 @@ func entryAdmission(ctx context.Context, tx pgx.Tx, order paper.Order) (string, 
 	}
 
 	if order.Request.SignalID != "" {
-		signal, err := decodePaperRow[strategy.Signal](tx.QueryRow(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE id=$1", order.Request.SignalID))
+		signal, err := decodePaperRow[strategy.Signal](tx.QueryRow(ctx, "SELECT payload FROM billionaire.strategy_signals WHERE id=$1", order.Request.SignalID))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "signal unavailable or incompatible with entry", nil
 		}
@@ -98,13 +98,13 @@ func entryAdmission(ctx context.Context, tx pgx.Tx, order paper.Order) (string, 
 			return "", err
 		}
 		var active bool
-		if err := tx.QueryRow(ctx, "SELECT enabled FROM millionaire.strategy_instances WHERE id=$1 FOR SHARE", signal.InstanceID).Scan(&active); err != nil {
+		if err := tx.QueryRow(ctx, "SELECT enabled FROM billionaire.strategy_instances WHERE id=$1 FOR SHARE", signal.InstanceID).Scan(&active); err != nil {
 			return "", err
 		}
 		if !active {
 			return "strategy instance disabled", nil
 		}
-		instance, err := decodePaperRow[strategy.Instance](tx.QueryRow(ctx, "SELECT binding FROM millionaire.strategy_instances WHERE id=$1", signal.InstanceID))
+		instance, err := decodePaperRow[strategy.Instance](tx.QueryRow(ctx, "SELECT binding FROM billionaire.strategy_instances WHERE id=$1", signal.InstanceID))
 		if err != nil {
 			return "", err
 		}
@@ -115,7 +115,7 @@ func entryAdmission(ctx context.Context, tx pgx.Tx, order paper.Order) (string, 
 			return "intent precedes signal availability", nil
 		}
 		var used bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM millionaire.paper_orders WHERE status='filled' AND payload->'request'->>'signal_id'=$1 AND payload->'request'->>'action'='open')`, signal.ID).Scan(&used); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM billionaire.paper_orders WHERE status='filled' AND payload->'request'->>'signal_id'=$1 AND payload->'request'->>'action'='open')`, signal.ID).Scan(&used); err != nil {
 			return "", err
 		}
 		if used {
@@ -136,7 +136,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 	if reason != "" || err != nil {
 		return gate, reason, err
 	}
-	rows, err := tx.Query(ctx, `SELECT strategy_id,policy FROM millionaire.paper_risk_policies WHERE account_id=$1 AND (strategy_id='' OR strategy_id=$2) ORDER BY strategy_id`, order.Request.AccountID, order.Request.StrategyID)
+	rows, err := tx.Query(ctx, `SELECT strategy_id,policy FROM billionaire.paper_risk_policies WHERE account_id=$1 AND (strategy_id='' OR strategy_id=$2) ORDER BY strategy_id`, order.Request.AccountID, order.Request.StrategyID)
 	if err != nil {
 		return gate, "", err
 	}
@@ -157,14 +157,14 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		return gate, "", err
 	}
 	var accountConfigured bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM millionaire.paper_risk_policies WHERE account_id=$1 AND strategy_id='')`, order.Request.AccountID).Scan(&accountConfigured); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM billionaire.paper_risk_policies WHERE account_id=$1 AND strategy_id='')`, order.Request.AccountID).Scan(&accountConfigured); err != nil {
 		return gate, "", err
 	}
 	if !accountConfigured {
 		policies = append([]scopedRiskPolicy{{}}, policies...)
 	}
 	if order.Request.SignalID != "" {
-		signal, e := decodePaperRow[strategy.Signal](tx.QueryRow(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE id=$1", order.Request.SignalID))
+		signal, e := decodePaperRow[strategy.Signal](tx.QueryRow(ctx, "SELECT payload FROM billionaire.strategy_signals WHERE id=$1", order.Request.SignalID))
 		if e != nil {
 			return gate, "", e
 		}
@@ -175,7 +175,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		}
 		if candleLimited {
 			var used bool
-			err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM millionaire.paper_orders o JOIN millionaire.strategy_signals s ON s.id=o.payload->'request'->>'signal_id' WHERE o.account_id=$1 AND o.status='filled' AND o.payload->'request'->>'action'='open' AND s.payload->>'strategy_id'=$2 AND s.payload->'instrument'=$3::jsonb AND s.payload->>'timeframe'=$4 AND s.payload->>'candle_open'=$5)`, order.Request.AccountID, signal.StrategyID, jsonInstrument(signal.Instrument), string(signal.Timeframe), signal.CandleOpen.UTC().Format(time.RFC3339Nano)).Scan(&used)
+			err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM billionaire.paper_orders o JOIN billionaire.strategy_signals s ON s.id=o.payload->'request'->>'signal_id' WHERE o.account_id=$1 AND o.status='filled' AND o.payload->'request'->>'action'='open' AND s.payload->>'strategy_id'=$2 AND s.payload->'instrument'=$3::jsonb AND s.payload->>'timeframe'=$4 AND s.payload->>'candle_open'=$5)`, order.Request.AccountID, signal.StrategyID, jsonInstrument(signal.Instrument), string(signal.Timeframe), signal.CandleOpen.UTC().Format(time.RFC3339Nano)).Scan(&used)
 			if err != nil {
 				return gate, "", err
 			}
@@ -185,7 +185,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 		}
 
 	}
-	positionsRows, err := tx.Query(ctx, "SELECT payload FROM millionaire.paper_positions WHERE account_id=$1 AND status='open'", order.Request.AccountID)
+	positionsRows, err := tx.Query(ctx, "SELECT payload FROM billionaire.paper_positions WHERE account_id=$1 AND status='open'", order.Request.AccountID)
 	if err != nil {
 		return gate, "", err
 	}
@@ -193,7 +193,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 	if err != nil {
 		return gate, "", err
 	}
-	fillsRows, err := tx.Query(ctx, `SELECT f.payload FROM millionaire.paper_fills f WHERE f.account_id=$1`, order.Request.AccountID)
+	fillsRows, err := tx.Query(ctx, `SELECT f.payload FROM billionaire.paper_fills f WHERE f.account_id=$1`, order.Request.AccountID)
 	if err != nil {
 		return gate, "", err
 	}
@@ -201,7 +201,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 	if err != nil {
 		return gate, "", err
 	}
-	fundingRows, err := tx.Query(ctx, "SELECT result FROM millionaire.paper_funding_events")
+	fundingRows, err := tx.Query(ctx, "SELECT result FROM billionaire.paper_funding_events")
 	if err != nil {
 		return gate, "", err
 	}
@@ -209,7 +209,7 @@ func planRiskEntry(ctx context.Context, tx pgx.Tx, order paper.Order, observatio
 	if err != nil {
 		return gate, "", err
 	}
-	allPositionsRows, err := tx.Query(ctx, "SELECT payload FROM millionaire.paper_positions WHERE account_id=$1", order.Request.AccountID)
+	allPositionsRows, err := tx.Query(ctx, "SELECT payload FROM billionaire.paper_positions WHERE account_id=$1", order.Request.AccountID)
 	if err != nil {
 		return gate, "", err
 	}

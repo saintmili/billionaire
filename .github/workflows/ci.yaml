@@ -9,16 +9,16 @@ jobs:
       postgres:
         image: postgres:17@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
         env:
-          POSTGRES_USER: millionaire_test
-          POSTGRES_DB: millionaire_test
+          POSTGRES_USER: billionaire_test
+          POSTGRES_DB: billionaire_test
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - "127.0.0.1:5432:5432"
         options: >-
-          --health-cmd "pg_isready -U millionaire_test -d millionaire_test"
+          --health-cmd "pg_isready -U billionaire_test -d billionaire_test"
           --health-interval 2s --health-timeout 3s --health-retries 15
     env:
-      MILLIONAIRE_TEST_DATABASE_URL: postgres://millionaire_test@127.0.0.1:5432/millionaire_test?sslmode=disable
+      BILLIONAIRE_TEST_DATABASE_URL: postgres://billionaire_test@127.0.0.1:5432/billionaire_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

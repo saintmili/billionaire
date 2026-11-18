@@ -8,10 +8,10 @@ milestone feature.
 ## Commands
 
 ```sh
-millionaire backtest signals RUN-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json
-millionaire report signals --scope backtest --run RUN-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json
-millionaire report signals --scope forward-paper --account ACCOUNT-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json
-millionaire report signals --saved REPORT-ID --output json
+billionaire backtest signals RUN-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json
+billionaire report signals --scope backtest --run RUN-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json
+billionaire report signals --scope forward-paper --account ACCOUNT-ID --threshold-percent 2 --stop-percent 1 --window-bars 20 --output json
+billionaire report signals --saved REPORT-ID --output json
 ```
 
 Optional selectors: `--account`, `--strategy-version`, `--provider`, `--market`,
@@ -110,7 +110,7 @@ backtest command forms, exact version/timeframe selection, an incomplete window,
 conversion, persisted rule/readback and empty forward scope. Future-price traps
 verify generation stays causal while retrospective observation uses later bars.
 
-Checks run against local PostgreSQL with `MILLIONAIRE_TEST_DATABASE_URL`:
+Checks run against local PostgreSQL with `BILLIONAIRE_TEST_DATABASE_URL`:
 `go test ./... -count=1`, `go vet ./...`, and focused analytics/strategy/PostgreSQL/
 CLI race checks. The full suite, vet and focused race checks passed. No live data access, tracker changes, push,
 PR or later milestone work is included.

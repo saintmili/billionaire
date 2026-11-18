@@ -1,5 +1,5 @@
 /bin/
-/millionaire.yaml
+/billionaire.yaml
 .env
 .env.*
 !.env.example

@@ -26,15 +26,15 @@ func (s *Store) AddStrategyVersion(ctx context.Context, definition strategy.Defi
 		return version, safeError(ctx, ErrUnavailable)
 	}
 	defer rollback(tx)
-	if _, err := tx.Exec(ctx, "INSERT INTO millionaire.strategy_definitions(id,name) VALUES($1,$2) ON CONFLICT DO NOTHING", d.ID, d.Name); err != nil {
+	if _, err := tx.Exec(ctx, "INSERT INTO billionaire.strategy_definitions(id,name) VALUES($1,$2) ON CONFLICT DO NOTHING", d.ID, d.Name); err != nil {
 		return version, safeError(ctx, ErrUnavailable)
 	}
 	var name string
-	if err := tx.QueryRow(ctx, "SELECT name FROM millionaire.strategy_definitions WHERE id=$1 FOR UPDATE", d.ID).Scan(&name); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT name FROM billionaire.strategy_definitions WHERE id=$1 FOR UPDATE", d.ID).Scan(&name); err != nil {
 		return version, safeError(ctx, ErrUnavailable)
 	}
 	var stored []byte
-	err = tx.QueryRow(ctx, "SELECT number,definition,created_at FROM millionaire.strategy_versions WHERE id=$1", version.ID).Scan(&version.Number, &stored, &version.CreatedAt)
+	err = tx.QueryRow(ctx, "SELECT number,definition,created_at FROM billionaire.strategy_versions WHERE id=$1", version.ID).Scan(&version.Number, &stored, &version.CreatedAt)
 	if err == nil {
 		if json.Unmarshal(stored, &version.Definition) != nil || strategy.ContentHash(version.Definition) != version.ID {
 			return version, ErrSchema
@@ -44,17 +44,17 @@ func (s *Store) AddStrategyVersion(ctx context.Context, definition strategy.Defi
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return version, safeError(ctx, ErrUnavailable)
 	}
-	if err := tx.QueryRow(ctx, "SELECT COALESCE(MAX(number),0)+1 FROM millionaire.strategy_versions WHERE strategy_id=$1", d.ID).Scan(&version.Number); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT COALESCE(MAX(number),0)+1 FROM billionaire.strategy_versions WHERE strategy_id=$1", d.ID).Scan(&version.Number); err != nil {
 		return version, safeError(ctx, ErrUnavailable)
 	}
 	payload, err := json.Marshal(d)
 	if err != nil {
 		return version, errors.New("invalid strategy definition")
 	}
-	if err := tx.QueryRow(ctx, "INSERT INTO millionaire.strategy_versions(id,strategy_id,number,definition) VALUES($1,$2,$3,$4) RETURNING created_at", version.ID, d.ID, version.Number, payload).Scan(&version.CreatedAt); err != nil {
+	if err := tx.QueryRow(ctx, "INSERT INTO billionaire.strategy_versions(id,strategy_id,number,definition) VALUES($1,$2,$3,$4) RETURNING created_at", version.ID, d.ID, version.Number, payload).Scan(&version.CreatedAt); err != nil {
 		return version, safeError(ctx, ErrUnavailable)
 	}
-	if _, err := tx.Exec(ctx, "UPDATE millionaire.strategy_definitions SET name=$2 WHERE id=$1", d.ID, d.Name); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE billionaire.strategy_definitions SET name=$2 WHERE id=$1", d.ID, d.Name); err != nil {
 		return version, safeError(ctx, ErrUnavailable)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -65,7 +65,7 @@ func (s *Store) AddStrategyVersion(ctx context.Context, definition strategy.Defi
 func (s *Store) StrategyVersion(ctx context.Context, id string) (strategy.Version, error) {
 	version := strategy.Version{ID: id}
 	var payload []byte
-	err := s.pool.QueryRow(ctx, "SELECT number,definition,created_at FROM millionaire.strategy_versions WHERE id=$1", id).Scan(&version.Number, &payload, &version.CreatedAt)
+	err := s.pool.QueryRow(ctx, "SELECT number,definition,created_at FROM billionaire.strategy_versions WHERE id=$1", id).Scan(&version.Number, &payload, &version.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return version, errors.New("strategy version not found")
 	}
@@ -78,7 +78,7 @@ func (s *Store) StrategyVersion(ctx context.Context, id string) (strategy.Versio
 	return version, nil
 }
 func (s *Store) StrategyVersions(ctx context.Context) ([]strategy.Version, error) {
-	rows, err := s.pool.Query(ctx, "SELECT id,number,definition,created_at FROM millionaire.strategy_versions ORDER BY strategy_id,number")
+	rows, err := s.pool.Query(ctx, "SELECT id,number,definition,created_at FROM billionaire.strategy_versions ORDER BY strategy_id,number")
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -116,7 +116,7 @@ func (s *Store) AddStrategyInstance(ctx context.Context, instance strategy.Insta
 	if err != nil {
 		return errors.New("invalid strategy instance")
 	}
-	tag, err := s.pool.Exec(ctx, `INSERT INTO millionaire.strategy_instances(id,version_id,binding) VALUES($1,$2,$3)
+	tag, err := s.pool.Exec(ctx, `INSERT INTO billionaire.strategy_instances(id,version_id,binding) VALUES($1,$2,$3)
  ON CONFLICT(id) DO UPDATE SET id=EXCLUDED.id WHERE strategy_instances.version_id=EXCLUDED.version_id AND strategy_instances.binding=EXCLUDED.binding`, instance.ID, instance.VersionID, payload)
 	if err != nil {
 		return safeError(ctx, ErrUnavailable)
@@ -137,7 +137,7 @@ func (s *Store) SetStrategyEnabled(ctx context.Context, id string, enabled bool)
 		}
 	}
 
-	tag, err := s.pool.Exec(ctx, "UPDATE millionaire.strategy_instances SET enabled=$2 WHERE id=$1", id, enabled)
+	tag, err := s.pool.Exec(ctx, "UPDATE billionaire.strategy_instances SET enabled=$2 WHERE id=$1", id, enabled)
 	if err != nil {
 		return safeError(ctx, ErrUnavailable)
 	}
@@ -147,7 +147,7 @@ func (s *Store) SetStrategyEnabled(ctx context.Context, id string, enabled bool)
 	return nil
 }
 func (s *Store) StrategyInstances(ctx context.Context) ([]strategy.Instance, error) {
-	rows, err := s.pool.Query(ctx, "SELECT binding,enabled FROM millionaire.strategy_instances ORDER BY id")
+	rows, err := s.pool.Query(ctx, "SELECT binding,enabled FROM billionaire.strategy_instances ORDER BY id")
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -173,8 +173,8 @@ func strategyHistory(ctx context.Context, tx pgx.Tx, i domain.Instrument, frames
 	history := []domain.Candle{}
 	for _, frame := range frames {
 		rows, err := tx.Query(ctx, `WITH candidates AS (
-   SELECT source,provider,market,instrument_id,timeframe,open_time,revision,payload FROM millionaire.market_candle_revisions
-   UNION ALL SELECT source,provider,market,instrument_id,timeframe,open_time,revision,payload FROM millionaire.market_candles
+   SELECT source,provider,market,instrument_id,timeframe,open_time,revision,payload FROM billionaire.market_candle_revisions
+   UNION ALL SELECT source,provider,market,instrument_id,timeframe,open_time,revision,payload FROM billionaire.market_candles
   ) SELECT payload FROM (
    SELECT DISTINCT ON(open_time) open_time,payload FROM candidates
    WHERE source=$1 AND provider=$1 AND market=$2 AND instrument_id=$3 AND timeframe=$4
@@ -211,7 +211,7 @@ func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event mark
 	var binding, statePayload []byte
 	var enabled bool
 	var versionID string
-	err = tx.QueryRow(ctx, "SELECT binding,enabled,version_id,runtime_state FROM millionaire.strategy_instances WHERE id=$1 FOR UPDATE", id).Scan(&binding, &enabled, &versionID, &statePayload)
+	err = tx.QueryRow(ctx, "SELECT binding,enabled,version_id,runtime_state FROM billionaire.strategy_instances WHERE id=$1 FOR UPDATE", id).Scan(&binding, &enabled, &versionID, &statePayload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return empty, errors.New("strategy instance not found")
 	}
@@ -226,7 +226,7 @@ func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event mark
 	instance.Enabled = enabled
 	eventID := marketdata.EventID(*event.Candle)
 	var exists bool
-	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM millionaire.strategy_evaluations WHERE instance_id=$1 AND event_id=$2)", id, eventID).Scan(&exists); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM billionaire.strategy_evaluations WHERE instance_id=$1 AND event_id=$2)", id, eventID).Scan(&exists); err != nil {
 		return empty, safeError(ctx, ErrUnavailable)
 	}
 	if exists {
@@ -237,7 +237,7 @@ func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event mark
 	}
 	version := strategy.Version{ID: versionID}
 	var definition []byte
-	if err := tx.QueryRow(ctx, "SELECT number,definition,created_at FROM millionaire.strategy_versions WHERE id=$1", versionID).Scan(&version.Number, &definition, &version.CreatedAt); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT number,definition,created_at FROM billionaire.strategy_versions WHERE id=$1", versionID).Scan(&version.Number, &definition, &version.CreatedAt); err != nil {
 		return empty, safeError(ctx, ErrUnavailable)
 	}
 	if json.Unmarshal(definition, &version.Definition) != nil {
@@ -263,7 +263,7 @@ func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event mark
 	if err != nil {
 		return empty, errors.New("invalid strategy event")
 	}
-	if _, err := tx.Exec(ctx, "INSERT INTO millionaire.strategy_evaluations(instance_id,event_id,observed_at,event,result) VALUES($1,$2,$3,$4,$5)", id, eventID, at, source, payload); err != nil {
+	if _, err := tx.Exec(ctx, "INSERT INTO billionaire.strategy_evaluations(instance_id,event_id,observed_at,event,result) VALUES($1,$2,$3,$4,$5)", id, eventID, at, source, payload); err != nil {
 		return empty, safeError(ctx, ErrUnavailable)
 	}
 	for _, signal := range result.Signals {
@@ -271,7 +271,7 @@ func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event mark
 		if err != nil {
 			return empty, errors.New("invalid signal")
 		}
-		if _, err := tx.Exec(ctx, "INSERT INTO millionaire.strategy_signals(id,instance_id,event_id,kind,direction,observed_at,payload) VALUES($1,$2,$3,$4,$5,$6,$7)", signal.ID, id, eventID, signal.Kind, signal.Direction, signal.ObservedAt, data); err != nil {
+		if _, err := tx.Exec(ctx, "INSERT INTO billionaire.strategy_signals(id,instance_id,event_id,kind,direction,observed_at,payload) VALUES($1,$2,$3,$4,$5,$6,$7)", signal.ID, id, eventID, signal.Kind, signal.Direction, signal.ObservedAt, data); err != nil {
 			return empty, safeError(ctx, ErrUnavailable)
 		}
 	}
@@ -279,7 +279,7 @@ func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event mark
 	if err != nil {
 		return empty, errors.New("invalid evaluation state")
 	}
-	if _, err := tx.Exec(ctx, "UPDATE millionaire.strategy_instances SET runtime_state=$2 WHERE id=$1", id, nextState); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE billionaire.strategy_instances SET runtime_state=$2 WHERE id=$1", id, nextState); err != nil {
 		return empty, safeError(ctx, ErrUnavailable)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -288,7 +288,7 @@ func (s *Store) EvaluateStrategyEvent(ctx context.Context, id string, event mark
 	return result, nil
 }
 func (s *Store) StrategySignals(ctx context.Context, filter strategy.SignalFilter) ([]strategy.Signal, error) {
-	rows, err := s.pool.Query(ctx, "SELECT payload FROM millionaire.strategy_signals WHERE ($1='' OR instance_id=$1) AND ($2='' OR payload->>'strategy_id'=$2) ORDER BY observed_at,id LIMIT 10000", filter.InstanceID, filter.StrategyID)
+	rows, err := s.pool.Query(ctx, "SELECT payload FROM billionaire.strategy_signals WHERE ($1='' OR instance_id=$1) AND ($2='' OR payload->>'strategy_id'=$2) ORDER BY observed_at,id LIMIT 10000", filter.InstanceID, filter.StrategyID)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -363,7 +363,7 @@ func (s *Store) StrategyInstance(ctx context.Context, id string) (strategy.Insta
 	var instance strategy.Instance
 	var payload []byte
 	var enabled bool
-	err := s.pool.QueryRow(ctx, "SELECT binding,enabled FROM millionaire.strategy_instances WHERE id=$1", id).Scan(&payload, &enabled)
+	err := s.pool.QueryRow(ctx, "SELECT binding,enabled FROM billionaire.strategy_instances WHERE id=$1", id).Scan(&payload, &enabled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return instance, errors.New("strategy instance not found")
 	}

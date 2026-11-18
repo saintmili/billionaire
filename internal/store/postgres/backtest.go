@@ -55,7 +55,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 	inputsJSON, _ := json.Marshal(in)
 	manifestJSON, _ := json.Marshal(report.Manifest)
 	resultJSON, _ := json.Marshal(report)
-	if _, err = s.pool.Exec(ctx, `INSERT INTO millionaire.backtest_runs(id,execution_schema,status,inputs,manifest,report) VALUES($1,$2,$3,$4,$5,$6)`, id, schema, report.Status, inputsJSON, manifestJSON, resultJSON); err != nil {
+	if _, err = s.pool.Exec(ctx, `INSERT INTO billionaire.backtest_runs(id,execution_schema,status,inputs,manifest,report) VALUES($1,$2,$3,$4,$5,$6)`, id, schema, report.Status, inputsJSON, manifestJSON, resultJSON); err != nil {
 		return report, safeError(ctx, ErrUnavailable)
 	}
 	// Cancellation cannot erase the run identity or masquerade as completion.
@@ -70,7 +70,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		encoded, _ := json.Marshal(report)
-		if _, saveErr := s.pool.Exec(cleanup, `UPDATE millionaire.backtest_runs SET status=$2,report=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, report.Status, encoded); saveErr != nil {
+		if _, saveErr := s.pool.Exec(cleanup, `UPDATE billionaire.backtest_runs SET status=$2,report=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, report.Status, encoded); saveErr != nil {
 			err = fmt.Errorf("run %s result persistence failed; status may remain running: %w", id, ErrUnavailable)
 		}
 	}()
@@ -319,7 +319,7 @@ func (s *Store) RunFrozenBacktest(ctx context.Context, inputs backtest.Inputs) (
 // BacktestInputs returns exact frozen provenance/lookback without consulting the
 // mutable provider store. Missing or corrupted inputs fail explicitly.
 func (s *Store) BacktestInputs(ctx context.Context, id string) (backtest.Inputs, error) {
-	in, e := decodePaperRow[backtest.Inputs](s.pool.QueryRow(ctx, "SELECT inputs FROM millionaire.backtest_runs WHERE id=$1", id))
+	in, e := decodePaperRow[backtest.Inputs](s.pool.QueryRow(ctx, "SELECT inputs FROM billionaire.backtest_runs WHERE id=$1", id))
 	if errors.Is(e, pgx.ErrNoRows) {
 		return in, errors.New("backtest run not found")
 	}
@@ -337,7 +337,7 @@ func (s *Store) BacktestInputs(ctx context.Context, id string) (backtest.Inputs,
 	return in, nil
 }
 func (s *Store) BacktestReport(ctx context.Context, id string) (backtest.Report, error) {
-	report, e := decodePaperRow[backtest.Report](s.pool.QueryRow(ctx, "SELECT report FROM millionaire.backtest_runs WHERE id=$1", id))
+	report, e := decodePaperRow[backtest.Report](s.pool.QueryRow(ctx, "SELECT report FROM billionaire.backtest_runs WHERE id=$1", id))
 	if errors.Is(e, pgx.ErrNoRows) {
 		return report, errors.New("backtest run not found")
 	}

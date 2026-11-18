@@ -1,1 +1,1 @@
-DROP TABLE millionaire.paper_protection_adjustments;
+DROP TABLE billionaire.paper_protection_adjustments;

@@ -60,7 +60,7 @@ func (o *PaperOwner) SubmitOrder(ctx context.Context, request paper.OrderRequest
 }
 
 func submitOrder(ctx context.Context, tx pgx.Tx, order paper.Order, enabled bool) (paper.Order, error) {
-	existing, err := decodePaperRow[paper.Order](tx.QueryRow(ctx, "SELECT payload FROM millionaire.paper_orders WHERE id=$1", order.ID))
+	existing, err := decodePaperRow[paper.Order](tx.QueryRow(ctx, "SELECT payload FROM billionaire.paper_orders WHERE id=$1", order.ID))
 	if err == nil {
 		if !paper.SameOrder(existing, order) {
 			return order, errors.New("request ID already used with different order inputs")
@@ -71,7 +71,7 @@ func submitOrder(ctx context.Context, tx pgx.Tx, order paper.Order, enabled bool
 		return order, safeError(ctx, ErrUnavailable)
 	}
 	var accountID string
-	if err := tx.QueryRow(ctx, "SELECT id FROM millionaire.paper_accounts WHERE id=$1 FOR UPDATE", order.Request.AccountID).Scan(&accountID); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT id FROM billionaire.paper_accounts WHERE id=$1 FOR UPDATE", order.Request.AccountID).Scan(&accountID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return order, errors.New("paper account not found")
 		}
@@ -79,7 +79,7 @@ func submitOrder(ctx context.Context, tx pgx.Tx, order paper.Order, enabled bool
 	}
 	var position *paper.Position
 	if order.Request.Action == "close" {
-		p, err := decodePaperRow[paper.Position](tx.QueryRow(ctx, "SELECT payload FROM millionaire.paper_positions WHERE id=$1 FOR UPDATE", order.Request.PositionID))
+		p, err := decodePaperRow[paper.Position](tx.QueryRow(ctx, "SELECT payload FROM billionaire.paper_positions WHERE id=$1 FOR UPDATE", order.Request.PositionID))
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return order, errors.New("paper position not found")
@@ -106,7 +106,7 @@ func submitOrder(ctx context.Context, tx pgx.Tx, order paper.Order, enabled bool
 	if err != nil {
 		return order, errors.New("invalid order payload")
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.paper_orders(id,account_id,instrument_key,intent_at,status,payload) VALUES($1,$2,$3,$4,$5,$6)`, order.ID, order.Request.AccountID, instrumentKey(order.Request.Instrument), order.Request.At, order.Status, payload); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_orders(id,account_id,instrument_key,intent_at,status,payload) VALUES($1,$2,$3,$4,$5,$6)`, order.ID, order.Request.AccountID, instrumentKey(order.Request.Instrument), order.Request.At, order.Status, payload); err != nil {
 		return order, safeError(ctx, ErrUnavailable)
 	}
 	return order, nil
@@ -146,7 +146,7 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 	}
 	defer rollback(tx)
 	var previous, storedResult []byte
-	err = tx.QueryRow(ctx, "SELECT payload,result FROM millionaire.paper_price_events WHERE id=$1", eventID).Scan(&previous, &storedResult)
+	err = tx.QueryRow(ctx, "SELECT payload,result FROM billionaire.paper_price_events WHERE id=$1", eventID).Scan(&previous, &storedResult)
 	if err == nil {
 		var stored paper.Observation
 		if json.Unmarshal(previous, &stored) != nil || json.Unmarshal(storedResult, &result) != nil {
@@ -163,12 +163,12 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 	}
 	// JSON retains the original nanosecond clocks; TIMESTAMPTZ columns are
 	// only query aids because PostgreSQL timestamps have microsecond precision.
-	last, err := decodePaperRow[paper.Observation](tx.QueryRow(ctx, `SELECT payload FROM millionaire.paper_price_events WHERE instrument_key=$1 AND accepted ORDER BY sequence DESC LIMIT 1`, key))
+	last, err := decodePaperRow[paper.Observation](tx.QueryRow(ctx, `SELECT payload FROM billionaire.paper_price_events WHERE instrument_key=$1 AND accepted ORDER BY sequence DESC LIMIT 1`, key))
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return result, safeError(ctx, ErrUnavailable)
 	}
 	accepted := errors.Is(err, pgx.ErrNoRows) || (!observation.ObservedAt.Before(last.ObservedAt) && !observation.AvailableAt.Before(last.AvailableAt))
-	fundingClock, fundingErr := decodePaperRow[paper.FundingEvent](tx.QueryRow(ctx, `SELECT payload FROM millionaire.paper_funding_events WHERE instrument_key=$1 ORDER BY effective_at DESC LIMIT 1`, key))
+	fundingClock, fundingErr := decodePaperRow[paper.FundingEvent](tx.QueryRow(ctx, `SELECT payload FROM billionaire.paper_funding_events WHERE instrument_key=$1 ORDER BY effective_at DESC LIMIT 1`, key))
 	if fundingErr != nil && !errors.Is(fundingErr, pgx.ErrNoRows) {
 		return result, safeError(ctx, ErrUnavailable)
 	}
@@ -183,7 +183,7 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 			return result, safeError(ctx, ErrUnavailable)
 		}
 		result.Orders = append(result.Orders, protective...)
-		rows, err := tx.Query(ctx, `SELECT payload FROM millionaire.paper_orders WHERE instrument_key=$1 AND status='pending' ORDER BY intent_at,id FOR UPDATE`, key)
+		rows, err := tx.Query(ctx, `SELECT payload FROM billionaire.paper_orders WHERE instrument_key=$1 AND status='pending' ORDER BY intent_at,id FOR UPDATE`, key)
 		if err != nil {
 			return result, safeError(ctx, ErrUnavailable)
 		}
@@ -202,7 +202,7 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 				continue
 			}
 			var balanceText string
-			if err := tx.QueryRow(ctx, "SELECT balance::text FROM millionaire.paper_accounts WHERE id=$1 FOR UPDATE", order.Request.AccountID).Scan(&balanceText); err != nil {
+			if err := tx.QueryRow(ctx, "SELECT balance::text FROM billionaire.paper_accounts WHERE id=$1 FOR UPDATE", order.Request.AccountID).Scan(&balanceText); err != nil {
 				return result, safeError(ctx, ErrUnavailable)
 			}
 			balance, err := domain.ParseDecimal(balanceText)
@@ -211,7 +211,7 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 			}
 			var position *paper.Position
 			if order.Request.Action == "close" {
-				p, err := decodePaperRow[paper.Position](tx.QueryRow(ctx, "SELECT payload FROM millionaire.paper_positions WHERE id=$1 FOR UPDATE", order.Request.PositionID))
+				p, err := decodePaperRow[paper.Position](tx.QueryRow(ctx, "SELECT payload FROM billionaire.paper_positions WHERE id=$1 FOR UPDATE", order.Request.PositionID))
 				if err != nil {
 					return result, safeError(ctx, ErrSchema)
 				}
@@ -250,7 +250,7 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 	if err != nil {
 		return result, errors.New("invalid observation result")
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.paper_price_events(id,instrument_key,observed_at,available_at,payload,result,accepted) VALUES($1,$2,$3,$4,$5,$6,$7)`, eventID, key, observation.ObservedAt, observation.AvailableAt, payload, encoded, accepted); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_price_events(id,instrument_key,observed_at,available_at,payload,result,accepted) VALUES($1,$2,$3,$4,$5,$6,$7)`, eventID, key, observation.ObservedAt, observation.AvailableAt, payload, encoded, accepted); err != nil {
 		return result, safeError(ctx, ErrUnavailable)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -264,7 +264,7 @@ func commitExecutionPlan(ctx context.Context, tx pgx.Tx, plan paper.Execution) e
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "UPDATE millionaire.paper_orders SET status=$2,payload=$3 WHERE id=$1", plan.Order.ID, plan.Order.Status, orderPayload); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE billionaire.paper_orders SET status=$2,payload=$3 WHERE id=$1", plan.Order.ID, plan.Order.Status, orderPayload); err != nil {
 		return err
 	}
 	if plan.Fill == nil {
@@ -275,7 +275,7 @@ func commitExecutionPlan(ctx context.Context, tx pgx.Tx, plan paper.Execution) e
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.paper_positions(id,account_id,status,payload) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET status=EXCLUDED.status,payload=EXCLUDED.payload`, p.ID, p.AccountID, p.Status, positionPayload); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_positions(id,account_id,status,payload) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET status=EXCLUDED.status,payload=EXCLUDED.payload`, p.ID, p.AccountID, p.Status, positionPayload); err != nil {
 		return err
 	}
 	f := plan.Fill
@@ -283,23 +283,23 @@ func commitExecutionPlan(ctx context.Context, tx pgx.Tx, plan paper.Execution) e
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO millionaire.paper_fills(id,order_id,position_id,account_id,payload) VALUES($1,$2,$3,$4,$5)`, f.ID, f.OrderID, f.PositionID, p.AccountID, fillPayload); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_fills(id,order_id,position_id,account_id,payload) VALUES($1,$2,$3,$4,$5)`, f.ID, f.OrderID, f.PositionID, p.AccountID, fillPayload); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, "UPDATE millionaire.paper_accounts SET balance=balance+$2::numeric WHERE id=$1", p.AccountID, plan.CashDelta.String()); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE billionaire.paper_accounts SET balance=balance+$2::numeric WHERE id=$1", p.AccountID, plan.CashDelta.String()); err != nil {
 		return err
 	}
 	for _, movement := range plan.Movements {
-		if _, err := tx.Exec(ctx, `INSERT INTO millionaire.paper_ledger_entries(id,account_id,kind,amount,fill_id) VALUES($1,$2,$3,$4,$5)`, f.ID+":"+movement.Kind, p.AccountID, movement.Kind, movement.Amount.String(), f.ID); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_ledger_entries(id,account_id,kind,amount,fill_id) VALUES($1,$2,$3,$4,$5)`, f.ID+":"+movement.Kind, p.AccountID, movement.Kind, movement.Amount.String(), f.ID); err != nil {
 			return err
 		}
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO millionaire.journal_outbox(event_id,kind,payload) VALUES($1,'paper_fill',$2)`, f.ID, fillPayload)
+	_, err = tx.Exec(ctx, `INSERT INTO billionaire.journal_outbox(event_id,kind,payload) VALUES($1,'paper_fill',$2)`, f.ID, fillPayload)
 	return err
 }
 
 func (s *Store) PaperPositions(ctx context.Context, accountID string) ([]paper.Position, error) {
-	rows, err := s.pool.Query(ctx, `SELECT payload FROM millionaire.paper_positions WHERE ($1='' OR account_id=$1) ORDER BY id`, accountID)
+	rows, err := s.pool.Query(ctx, `SELECT payload FROM billionaire.paper_positions WHERE ($1='' OR account_id=$1) ORDER BY id`, accountID)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -313,7 +313,7 @@ func (s *Store) PaperPositions(ctx context.Context, accountID string) ([]paper.P
 	return result, nil
 }
 func (s *Store) PaperPosition(ctx context.Context, id string) (paper.Position, error) {
-	result, err := decodePaperRow[paper.Position](s.pool.QueryRow(ctx, "SELECT payload FROM millionaire.paper_positions WHERE id=$1", id))
+	result, err := decodePaperRow[paper.Position](s.pool.QueryRow(ctx, "SELECT payload FROM billionaire.paper_positions WHERE id=$1", id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return result, errors.New("paper position not found")
 	}
@@ -323,7 +323,7 @@ func (s *Store) PaperPosition(ctx context.Context, id string) (paper.Position, e
 	return result, nil
 }
 func (s *Store) PaperOrders(ctx context.Context, accountID string) ([]paper.Order, error) {
-	rows, err := s.pool.Query(ctx, `SELECT payload FROM millionaire.paper_orders WHERE ($1='' OR account_id=$1) ORDER BY intent_at,id`, accountID)
+	rows, err := s.pool.Query(ctx, `SELECT payload FROM billionaire.paper_orders WHERE ($1='' OR account_id=$1) ORDER BY intent_at,id`, accountID)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -337,7 +337,7 @@ func (s *Store) PaperOrders(ctx context.Context, accountID string) ([]paper.Orde
 	return result, nil
 }
 func (s *Store) PaperFills(ctx context.Context, accountID string) ([]paper.Fill, error) {
-	rows, err := s.pool.Query(ctx, `SELECT payload FROM millionaire.paper_fills WHERE ($1='' OR account_id=$1) ORDER BY id`, accountID)
+	rows, err := s.pool.Query(ctx, `SELECT payload FROM billionaire.paper_fills WHERE ($1='' OR account_id=$1) ORDER BY id`, accountID)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}

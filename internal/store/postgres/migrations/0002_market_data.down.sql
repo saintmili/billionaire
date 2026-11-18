@@ -1,4 +1,4 @@
-DROP TABLE millionaire.market_feed_state;
-DROP TABLE millionaire.market_candle_revisions;
-DROP TABLE millionaire.market_candles;
-DROP TABLE millionaire.market_instruments;
+DROP TABLE billionaire.market_feed_state;
+DROP TABLE billionaire.market_candle_revisions;
+DROP TABLE billionaire.market_candles;
+DROP TABLE billionaire.market_instruments;

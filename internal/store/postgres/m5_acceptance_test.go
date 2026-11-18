@@ -55,12 +55,12 @@ func TestM5ReplayAndReportsCannotWriteForwardState(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer conn.Close(ctx)
-	if _, e = conn.Exec(ctx, `CREATE FUNCTION millionaire.m5_deny() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forward mutation during backtest'; END; $$`); e != nil {
+	if _, e = conn.Exec(ctx, `CREATE FUNCTION billionaire.m5_deny() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forward mutation during backtest'; END; $$`); e != nil {
 		t.Fatal(e)
 	}
 	tables := []string{"strategy_definitions", "strategy_versions", "strategy_instances", "strategy_evaluations", "strategy_signals", "signal_decisions", "paper_controls", "paper_risk_policies", "paper_accounts", "paper_ledger_entries", "paper_orders", "paper_positions", "paper_fills", "paper_price_events", "paper_funding_events", "journal_outbox"}
 	for _, table := range tables {
-		if _, e = conn.Exec(ctx, `CREATE TRIGGER m5_deny BEFORE INSERT OR UPDATE OR DELETE ON millionaire.`+table+` FOR EACH STATEMENT EXECUTE FUNCTION millionaire.m5_deny()`); e != nil {
+		if _, e = conn.Exec(ctx, `CREATE TRIGGER m5_deny BEFORE INSERT OR UPDATE OR DELETE ON billionaire.`+table+` FOR EACH STATEMENT EXECUTE FUNCTION billionaire.m5_deny()`); e != nil {
 			t.Fatal(table, e)
 		}
 	}
@@ -122,7 +122,7 @@ func TestM5ReplayAndReportsCannotWriteForwardState(t *testing.T) {
 	// Drop fault guards before retrying a normal forward mutation. Replay has not
 	// stolen the owner; the durable decision still returns its original filled order.
 	for _, table := range tables {
-		if _, e = conn.Exec(ctx, `DROP TRIGGER m5_deny ON millionaire.`+table); e != nil {
+		if _, e = conn.Exec(ctx, `DROP TRIGGER m5_deny ON billionaire.`+table); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -239,7 +239,7 @@ func TestM5FinalReportFailureStaysIncompleteAfterRestartAndRecoversFromFrozenInp
 		t.Fatal(e)
 	}
 	defer conn.Close(ctx)
-	if _, e = conn.Exec(ctx, `CREATE FUNCTION millionaire.m5_fail_completion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'final write fault'; END; $$; CREATE TRIGGER m5_fail_completion BEFORE UPDATE ON millionaire.backtest_runs FOR EACH ROW WHEN (NEW.status='completed') EXECUTE FUNCTION millionaire.m5_fail_completion()`); e != nil {
+	if _, e = conn.Exec(ctx, `CREATE FUNCTION billionaire.m5_fail_completion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'final write fault'; END; $$; CREATE TRIGGER m5_fail_completion BEFORE UPDATE ON billionaire.backtest_runs FOR EACH ROW WHEN (NEW.status='completed') EXECUTE FUNCTION billionaire.m5_fail_completion()`); e != nil {
 		t.Fatal(e)
 	}
 	attempted, e := primary.RunBacktest(ctx, cfg, bars)
@@ -264,7 +264,7 @@ func TestM5FinalReportFailureStaysIncompleteAfterRestartAndRecoversFromFrozenInp
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = conn.Exec(ctx, `DROP TRIGGER m5_fail_completion ON millionaire.backtest_runs; DROP FUNCTION millionaire.m5_fail_completion()`); e != nil {
+	if _, e = conn.Exec(ctx, `DROP TRIGGER m5_fail_completion ON billionaire.backtest_runs; DROP FUNCTION billionaire.m5_fail_completion()`); e != nil {
 		t.Fatal(e)
 	}
 	recovered, e := restarted.RunFrozenBacktest(ctx, frozen)

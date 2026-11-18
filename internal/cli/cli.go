@@ -32,12 +32,12 @@ func Execute(ctx context.Context, args []string, out, diagnostics io.Writer) err
 		}
 		return a
 	}}))
-	root := &cobra.Command{Use: "millionaire", Short: "Public market monitoring and paper trading", SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs}
+	root := &cobra.Command{Use: "billionaire", Short: "Public market monitoring and paper trading", SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs}
 	root.SetArgs(args)
 	root.SetOut(out)
 	root.SetErr(diagnostics)
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.PersistentFlags().StringVar(&opts.configPath, "config", "millionaire.yaml", "configuration file")
+	root.PersistentFlags().StringVar(&opts.configPath, "config", "billionaire.yaml", "configuration file")
 	root.PersistentFlags().StringVar(&opts.output, "output", "text", "result format: text or json")
 	invoked := false
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {

@@ -122,7 +122,7 @@ func TestPaperAccountRollbackAndLedgerImmutability(t *testing.T) {
 	defer conn.Close(ctx)
 	request := paper.CreateAccount{RequestID: "rollback", Name: "rollback", Currency: "USDT", InitialBalance: "12.5"}
 	for _, table := range []string{"paper_ledger_entries", "journal_outbox"} {
-		_, err := conn.Exec(ctx, `CREATE FUNCTION millionaire.fail_account_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END; $$; CREATE TRIGGER fail_write BEFORE INSERT ON millionaire.`+table+` FOR EACH ROW EXECUTE FUNCTION millionaire.fail_account_write()`)
+		_, err := conn.Exec(ctx, `CREATE FUNCTION billionaire.fail_account_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END; $$; CREATE TRIGGER fail_write BEFORE INSERT ON billionaire.`+table+` FOR EACH ROW EXECUTE FUNCTION billionaire.fail_account_write()`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +133,7 @@ func TestPaperAccountRollbackAndLedgerImmutability(t *testing.T) {
 		if err != nil || len(accounts) != 0 {
 			t.Fatalf("rollback left accounts: %+v %v", accounts, err)
 		}
-		if _, err := conn.Exec(ctx, `DROP TRIGGER fail_write ON millionaire.`+table+`; DROP FUNCTION millionaire.fail_account_write()`); err != nil {
+		if _, err := conn.Exec(ctx, `DROP TRIGGER fail_write ON billionaire.`+table+`; DROP FUNCTION billionaire.fail_account_write()`); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -142,9 +142,9 @@ func TestPaperAccountRollbackAndLedgerImmutability(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, sql := range []string{
-		`UPDATE millionaire.paper_ledger_entries SET amount=0`,
-		`DELETE FROM millionaire.paper_ledger_entries`,
-		`TRUNCATE millionaire.paper_ledger_entries`,
+		`UPDATE billionaire.paper_ledger_entries SET amount=0`,
+		`DELETE FROM billionaire.paper_ledger_entries`,
+		`TRUNCATE billionaire.paper_ledger_entries`,
 	} {
 		if _, err := conn.Exec(ctx, sql); err == nil {
 			t.Fatalf("mutable ledger: %s", sql)
@@ -168,7 +168,7 @@ func TestPaperOwnershipRejectsCompetitorAndReleasesAfterProcessDeath(t *testing.
 		t.Fatal(err)
 	}
 	child := exec.Command(os.Args[0], "-test.run=^TestPaperOwnerChild$")
-	child.Env = append(os.Environ(), "MILLIONAIRE_OWNER_CHILD="+dsn)
+	child.Env = append(os.Environ(), "BILLIONAIRE_OWNER_CHILD="+dsn)
 	pipe, err := child.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +230,7 @@ func TestPaperOwnershipRejectsCompetitorAndReleasesAfterProcessDeath(t *testing.
 
 // A separate test process holds the actual session lock until forcibly killed.
 func TestPaperOwnerChild(t *testing.T) {
-	dsn := os.Getenv("MILLIONAIRE_OWNER_CHILD")
+	dsn := os.Getenv("BILLIONAIRE_OWNER_CHILD")
 	if dsn == "" {
 		t.Skip("subprocess helper")
 	}

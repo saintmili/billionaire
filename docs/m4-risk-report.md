@@ -74,7 +74,7 @@ path to bypass this spot gate.
 ## Persistence, concurrency and failures
 
 Migration 0006 adds a singleton `paper_controls` row and account/strategy JSON
-policies. Run `millionaire init` to migrate existing installations. Its down
+policies. Run `billionaire init` to migrate existing installations. Its down
 migration removes those policies and the switch state. Existing pending intents
 are evaluated under the current policy at execution, not grandfathered in.
 
@@ -89,8 +89,8 @@ validation errors before creating an order. Replay retains the recorded decision
 a changed request under the same ID fails. Retrying a rejected request requires a
 new request ID. Replaying a committed observation cannot change its decisions.
 
-`millionaire kill-switch on|off|status` persists the switch globally;
-`millionaire status` also shows `kill_switch`. Switch mutations use a separate
+`billionaire kill-switch on|off|status` persists the switch globally;
+`billionaire status` also shows `kill_switch`. Switch mutations use a separate
 connection and serialize with execution's shared row lock. If an entry transaction
 wins the race it completes before `on` returns; after `on` returns, subsequent
 entries cannot commit until disabled. Close submission/execution skips entry risk
@@ -114,7 +114,7 @@ against the new gate. The prior replay test now explicitly permits pyramiding
 because it deliberately opens two positions in the same instrument.
 
 Validation commands use a disposable PostgreSQL 17 server and isolated test
-databases via `MILLIONAIRE_TEST_DATABASE_URL`; no existing application database is
+databases via `BILLIONAIRE_TEST_DATABASE_URL`; no existing application database is
 modified. Final verification passed with PostgreSQL integration tests enabled:
 
 - `go test ./...` — all packages pass, including migration up/down and rollback.

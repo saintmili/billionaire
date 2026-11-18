@@ -1,4 +1,4 @@
-# Millionaire technical design
+# Billionaire technical design
 
 **Status:** M0 reconnaissance complete; accepted storage, execution/journal and candle/replay boundaries are recorded in [ADRs](adr/). Examples, interfaces, package layout, and conceptual tables remain illustrative rather than implemented contracts. See [M0 findings](m0-report.md) for provider and integration limitations.
 
@@ -8,7 +8,7 @@ This document owns implementation proposals and their existing rationale. Produc
 
 Use **PostgreSQL as the only application database for MVP**. Use `pgx/v5`, versioned SQL migrations and `sqlc` where it reduces boilerplate. Ship `compose.yaml` for local development and deployment instructions for a VPS. Why not SQLite: SQLite is attractive for a single-binary/offline CLI but only allows one writer at a time, requires care with high-volume market writes, and may complicate shared journal persistence; this project anticipates continuous market ingestion, multiple CLI readers, later UI access, and already uses Go/PostgreSQL tooling. That is a trade-off, not a claim that SQLite is inadequate for a small single-process bot.
 
-Keep StopLore in a dedicated schema and pool as accepted in [ADR 0001](adr/0001-postgresql-storage-boundary.md). It accepts a PostgreSQL pool, but owns its transactions and whole-journal JSONB persistence. Maintain a Millionaire-owned journal-sync outbox and correlation table; its API has no external idempotency keys. See the [verified map](stoplore-integration.md) before adapter work.
+Keep StopLore in a dedicated schema and pool as accepted in [ADR 0001](adr/0001-postgresql-storage-boundary.md). It accepts a PostgreSQL pool, but owns its transactions and whole-journal JSONB persistence. Maintain a Billionaire-owned journal-sync outbox and correlation table; its API has no external idempotency keys. See the [verified map](stoplore-integration.md) before adapter work.
 
 **Do not build a second storage adapter in the MVP.** Document the repository interfaces sufficiently to permit SQLite later if needed, without creating unnecessary database abstractions.
 
@@ -50,7 +50,7 @@ Do not introduce Kafka/Redis/a message broker in MVP. A typed in-process event d
 ### Suggested Go package layout
 
 ```text
-cmd/millionaire/main.go
+cmd/billionaire/main.go
 internal/app/               # Composition root and service wiring
 internal/config/            # YAML, environment overrides, validation
 internal/domain/            # Instrument, candle, signal, order, position, account
@@ -151,12 +151,12 @@ Key invariants:
 Integration steps:
 
 1. Inspect `go.mod`, README/examples, storage interfaces, account/setups/plans, trade lifecycle, executions, fees/funding, analytics and transaction semantics.
-2. Write `docs/stoplore-integration.md`: mapping of Millionaire `PaperAccount`, `StrategyVersion`, `Signal`, `Order`, `Fill`, `Position`, fees, funding, partial close and SL/TP to **verified** StopLore types/methods.
+2. Write `docs/stoplore-integration.md`: mapping of Billionaire `PaperAccount`, `StrategyVersion`, `Signal`, `Order`, `Fill`, `Position`, fees, funding, partial close and SL/TP to **verified** StopLore types/methods.
 3. Decide exactly what constitutes a StopLore journal entry (e.g. opening a position vs recording a closing fill); avoid double counting individual fills as independent trades.
 4. Implement a narrow `JournalSink` adapter that uses the public API. Store source IDs/versions, journal IDs, sync state and failure metadata. Do not write directly to StopLore tables.
-5. Persist journal outbox event and financial transaction atomically in Millionaire; deliver asynchronously. Follow the integration map's reconciliation boundary for uncertain writes, retry only known-unapplied operations, and provide `journal sync`, `journal status`, `journal reconcile`.
+5. Persist journal outbox event and financial transaction atomically in Billionaire; deliver asynchronously. Follow the integration map's reconciliation boundary for uncertain writes, retry only known-unapplied operations, and provide `journal sync`, `journal status`, `journal reconcile`.
 6. Integration-test opening, partial exits, final exit, fees/funding, restart/retry and failed journal delivery. If a StopLore feature is unsupported, implement a documented partial mapping and hold the feature behind a capability check.
-7. Prefer reusing StopLore's analytics for its supported trade metrics, and implement Millionaire-only signal/backtest metrics separately. Cross-check calculations to avoid disagreement.
+7. Prefer reusing StopLore's analytics for its supported trade metrics, and implement Billionaire-only signal/backtest metrics separately. Cross-check calculations to avoid disagreement.
 
 ## Configuration contract (M1)
 
@@ -182,7 +182,7 @@ This table summarizes the baseline for navigation, including the approved web sc
 
 | Topic | Requirement or proposed MVP default |
 |---|---|
-| Product | Millionaire Go application with CLI and private web UI |
+| Product | Billionaire Go application with CLI and private web UI |
 | Architecture | Modular monolith, single active runtime |
 | Database | PostgreSQL only; SQLite postponed |
 | Market connectivity | Public data APIs only, no authenticated exchange integration |

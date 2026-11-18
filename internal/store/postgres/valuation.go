@@ -22,14 +22,14 @@ func (s *Store) PaperAccountValuation(ctx context.Context, accountID string, now
 	}
 	defer rollback(tx)
 	var balance string
-	if err := tx.QueryRow(ctx, "SELECT balance::text FROM millionaire.paper_accounts WHERE id=$1", accountID).Scan(&balance); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT balance::text FROM billionaire.paper_accounts WHERE id=$1", accountID).Scan(&balance); err != nil {
 		return result, errors.New("paper account unavailable")
 	}
 	cash, err := domain.ParseDecimal(balance)
 	if err != nil {
 		return result, ErrSchema
 	}
-	rows, err := tx.Query(ctx, "SELECT payload FROM millionaire.paper_positions WHERE account_id=$1", accountID)
+	rows, err := tx.Query(ctx, "SELECT payload FROM billionaire.paper_positions WHERE account_id=$1", accountID)
 	if err != nil {
 		return result, safeError(ctx, ErrUnavailable)
 	}
@@ -58,7 +58,7 @@ func positionMarks(ctx context.Context, tx pgx.Tx, positions []paper.Position, c
 			marks[p.ID] = *current
 			continue
 		}
-		last, err := decodePaperRow[paper.Observation](tx.QueryRow(ctx, `SELECT payload FROM millionaire.paper_price_events WHERE instrument_key=$1 AND accepted ORDER BY sequence DESC LIMIT 1`, instrumentKey(p.Instrument)))
+		last, err := decodePaperRow[paper.Observation](tx.QueryRow(ctx, `SELECT payload FROM billionaire.paper_price_events WHERE instrument_key=$1 AND accepted ORDER BY sequence DESC LIMIT 1`, instrumentKey(p.Instrument)))
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
 		}

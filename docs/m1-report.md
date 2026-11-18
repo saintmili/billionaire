@@ -7,12 +7,12 @@ later milestones.
 
 ## Files and migration plan
 
-- `cmd/millionaire/main.go`: signal-aware process entrypoint.
+- `cmd/billionaire/main.go`: signal-aware process entrypoint.
 - `internal/cli/`: Cobra commands and text/JSON output.
 - `internal/config/`: strict schema-versioned YAML, paper-only validation and environment overrides/references.
 - `internal/domain/`: exact decimal parsing and shared instrument/candle identity types.
 - `internal/store/postgres/`: connection lifecycle, transactional migration runner and read-only health/status.
-- `internal/store/postgres/migrations/0001_bootstrap.{up,down}.sql`: a dedicated `millionaire` schema, application metadata, and schema version/checksum tracking; no market/trading tables yet.
+- `internal/store/postgres/migrations/0001_bootstrap.{up,down}.sql`: a dedicated `billionaire` schema, application metadata, and schema version/checksum tracking; no market/trading tables yet.
 - `configs/example.yaml`: embedded starting configuration, no DSN values or exchange credentials.
 - `compose.yaml`, `.github/workflows/ci.yaml`, README and this report: installation and repeatable checks.
 
@@ -32,14 +32,14 @@ API references: [Cobra](https://pkg.go.dev/github.com/spf13/cobra@v1.10.2),
 
 ## Behavior and boundaries
 
-`millionaire init` creates an embedded example config with `0600` permissions,
+`billionaire init` creates an embedded example config with `0600` permissions,
 preserves existing files, and migrates PostgreSQL. `config validate` checks the
 versioned YAML offline. `status --output json` is read-only and reports paper
 mode, storage schema/readiness, and `engine: not_implemented`. The explicit
 `database migrate up|down` command provides the migration acceptance seam.
 
 The first migration creates paper-mode application metadata. Ordered versions
-and checksums live in `millionaire.schema_migrations`. All pending up migrations
+and checksums live in `billionaire.schema_migrations`. All pending up migrations
 (or the last down migration) run within one transaction under an advisory lock.
 SQL failures roll back; unknown/mismatched versions fail. The tracking table/schema
 remain after down at version zero. An uncertain commit acknowledgment tells the
@@ -76,7 +76,7 @@ checks were added.
   port with a generated password. The built binary passed init → config validate
   → status → down → up. Only that temporary project's container/volume were
   removed afterward.
-- `go test ./...` passed with `MILLIONAIRE_TEST_DATABASE_URL` set. PostgreSQL tests
+- `go test ./...` passed with `BILLIONAIRE_TEST_DATABASE_URL` set. PostgreSQL tests
   actually ran in uniquely created/disposed databases: repeat/up/down/reopen,
   injected SQL failure rollback, checksum mismatch, concurrent migrations,
   canceled lock waits, and CLI init/status across command instances.

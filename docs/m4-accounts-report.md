@@ -43,7 +43,7 @@ Passed:
   reconciliation, restart, retry identity, invalid inputs, injected ledger/outbox
   insert failures, append-only UPDATE/DELETE/TRUNCATE guards, competing processes,
   owner process death, forced backend termination, closed owners and cancellation.
-- `go test ./...` with `MILLIONAIRE_TEST_DATABASE_URL` enabled, including migration
+- `go test ./...` with `BILLIONAIRE_TEST_DATABASE_URL` enabled, including migration
   up/down/repeat/reopen and all existing M1–M3 tests.
 - `go vet ./...`, `go build ./...`, and `git diff --check`.
 

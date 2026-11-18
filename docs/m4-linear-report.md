@@ -48,7 +48,7 @@ ambiguous-bar protection while paused. The financial rollback fault matrix runs
 for both markets across order/account/fill/position/ledger/outbox/event writes.
 CLI fixtures reconcile 1000 USDT to 989.61 (long) and 1009.61 (short).
 
-Checks use disposable PostgreSQL 17 via `MILLIONAIRE_TEST_DATABASE_URL`; every test
+Checks use disposable PostgreSQL 17 via `BILLIONAIRE_TEST_DATABASE_URL`; every test
 creates a separate database. Go's build cache is under `/tmp/billionaire-go-cache`.
 
 - `go test ./...` with PostgreSQL enabled: passed.

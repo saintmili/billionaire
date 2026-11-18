@@ -1,2 +1,2 @@
-DROP TABLE millionaire.backtest_runs;
-DROP FUNCTION millionaire.freeze_backtest_inputs();
+DROP TABLE billionaire.backtest_runs;
+DROP FUNCTION billionaire.freeze_backtest_inputs();
