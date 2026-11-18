@@ -19,6 +19,11 @@ import (
 )
 
 type Config struct {
+	Engine struct {
+		QueueCapacity int    `yaml:"queue_capacity"`
+		Lookback      int    `yaml:"lookback"`
+		Quantity      string `yaml:"quantity"`
+	} `yaml:"engine"`
 	SchemaVersion int `yaml:"schema_version"`
 	App           struct {
 		Mode     string `yaml:"mode"`
@@ -97,6 +102,15 @@ func (c Config) DatabaseURL(lookup func(string) string) (string, error) {
 var envName = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 func (c Config) Validate() error {
+	if c.Engine.QueueCapacity < 0 || c.Engine.QueueCapacity > 4096 || c.Engine.Lookback < 0 || c.Engine.Lookback > 10000 {
+		return errors.New("engine.queue_capacity must be 0..4096 and engine.lookback 0..10000; zero selects defaults")
+	}
+	if c.Engine.Quantity != "" && c.Engine.Quantity != "risk" {
+		q, err := domain.ParseDecimal(c.Engine.Quantity)
+		if err != nil || !q.IsPositive() {
+			return errors.New("engine.quantity must be risk or a positive base quantity")
+		}
+	}
 	if c.SchemaVersion != 1 {
 		return errors.New("schema_version must be 1")
 	}

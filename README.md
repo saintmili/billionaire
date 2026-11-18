@@ -65,7 +65,7 @@ the Go bin directory to `PATH`; configuration and SQL are embedded in the binary
 All result commands accept `--config` (default `billionaire.yaml`) and `--output
 text|json`. Results go to stdout; structured UTC logs go to stderr. Failures exit
 1; interruption/cancellation exits 130. `status` is read-only: it reports config
-mode, storage readiness/schema version, and `engine: not_implemented`. Missing,
+mode, storage readiness/schema version, and engine ownership (`running` or `stopped` when storage is ready). Missing,
 uninitialized, incompatible or unavailable storage is unhealthy and exits nonzero.
 It does not claim provider connectivity or daemon health. `config validate` is
 entirely offline and does not require a database URL.
@@ -703,3 +703,10 @@ It deliberately interrupts streams to exercise backfill; default CI stays offlin
 See the [host validation procedure](docs/m2-host-validation.md) before running or
 sharing evidence. Repeat on the intended VPS; local results leave M2 acceptance
 pending and live monitoring disabled.
+
+## Foreground fixture engine
+
+`billionaire start --fixture testdata/market/m2.json` supervises configured
+subscriptions, strategies and paper execution under a single PostgreSQL owner.
+See [runtime configuration, commands, recovery and verification](docs/m6-runtime-report.md).
+M2 actual-host acceptance remains pending; live start is disabled.

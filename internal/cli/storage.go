@@ -36,7 +36,7 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 			return o.write(map[string]any{"initialized": state.Initialized, "schema_version": state.Version, "config_created": created, "mode": "paper"}, "Initialized paper-only storage")
 		})
 	}})
-	root.AddCommand(&cobra.Command{Use: "status", Short: "Check configuration and storage readiness (engine is not yet implemented)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(&cobra.Command{Use: "status", Short: "Check configuration, storage readiness and engine ownership", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := o.load()
 		if err != nil {
 			return err
@@ -47,7 +47,7 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 			Database   string `json:"database"`
 			Engine     string `json:"engine"`
 			KillSwitch bool   `json:"kill_switch"`
-		}{Status: postgres.Status{RequiredVersion: postgres.LatestVersion}, Mode: "paper", Database: "unavailable", Engine: "not_implemented"}
+		}{Status: postgres.Status{RequiredVersion: postgres.LatestVersion}, Mode: "paper", Database: "unavailable", Engine: "unavailable"}
 		err = o.database(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
 			state, err := store.Status(ctx)
 			if err != nil {
@@ -57,6 +57,14 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 			result.Database = "uninitialized"
 			if state.Initialized {
 				result.Database = "ready"
+				running, err := store.EngineRunning(ctx)
+				if err != nil {
+					return err
+				}
+				result.Engine = "stopped"
+				if running {
+					result.Engine = "running"
+				}
 				on, err := store.KillSwitch(ctx)
 				if err != nil {
 					return err
@@ -68,7 +76,7 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 		if errors.Is(err, postgres.ErrSchema) {
 			result.Database = "incompatible"
 		}
-		if outputErr := o.write(result, fmt.Sprintf("Mode: paper\nDatabase: %s (schema %d/%d)\nEngine: not implemented\nKill switch: %t", result.Database, result.Version, result.RequiredVersion, result.KillSwitch)); outputErr != nil {
+		if outputErr := o.write(result, fmt.Sprintf("Mode: paper\nDatabase: %s (schema %d/%d)\nEngine: %s\nKill switch: %t", result.Database, result.Version, result.RequiredVersion, result.Engine, result.KillSwitch)); outputErr != nil {
 			return outputErr
 		}
 		if err != nil {

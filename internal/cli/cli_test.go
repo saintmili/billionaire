@@ -83,7 +83,7 @@ func TestInitAndStatusPersistAcrossCommandInvocations(t *testing.T) {
 		t.Fatal("init overwrote an existing config")
 	}
 	state, err := invoke("status")
-	if err != nil || state["database"] != "ready" || state["engine"] != "not_implemented" {
+	if err != nil || state["database"] != "ready" || state["engine"] != "stopped" {
 		t.Fatalf("status: %v %v", state, err)
 	}
 	if _, err := invoke("database", "migrate", "down"); err != nil {
