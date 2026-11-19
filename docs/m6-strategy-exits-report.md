@@ -86,6 +86,14 @@ go test -race ./internal/control
 
 The final exit race run includes an additional linear-short settlement test and
 asserts that the competing stop/liquidation path supplied the actual exit reason.
+After merging ticket #27's integration tip `55bbb9e` (migration 0014), the focused
+PostgreSQL/CLI/application checks passed again with the race detector:
+
+```sh
+go test -race ./internal/store/postgres ./internal/cli ./internal/app \
+  -run 'TestStrategyExit|TestSignalEntryFixtureCLI|TestControl' -count=1
+```
+
 Network delivery was never exercised against live recipients.
 
 ## Limits
