@@ -12,6 +12,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 
 **Current milestone:** M5 offline acceptance is complete. The seven authorized unblocked M6 tickets are implemented and reviewed; see the [offline implementation report](m6-offline-report.md). M2 actual-host validation is accepted for the local workstation as of 2026-11-19; #29 is eligible, followed by #33–#35 in dependency order. Live startup remains disabled pending M6 implementation; M6 combined acceptance and later milestones remain pending.
 
+- [M6 monitored public funding](m6-funding-report.md): public schedule/rate/mark retrieval, settlement ordering, durable coverage and recovery.
 - [M6 offline implementation report](m6-offline-report.md): completed unblocked scope, independent review, verification and remaining gates.
 - [M6 review evidence](m6-review-report.md): notification cooldown/pagination corrections and shared risk-policy persistence.
 - [M6 configured strategy exits](m6-strategy-exits-report.md): action modes, explicit approval, proven exposure ownership and competing close safety.

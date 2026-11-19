@@ -8,12 +8,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"github.com/saintmili/billionaire/internal/strategy"
 )
 
+// FundingSource is a public provider boundary. Returned events explicitly name
+// expected settlements, known rates or missing coverage, and receipt clocks.
+type FundingSource interface {
+	Funding(context.Context, domain.Instrument, time.Time, time.Time) ([]paper.FundingEvent, error)
+}
 type Subscription struct {
 	Provider marketdata.Provider
 	Now      func() time.Time
@@ -27,8 +33,10 @@ type Options struct {
 	OwnerReady    func(*postgres.PaperOwner) (func(), error)
 }
 type Result struct {
-	Event   marketdata.Event  `json:"event"`
-	Signals []strategy.Signal `json:"signals"`
+	Funding         []paper.FundingResult `json:"funding,omitempty"`
+	FundingCoverage string                `json:"funding_coverage,omitempty"`
+	Event           marketdata.Event      `json:"event"`
+	Signals         []strategy.Signal     `json:"signals"`
 }
 type delivery struct {
 	event        marketdata.Event
@@ -210,6 +218,55 @@ func process(ctx context.Context, store *postgres.Store, owner *postgres.PaperOw
 	info, err := d.subscription.Provider.Instrument(ctx, e.Candle.Instrument.Market, e.Candle.Instrument.Base+"/"+e.Candle.Instrument.Quote)
 	if err != nil {
 		return result, err
+	}
+	if e.Candle.Instrument.Market == domain.Linear {
+		result.FundingCoverage = "unknown"
+		if source, ok := d.subscription.Provider.(FundingSource); ok {
+			from := d.subscription.Query.From
+			previous, err := store.LatestMonitoringFunding(ctx, e.Candle.Instrument)
+			if err != nil {
+				return result, err
+			}
+			if previous != nil {
+				from = previous.Event.EffectiveAt.Add(time.Nanosecond)
+				result.FundingCoverage = "no_due_interval"
+			} else {
+				positions, err := store.PaperPositions(ctx, "")
+				if err != nil {
+					return result, err
+				}
+				for _, position := range positions {
+					if position.Status == "open" && position.Instrument == e.Candle.Instrument && !position.OpenedAt.IsZero() && position.OpenedAt.Before(from) {
+						from = position.OpenedAt
+					}
+				}
+			}
+			through := at
+			if now := d.subscription.Now().UTC(); now.Before(through) {
+				through = now
+			}
+			if !through.Before(from) {
+				events, err := source.Funding(ctx, e.Candle.Instrument, from, through)
+				if err != nil {
+					return result, err
+				}
+				for _, event := range events {
+					if event.Instrument != e.Candle.Instrument || event.EffectiveAt.Before(from) || event.EffectiveAt.After(through) {
+						return result, errors.New("funding source returned an unexpected interval")
+					}
+					outcome, err := owner.ApplyMonitoringFunding(ctx, event)
+					if err != nil {
+						return result, err
+					}
+					result.Funding = append(result.Funding, outcome)
+					if outcome.Warning != "" {
+						result.FundingCoverage = "missing"
+					} else if result.FundingCoverage != "missing" {
+						result.FundingCoverage = "supplied"
+					}
+				}
+			}
+		}
 	}
 	// Consume only earlier intents. Recovered prices never open new positions.
 	observation := paper.Observation{ID: marketdata.EventID(*e.Candle), Instrument: e.Candle.Instrument, Source: e.Candle.Source, Price: e.Candle.Close, ObservedAt: e.Candle.ObservedAt, AvailableAt: at, Ready: e.AllowsEntries && e.Kind != "recovered_candle"}
