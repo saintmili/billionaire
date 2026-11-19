@@ -727,3 +727,5 @@ M2 actual-host acceptance remains pending; live start is disabled.
 Optional Telegram delivery is configured with environment references under
 `notifications.telegram`; select `telegram` in `notifications.targets`. See the
 [Telegram configuration and delivery contract](docs/m6-telegram-report.md).
+
+Optional Linux desktop alerts use `notifications.targets: [terminal, desktop]`; see the [desktop setup and failure guide](docs/m6-desktop-report.md).
