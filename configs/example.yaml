@@ -26,5 +26,6 @@ paper:
 
 # Captured durably at foreground start; delivery runs outside the financial owner.
 notifications:
+  # Optional desktop target uses notify-send in the logged-in user session.
   targets: [terminal]
   cooldown: 0s
