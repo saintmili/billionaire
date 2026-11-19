@@ -724,6 +724,10 @@ subscriptions, strategies and paper execution under a single PostgreSQL owner.
 See [runtime configuration, commands, recovery and verification](docs/m6-runtime-report.md).
 M2 actual-host acceptance remains pending; live start is disabled.
 
+Optional Telegram delivery is configured with environment references under
+`notifications.telegram`; select `telegram` in `notifications.targets`. See the
+[Telegram configuration and delivery contract](docs/m6-telegram-report.md).
+
 Optional Linux desktop alerts use `notifications.targets: [terminal, desktop]`; see the [desktop setup and failure guide](docs/m6-desktop-report.md).
 
 Simulated capital adjustments: `billionaire paper account adjust ACCOUNT-ID --direction deposit --amount 100 --reason fixture --at 2026-11-19T12:00:00Z --request-id capital-1`. Use `withdraw` to reduce available capital; see the [capital operating guide](docs/m6-capital-report.md) for ownership, mark freshness, retries and reporting semantics.

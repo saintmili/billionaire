@@ -22,6 +22,10 @@ type Config struct {
 	Notifications struct {
 		Targets  []string `yaml:"targets"`
 		Cooldown string   `yaml:"cooldown"`
+		Telegram struct {
+			TokenEnv  string `yaml:"token_env"`
+			ChatIDEnv string `yaml:"chat_id_env"`
+		} `yaml:"telegram"`
 	} `yaml:"notifications"`
 	Engine struct {
 		QueueCapacity int    `yaml:"queue_capacity"`
@@ -106,6 +110,11 @@ func (c Config) DatabaseURL(lookup func(string) string) (string, error) {
 var envName = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 func (c Config) Validate() error {
+	for _, name := range []string{c.Notifications.Telegram.TokenEnv, c.Notifications.Telegram.ChatIDEnv} {
+		if name != "" && !envName.MatchString(name) {
+			return errors.New("notifications.telegram references must name environment variables")
+		}
+	}
 	if c.Notifications.Cooldown != "" {
 		d, err := time.ParseDuration(c.Notifications.Cooldown)
 		if err != nil || d < 0 || d > 24*time.Hour {

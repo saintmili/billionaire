@@ -91,3 +91,23 @@ func TestDecodeErrorsIdentifyFieldsWithoutEchoingValues(t *testing.T) {
 		}
 	}
 }
+
+func TestTelegramReferencesAreValidatedWithoutResolvingCredentials(t *testing.T) {
+	text := strings.ReplaceAll(strings.ReplaceAll(configs.Example, "BILLIONAIRE_TELEGRAM_BOT_TOKEN", "TEST_TELEGRAM_TOKEN"), "BILLIONAIRE_TELEGRAM_CHAT_ID", "TEST_TELEGRAM_CHAT")
+	cfg, err := config.Load(strings.NewReader(text), func(k string) string {
+		if strings.HasPrefix(k, "TEST_TELEGRAM") {
+			t.Fatal("config resolved Telegram credential")
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = cfg
+	for _, field := range []string{"TEST_TELEGRAM_TOKEN", "TEST_TELEGRAM_CHAT"} {
+		_, err = config.Load(strings.NewReader(strings.Replace(text, field, "secret://literal", 1)), func(string) string { return "" })
+		if err == nil || strings.Contains(err.Error(), "secret") {
+			t.Fatalf("invalid reference: %v", err)
+		}
+	}
+}
