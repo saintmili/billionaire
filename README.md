@@ -118,12 +118,25 @@ ledger and a financial journal outbox. Migration 5 adds independent spot orders,
 fills, positions and price-observation replay records. Accounts use exact NUMERIC(38,18) columns;
 account initialization, opening funds and the outbox event commit atomically.
 
+## Owner control and explicit offline workflows
+
+Normal paper mutations, strategy enable/disable and kill-switch/risk controls now
+use the current user's private Unix socket. Start the fixture owner with
+`start --fixture PATH --hold` to keep it available, and use stable `--request-id`
+values for every mutation. See the [control workflow and recovery contract](docs/m6-control-report.md)
+and [runtime configuration](docs/m6-runtime-report.md), including the shipped
+M2 fixture's required `engine.lookback: 1`. Live monitoring remains disabled.
+
+The standalone fixture/setup commands below explicitly select `--offline`.
+Stop the foreground owner before using them: ownership conflicts fail and never
+fall back to another runtime. Read-only reports do not need `--offline`.
+
 ## Paper accounts (M4, ticket #1)
 
 Run `init` after upgrading to apply migration 4, then:
 
 ```sh
-./bin/billionaire paper account create --name demo --balance 10000.125 --request-id demo-opening
+./bin/billionaire --offline paper account create --name demo --balance 10000.125 --request-id demo-opening
 ./bin/billionaire paper accounts --output json
 ./bin/billionaire paper account show <account-id> --output json
 ```
@@ -168,17 +181,17 @@ fixtures. Replace `<account-id>` and `<position-id>` with the IDs printed by acc
 creation and position inspection; no Bybit connection is used.
 
 ```sh
-./bin/billionaire paper open --account <account-id> --market spot --symbol BTC/USDT \
+./bin/billionaire --offline paper open --account <account-id> --market spot --symbol BTC/USDT \
   --side long --quantity 2 --request-id buy --at 2026-11-12T10:00:00Z \
   --fee-rate 0.001 --slippage-bps 0 --fixture testdata/paper/spot-metadata.json
-./bin/billionaire paper observe --fixture testdata/paper/spot-entry.json --at 2026-11-12T10:00:01Z
+./bin/billionaire --offline paper observe --fixture testdata/paper/spot-entry.json --at 2026-11-12T10:00:01Z
 ./bin/billionaire paper positions --account <account-id> --output json
-./bin/billionaire paper close <position-id> --quantity 0.5 --request-id partial \
+./bin/billionaire --offline paper close <position-id> --quantity 0.5 --request-id partial \
   --at 2026-11-12T10:00:02Z --fee-rate 0.001
-./bin/billionaire paper observe --fixture testdata/paper/spot-partial.json --at 2026-11-12T10:00:03Z
-./bin/billionaire paper close <position-id> --quantity 1.5 --request-id final \
+./bin/billionaire --offline paper observe --fixture testdata/paper/spot-partial.json --at 2026-11-12T10:00:03Z
+./bin/billionaire --offline paper close <position-id> --quantity 1.5 --request-id final \
   --at 2026-11-12T10:00:04Z --fee-rate 0.001
-./bin/billionaire paper observe --fixture testdata/paper/spot-close.json --at 2026-11-12T10:00:05Z
+./bin/billionaire --offline paper observe --fixture testdata/paper/spot-close.json --at 2026-11-12T10:00:05Z
 ./bin/billionaire paper orders --account <account-id> --output json
 ./bin/billionaire paper fills --account <account-id> --output json
 ./bin/billionaire paper account show <account-id> --output json
@@ -251,14 +264,14 @@ positive exact price ticks. The existing account and entry-risk checks still app
 For a fresh account, using the existing entry fixture:
 
 ```sh
-./bin/billionaire paper open --account <account-id> --quantity 2 --request-id protected-buy \
+./bin/billionaire --offline paper open --account <account-id> --quantity 2 --request-id protected-buy \
   --at 2026-11-12T10:00:00Z --fixture testdata/paper/spot-metadata.json \
   --stop-price 90 --take-profit 120 --target-quantity 0.5
-./bin/billionaire paper observe --fixture testdata/paper/spot-entry.json --at 2026-11-12T10:00:01Z
+./bin/billionaire --offline paper observe --fixture testdata/paper/spot-entry.json --at 2026-11-12T10:00:01Z
 ./bin/billionaire paper positions --output json
-./bin/billionaire paper adjust <position-id> --stop-loss 95 --request-id raise-stop \
+./bin/billionaire --offline paper adjust <position-id> --stop-loss 95 --request-id raise-stop \
   --at 2026-11-12T10:00:02Z
-./bin/billionaire paper observe --fixture testdata/paper/spot-protection-collision.json \
+./bin/billionaire --offline paper observe --fixture testdata/paper/spot-protection-collision.json \
   --at 2026-11-12T10:01:00Z
 ./bin/billionaire paper fills --output json
 ```
@@ -348,7 +361,7 @@ CI supplies an ephemeral PostgreSQL service and runs tests, vet and build.
 ./bin/billionaire provider test --provider bybit
 ./bin/billionaire market backfill --market linear --symbol ETH/USDT \
   --timeframe 15m --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z
-./bin/billionaire market watch --market spot --symbol BTC/USDT --timeframe 1m
+./bin/billionaire --offline market watch --market spot --symbol BTC/USDT --timeframe 1m --fixture testdata/market/m2.json
 ./bin/billionaire market status --market spot --symbol BTC/USDT --timeframe 1m --output json
 ```
 
@@ -391,7 +404,7 @@ An explicit, network-free provider uses separate `fixture` identities:
 ./bin/billionaire market backfill --fixture testdata/market/m2.json \
   --market spot --symbol BTC/USDT --timeframe 15m \
   --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z --output json
-./bin/billionaire market watch --fixture testdata/market/m2.json --output json
+./bin/billionaire --offline market watch --fixture testdata/market/m2.json --output json
 ./bin/billionaire market status --fixture testdata/market/m2.json --output json
 ```
 
@@ -407,12 +420,12 @@ registration and evaluation use PostgreSQL.
 
 ```sh
 ./bin/billionaire strategy validate examples/strategies/breakout.yaml --output json
-./bin/billionaire strategy add examples/strategies/breakout.yaml \
+./bin/billionaire --offline strategy add examples/strategies/breakout.yaml \
   --instance breakout-demo --provider fixture --market spot --symbol BTC/USDT --account ACCOUNT_ID
-./bin/billionaire strategy enable breakout-demo
-./bin/billionaire market watch --fixture testdata/market/m3.json --output json
+./bin/billionaire --offline strategy enable breakout-demo
+./bin/billionaire --offline market watch --fixture testdata/market/m3.json --output json
 ./bin/billionaire signals list --instance breakout-demo --output json
-./bin/billionaire strategy disable breakout-demo
+./bin/billionaire --offline strategy disable breakout-demo
 ./bin/billionaire strategy list --output json
 ```
 
@@ -434,9 +447,9 @@ Only one watcher per instrument/timeframe should run until M6 adds ownership.
 For explicit offline evaluation, seed history and use a fresh enabled instance:
 
 ```sh
-./bin/billionaire strategy add examples/strategies/breakout.yaml \
+./bin/billionaire --offline strategy add examples/strategies/breakout.yaml \
   --instance offline-demo --provider fixture --account ACCOUNT_ID
-./bin/billionaire strategy enable offline-demo
+./bin/billionaire --offline strategy enable offline-demo
 ./bin/billionaire market backfill --fixture testdata/market/m3.json \
   --from 2026-01-01T00:00:00Z --to 2026-01-01T00:22:00Z
 python3 - <<'PYCODE'
@@ -446,7 +459,7 @@ with open('testdata/market/m3.json') as source:
 with open('/tmp/billionaire-event.json', 'w') as target:
     json.dump(event, target)
 PYCODE
-./bin/billionaire strategy evaluate offline-demo --event /tmp/billionaire-event.json --output json
+./bin/billionaire --offline strategy evaluate offline-demo --event /tmp/billionaire-event.json --output json
 ```
 
 Repeated evaluation returns no new signals. Offline events never claim live
@@ -482,7 +495,7 @@ See the [M0 report](docs/m0-report.md), [M1 report](docs/m1-report.md), [M2 repo
 ### Paper risk controls
 
 Run `billionaire init` to apply migration 0006. Configure account limits with
-`billionaire paper risk set --account <id> --fixed-risk 10 --max-positions 3`.
+`billionaire --offline paper risk set --account <id> --fixed-risk 10 --max-positions 3`.
 `set` replaces that scope's full policy; add `--strategy <definition-id>` for an
 additional strategy ceiling. Inspect with `paper risk show --account <id>`.
 Use `paper open ... --quantity risk --stop-price 90` for execution-time sizing,
@@ -491,8 +504,8 @@ default. `--stop-price` supplies sizing geometry and attaches an executable stop
 Daily loss includes fees, settled price P&L and funding collateral changes for
 the effective UTC day; explicitly waived isolated deficits are excluded.
 
-`billionaire kill-switch on` persists a global block on new entries. Use
-`kill-switch off` to allow them again and `kill-switch status` or `status` to
+`billionaire --offline kill-switch on` persists a global block on new entries. Use
+`billionaire --offline kill-switch off` to allow them again and `kill-switch status` or `status` to
 inspect it. Pending entries recheck the switch and current policy at execution.
 Partial/full closes remain available. See the [risk contract](docs/m4-risk-report.md)
 for precedence, UTC daily reset, cooldown, exact sizing and failure behavior.
@@ -504,16 +517,16 @@ The existing offline `paper open`, `observe`, `close`, `positions`, `orders` and
 enables ETH/USDT linear. No exchange trading connection is used.
 
 ```sh
-./bin/billionaire paper open --account <account-id> --market linear --symbol ETH/USDT \
+./bin/billionaire --offline paper open --account <account-id> --market linear --symbol ETH/USDT \
   --side short --leverage 5 --quantity 2 --request-id linear-short \
   --fixture testdata/paper/linear-entry.json --at 2026-11-14T10:00:00Z
-./bin/billionaire paper observe --fixture testdata/paper/linear-entry.json --at 2026-11-14T10:00:01Z
+./bin/billionaire --offline paper observe --fixture testdata/paper/linear-entry.json --at 2026-11-14T10:00:01Z
 ./bin/billionaire paper account show <account-id> --at 2026-11-14T10:00:01Z --output json
 ./bin/billionaire paper positions --account <account-id>
-./bin/billionaire paper close <position-id> --quantity 0.5 --request-id linear-partial --at 2026-11-14T10:00:02Z
-./bin/billionaire paper observe --fixture testdata/paper/linear-partial.json --at 2026-11-14T10:00:03Z
-./bin/billionaire paper close <position-id> --quantity 1.5 --request-id linear-final --at 2026-11-14T10:00:04Z
-./bin/billionaire paper observe --fixture testdata/paper/linear-final.json --at 2026-11-14T10:00:05Z
+./bin/billionaire --offline paper close <position-id> --quantity 0.5 --request-id linear-partial --at 2026-11-14T10:00:02Z
+./bin/billionaire --offline paper observe --fixture testdata/paper/linear-partial.json --at 2026-11-14T10:00:03Z
+./bin/billionaire --offline paper close <position-id> --quantity 1.5 --request-id linear-final --at 2026-11-14T10:00:04Z
+./bin/billionaire --offline paper observe --fixture testdata/paper/linear-final.json --at 2026-11-14T10:00:05Z
 ./bin/billionaire paper account show <account-id> --output json
 ```
 
@@ -559,10 +572,10 @@ Run `init` to apply migration 9. After the linear entry observation above, befor
 processing later prices, apply the illustrative funding interval:
 
 ```sh
-./bin/billionaire paper funding apply --fixture testdata/paper/linear-funding.json --output json
+./bin/billionaire --offline paper funding apply --fixture testdata/paper/linear-funding.json --output json
 ./bin/billionaire paper funding list --output json
 # Record a later expected interval with unavailable data explicitly:
-./bin/billionaire paper funding apply --fixture testdata/paper/linear-funding-missing.json --output json
+./bin/billionaire --offline paper funding apply --fixture testdata/paper/linear-funding-missing.json --output json
 ```
 
 Use the missing-interval example after finishing earlier price examples: it moves
@@ -624,18 +637,18 @@ The following bounded fixture workflow uses an account created with
 `paper account create`; substitute its returned ID for `ACCOUNT_ID`:
 
 ```sh
-./bin/billionaire strategy add examples/strategies/paper-entry.yaml \
+./bin/billionaire --offline strategy add examples/strategies/paper-entry.yaml \
   --instance paper-entry-demo --provider fixture --account ACCOUNT_ID
-./bin/billionaire strategy enable paper-entry-demo
-./bin/billionaire strategy evaluate paper-entry-demo \
+./bin/billionaire --offline strategy enable paper-entry-demo
+./bin/billionaire --offline strategy evaluate paper-entry-demo \
   --event testdata/paper/signal-entry.json --source-ready --output json
-./bin/billionaire paper consume --fixture testdata/paper/spot-metadata.json \
+./bin/billionaire --offline paper consume --fixture testdata/paper/spot-metadata.json \
   --at 2026-11-12T10:00:00Z --limit 100 --output json
 ./bin/billionaire signals list --instance paper-entry-demo --output json
 # Substitute the signal ID from the preceding output:
-./bin/billionaire paper approve SIGNAL_ID \
+./bin/billionaire --offline paper approve SIGNAL_ID \
   --fixture testdata/paper/spot-metadata.json --at 2026-11-12T10:00:00Z --output json
-./bin/billionaire paper observe --fixture testdata/paper/spot-entry.json \
+./bin/billionaire --offline paper observe --fixture testdata/paper/spot-entry.json \
   --at 2026-11-12T10:00:01Z --output json
 ./bin/billionaire paper decisions --output json
 ```

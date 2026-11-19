@@ -146,6 +146,9 @@ func (o *options) watchCommand() *cobra.Command {
 	cmd.Flags().IntVar(&f.lookback, "lookback", 20, "closed intervals to warm up")
 	cmd.Flags().IntVar(&f.retries, "retries", 5, "bounded reconnect attempts, 0..10")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if !o.offline || f.fixture == "" {
+			return errors.New("market watch requires explicit --offline --fixture; use start for the owning runtime")
+		}
 		cfg, err := o.load()
 		if err != nil {
 			return err

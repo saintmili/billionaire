@@ -70,7 +70,7 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			use = "close <position-id>"
 			args = cobra.ExactArgs(1)
 		}
-		cmd := &cobra.Command{Use: use, Short: "Submit an offline paper market intent (waits for a later observation)", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
+		cmd := &cobra.Command{Use: use, Short: "Submit a paper market intent to the owner (waits for a later observation)", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
 			timestamp, err := time.Parse(time.RFC3339Nano, at)
 			if err != nil {
 				return errors.New("at must be an explicit RFC3339 intent timestamp")
@@ -87,13 +87,21 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			return o.paperDatabaseWithConfig(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
 				var info marketdata.InstrumentInfo
 				if action == "open" {
-					fixture, err := readSpotFixture(fixturePath)
-					if err != nil {
-						return err
-					}
-					info = fixture.Metadata
-					if string(info.Instrument.Market) != market || info.Instrument.Base+"/"+info.Instrument.Quote != symbol {
-						return errors.New("requested market/symbol does not match fixture metadata")
+					if fixturePath == "" && !o.offline {
+						instrument, _, err := (marketFlags{market: market, symbol: symbol, frame: "1m"}).identity("fixture")
+						if err != nil {
+							return err
+						}
+						info.Instrument = instrument
+					} else {
+						fixture, err := readSpotFixture(fixturePath)
+						if err != nil {
+							return err
+						}
+						info = fixture.Metadata
+						if string(info.Instrument.Market) != market || info.Instrument.Base+"/"+info.Instrument.Quote != symbol {
+							return errors.New("requested market/symbol does not match fixture metadata")
+						}
 					}
 				} else {
 					position, err := store.PaperPosition(ctx, args[0])
@@ -107,12 +115,18 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 					info = position.Metadata
 				}
 				r.Instrument = info.Instrument
-				owner, err := store.AcquirePaperOwner(ctx)
-				if err != nil {
-					return err
+				var order paper.Order
+				var err error
+				if !o.offline {
+					err = o.controlMutation(ctx, r.RequestID, "order.submit", r, &order)
+				} else {
+					owner, e := store.AcquirePaperOwner(ctx)
+					if e != nil {
+						return e
+					}
+					defer owner.Close()
+					order, err = owner.SubmitOrder(ctx, r, info, spotEnabled(cfg, info))
 				}
-				defer owner.Close()
-				order, err := owner.SubmitOrder(ctx, r, info, spotEnabled(cfg, info))
 				if err != nil {
 					return err
 				}
@@ -151,12 +165,14 @@ func (o *options) addSpotCommands(group *cobra.Command) {
 			cmd.Flags().StringVar(&symbol, "symbol", "BTC/USDT", "BASE/USDT instrument")
 			cmd.Flags().StringVar(&fixturePath, "fixture", "", "offline JSON instrument metadata; observations are applied separately")
 			_ = cmd.MarkFlagRequired("account")
-			_ = cmd.MarkFlagRequired("fixture")
 		}
 		group.AddCommand(cmd)
 	}
 	var fixturePath, at string
 	observe := &cobra.Command{Use: "observe", Short: "Apply one explicit offline price observation atomically", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		if !o.offline {
+			return errors.New("paper observe requires explicit --offline; running owner owns observations")
+		}
 		fixture, err := readSpotFixture(fixturePath)
 		if err != nil {
 			return err

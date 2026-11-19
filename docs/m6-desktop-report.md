@@ -72,3 +72,9 @@ durable headless failures, restart between attempts, terminal delivery alongside
 desktop failures, five-attempt exhaustion and no later retry. No actual desktop
 alert or remote message is sent. Full suite, practical race checks, vet and build
 are recorded in the ticket handoff.
+
+Integration recheck (2026-11-19): merged the private engine control slice
+(`1c5e730`) and preserved the shared foreground/manual sender map. Focused
+`TestDesktop|TestNotifications` checks passed for notify, CLI and real PostgreSQL
+packages, including race instrumentation. `go vet ./...`, `go build ./...` and
+`git diff --check` passed. All delivery checks used local executable fixtures.

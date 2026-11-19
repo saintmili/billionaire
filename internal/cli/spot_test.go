@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/paper"
@@ -34,7 +33,7 @@ func TestManualPaperCLIEntryPartialAndFinalClose(t *testing.T) {
 			invoke := func(args ...string) ([]byte, error) {
 				t.Helper()
 				var out, logs bytes.Buffer
-				err := cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+				err := executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
 				return out.Bytes(), err
 			}
 			if _, err := invoke("init"); err != nil {
@@ -127,7 +126,7 @@ func TestManualPaperCLIEntryPartialAndFinalClose(t *testing.T) {
 				t.Fatalf("closed: %s %v", data, err)
 			}
 			var out, logs bytes.Buffer
-			if err := cli.Execute(context.Background(), []string{"paper", "positions", "--config", path}, &out, &logs); err != nil || !strings.Contains(out.String(), "closed") {
+			if err := executeOffline(context.Background(), []string{"paper", "positions", "--config", path}, &out, &logs); err != nil || !strings.Contains(out.String(), "closed") {
 				t.Fatalf("text positions: %s %v", &out, err)
 			}
 		})

@@ -37,7 +37,13 @@ func (o *options) addPaperCommands(root *cobra.Command) {
 			return err
 		}
 		return o.paperDatabaseWithConfig(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
-			a, err := store.CreatePaperAccount(ctx, request)
+			var a paper.Account
+			var err error
+			if !o.offline {
+				err = o.controlMutation(ctx, request.RequestID, "account.create", request, &a)
+			} else {
+				a, err = store.CreatePaperAccount(ctx, request)
+			}
 			if err != nil {
 				return err
 			}

@@ -25,20 +25,33 @@ func scopeSQL(sql, schema string) string {
 
 type scopedPool struct {
 	*pgxpool.Pool
-	schema string
+	schema      string
+	transaction pgx.Tx
 }
 
 func (p *scopedPool) Exec(c context.Context, q string, a ...any) (pgconn.CommandTag, error) {
+	if p.transaction != nil {
+		return p.transaction.Exec(c, q, a...)
+	}
 	return p.Pool.Exec(c, scopeSQL(q, p.schema), a...)
 }
 func (p *scopedPool) Query(c context.Context, q string, a ...any) (pgx.Rows, error) {
+	if p.transaction != nil {
+		return p.transaction.Query(c, q, a...)
+	}
 	return p.Pool.Query(c, scopeSQL(q, p.schema), a...)
 }
 func (p *scopedPool) QueryRow(c context.Context, q string, a ...any) pgx.Row {
+	if p.transaction != nil {
+		return p.transaction.QueryRow(c, q, a...)
+	}
 	return p.Pool.QueryRow(c, scopeSQL(q, p.schema), a...)
 }
 func (p *scopedPool) Begin(c context.Context) (pgx.Tx, error) { return p.BeginTx(c, pgx.TxOptions{}) }
 func (p *scopedPool) BeginTx(c context.Context, o pgx.TxOptions) (pgx.Tx, error) {
+	if p.transaction != nil {
+		return p.transaction.Begin(c)
+	}
 	t, e := p.Pool.BeginTx(c, o)
 	if e != nil {
 		return nil, e
@@ -70,10 +83,14 @@ func (t *scopedTx) Begin(c context.Context) (pgx.Tx, error) {
 
 type scopedConn struct {
 	*pgx.Conn
-	schema string
+	schema      string
+	transaction pgx.Tx
 }
 
 func (c *scopedConn) Begin(ctx context.Context) (pgx.Tx, error) {
+	if c.transaction != nil {
+		return c.transaction.Begin(ctx)
+	}
 	t, e := c.Conn.Begin(ctx)
 	if e != nil {
 		return nil, e

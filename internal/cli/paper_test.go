@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/saintmili/billionaire/configs"
-	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/testdb"
 )
@@ -21,7 +20,7 @@ func TestPaperAccountCLI(t *testing.T) {
 	invoke := func(args ...string) ([]byte, error) {
 		t.Helper()
 		var out, logs bytes.Buffer
-		err := cli.Execute(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
+		err := executeOffline(context.Background(), append(args, "--config", path, "--output", "json"), &out, &logs)
 		return out.Bytes(), err
 	}
 	if _, err := invoke("init"); err != nil {
@@ -64,7 +63,7 @@ func TestPaperAccountCLI(t *testing.T) {
 		}
 	}
 	var out, logs bytes.Buffer
-	if err := cli.Execute(context.Background(), []string{"paper", "accounts", "--config", path}, &out, &logs); err != nil || !strings.Contains(out.String(), "10000.125 USDT") {
+	if err := executeOffline(context.Background(), []string{"paper", "accounts", "--config", path}, &out, &logs); err != nil || !strings.Contains(out.String(), "10000.125 USDT") {
 		t.Fatalf("text: %s %v", &out, err)
 	}
 }
@@ -82,7 +81,7 @@ func TestPaperAccountCLIRejectsInvalidInputsOffline(t *testing.T) {
 		{"paper", "account", "create", "--name", "demo", "--balance", "0.0000000000000000001", "--request-id", "x"},
 	} {
 		var out, logs bytes.Buffer
-		err := cli.Execute(context.Background(), append(args, "--config", path), &out, &logs)
+		err := executeOffline(context.Background(), append(args, "--config", path), &out, &logs)
 		if err == nil || strings.Contains(err.Error(), "cannot open file") || strings.Contains(err.Error(), "unknown") {
 			t.Fatalf("validation reached config for %v: %v", args, err)
 		}
@@ -100,7 +99,7 @@ func TestPaperBalanceConfigurationRejectsUnsupportedPrecision(t *testing.T) {
 			t.Fatal(err)
 		}
 		var out, logs bytes.Buffer
-		err := cli.Execute(context.Background(), []string{"config", "validate", "--config", path}, &out, &logs)
+		err := executeOffline(context.Background(), []string{"config", "validate", "--config", path}, &out, &logs)
 		if err == nil {
 			t.Fatalf("unsupported balance %q accepted", balance)
 		}
