@@ -19,6 +19,9 @@ func New(t *testing.T) string {
 	t.Helper()
 	dsn := os.Getenv("BILLIONAIRE_TEST_DATABASE_URL")
 	if dsn == "" {
+		if os.Getenv("BILLIONAIRE_REQUIRE_TEST_DATABASE") == "1" {
+			t.Fatal("PostgreSQL coverage required: BILLIONAIRE_TEST_DATABASE_URL is unset")
+		}
 		t.Skip("set BILLIONAIRE_TEST_DATABASE_URL to run PostgreSQL integration tests")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

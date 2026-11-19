@@ -14,4 +14,6 @@ Use a single-context domain layout. Before exploring the codebase, read `docs/ag
 
 ## Project work
 
+Before creating worktrees or running project verification, read `docs/agents/workflow.md`.
+
 Before planning or implementing a milestone, read `docs/README.md`, the current milestone in `docs/roadmap.md`, and the relevant sections of `docs/spec.md` and `docs/design.md`.

@@ -338,13 +338,18 @@ later M4 gate; this does not enable live monitoring.
 ## Checks
 
 ```sh
-go test ./...
-go vet ./...
-go build ./...
+./scripts/check --status
+./scripts/check
 ```
 
-Default tests are offline; local HTTP test servers exercise the M0 spike.
-PostgreSQL integration tests skip unless explicitly configured:
+The same command runs locally and in CI: workflow-tool checks, a disposable pinned
+PostgreSQL service, database/role/authentication preflight, the full Go race suite,
+vet and build. Requires Python 3 and Docker Compose in addition to Go. It removes
+its test containers and volumes and retains source-specific results/logs under
+gitignored `.scratch/checks/`. See the [agent workflow](docs/agents/workflow.md)
+for persistent workspaces, recovery and verification records.
+
+Default standalone Go tests are offline. For focused work:
 
 ```sh
 export BILLIONAIRE_TEST_DATABASE_URL="$BILLIONAIRE_DATABASE_URL"
@@ -352,11 +357,14 @@ go test ./internal/store/postgres ./internal/cli -count=1
 go test -race ./...
 ```
 
-Use a disposable test server and a user with `CREATEDB`. Tests create uniquely
-named `billionaire_test_*` databases, inject failures there, then drop only those
+Standalone PostgreSQL tests skip when their DSN is absent. Set
+`BILLIONAIRE_REQUIRE_TEST_DATABASE=1` to make missing integration coverage an error,
+as the canonical runner does. Use a disposable test server with `CREATEDB` and
+`CREATEROLE`; restricted-role tests also need passwordless test-role connections.
+Tests create uniquely named `billionaire_test_*` databases, inject failures there, then drop only those
 databases. They cover migration up/down/repeat/reopen, concurrent callers,
 cancellation, corrupt version metadata, rollback after failure, and CLI behavior.
-CI supplies an ephemeral PostgreSQL service and runs tests, vet and build.
+CI invokes `scripts/check`, including race detection and real PostgreSQL coverage.
 
 ## Market data (M2)
 

@@ -5,26 +5,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
-        env:
-          POSTGRES_USER: billionaire_test
-          POSTGRES_DB: billionaire_test
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - "127.0.0.1:5432:5432"
-        options: >-
-          --health-cmd "pg_isready -U billionaire_test -d billionaire_test"
-          --health-interval 2s --health-timeout 3s --health-retries 15
-    env:
-      BILLIONAIRE_TEST_DATABASE_URL: postgres://billionaire_test@127.0.0.1:5432/billionaire_test?sslmode=disable
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test ./...
-      - run: go vet ./...
-      - run: go build ./...
+      - run: ./scripts/check

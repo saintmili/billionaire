@@ -5,3 +5,6 @@
 !.env.example
 *.test
 coverage.out
+/.scratch/
+/.worktrees/
+__pycache__/

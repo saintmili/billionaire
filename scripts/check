@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Run the same disposable PostgreSQL, race, vet and build checks locally and in CI."""
+
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+import uuid
+
+from agent_workflow import WorkflowError, now, roots, source_state, verification, verification_environment, write_json
+
+
+def main():
+    os.umask(0o077)
+    if sys.argv[1:] not in ([], ["--status"], ["--help"]):
+        raise WorkflowError("usage: scripts/check [--status]")
+    if sys.argv[1:] == ["--help"]:
+        print(__doc__ + "\nUse --status to inspect a matching prior verification record.")
+        return 0
+    root, common = roots()
+    if sys.argv[1:] == ["--status"]:
+        print(json.dumps(verification(root, common), indent=2))
+        return 0
+    toolchain = subprocess.check_output(["go", "version"], text=True).strip()
+    initial = source_state(root)
+    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + uuid.uuid4().hex[:12]
+    directory = common / ".scratch" / "checks" / run_id
+    directory.mkdir(parents=True, mode=0o700)
+    record_path = directory / "result.json"
+    record = dict(initial, profile="full-race-v1", go_version=toolchain, worktree=str(root),
+                  environment_digest=verification_environment(),
+                  started_at=now(), status="running", phases=[], log=str(directory / "output.log"))
+    write_json(record_path, record)
+    print(f"Verification record: {record_path}", flush=True)
+    project = "billionaire-check-" + uuid.uuid4().hex[:16]
+    record["compose_project"] = project
+    write_json(record_path, record)
+    compose = ["docker", "compose", "--project-name", project, "--file", str(root / "compose.test.yaml")]
+    env = dict(os.environ)
+    # The suite always uses its own disposable server, never a caller's application DSN.
+    for name in list(env):
+        if name.startswith("BILLIONAIRE_"):
+            del env[name]
+
+    def stopped(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, stopped)
+    with (directory / "output.log").open("w") as log:
+        def phase(name, command):
+            item = {"name": name, "command": command, "started_at": now(), "status": "running"}
+            record["phases"].append(item)
+            write_json(record_path, record)
+            print(f"Checking {name}...", flush=True)
+            with subprocess.Popen(command, cwd=root, env=env, stdout=subprocess.PIPE,
+                                  start_new_session=True,
+                                  stderr=subprocess.STDOUT, text=True) as process:
+                try:
+                    for line in process.stdout:
+                        log.write(line)
+                        log.flush()
+                        sys.stdout.write(line)
+                    code = process.wait()
+                except BaseException:
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        process.wait()
+                    raise
+            item.update(status="passed" if code == 0 else "failed", returncode=code, finished_at=now())
+            write_json(record_path, record)
+            if code:
+                raise WorkflowError(f"{name} failed; see {directory / 'output.log'}")
+
+        try:
+            phase("workflow tools", ["python3", "-m", "unittest", "discover", "-s", "scripts/tests", "-v"])
+            phase("disposable PostgreSQL", compose + ["up", "--detach", "--wait", "--wait-timeout", "90"])
+            address = subprocess.check_output(compose + ["port", "postgres", "5432"], cwd=root, env=env, text=True).strip()
+            if ":" not in address:
+                raise WorkflowError("test database did not publish a loopback port")
+            host, port = address.rsplit(":", 1)
+            if host != "127.0.0.1" or not port.isdigit():
+                raise WorkflowError("test database must publish only an ephemeral loopback port")
+            env["BILLIONAIRE_TEST_DATABASE_URL"] = f"postgres://billionaire_test@127.0.0.1:{port}/billionaire_test?sslmode=disable"
+            env["BILLIONAIRE_REQUIRE_TEST_DATABASE"] = "1"
+            container = subprocess.check_output(compose + ["ps", "--quiet", "postgres"], cwd=root, env=env, text=True).strip()
+            record["postgres_image"] = subprocess.check_output(
+                ["docker", "inspect", "--format", "{{.Image}}", container], env=env, text=True).strip()
+            # Check capabilities and passwordless restricted-role connections used by the suite.
+            phase("database preflight", compose + ["exec", "--no-TTY", "postgres", "psql", "-U", "billionaire_test", "-d", "billionaire_test", "-v", "ON_ERROR_STOP=1", "-c",
+                  "CREATE DATABASE billionaire_check_probe", "-c", "CREATE ROLE billionaire_check_probe LOGIN"])
+            phase("restricted-role authentication", compose + ["exec", "--no-TTY", "postgres", "psql", "-h", "127.0.0.1", "-U", "billionaire_check_probe", "-d", "billionaire_check_probe", "-v", "ON_ERROR_STOP=1", "-c", "SELECT 1"])
+            phase("Go race and PostgreSQL suite", ["go", "test", "-race", "./...", "-count=1", "-timeout=300s"])
+            phase("Go vet", ["go", "vet", "./..."])
+            phase("Go build", ["go", "build", "./..."])
+            if source_state(root)["source_digest"] != initial["source_digest"]:
+                record["status"] = "stale"
+                raise WorkflowError("source changed during verification; rerun checks on a stable checkout")
+            record["status"] = "passed"
+        except (KeyboardInterrupt, WorkflowError, OSError, subprocess.CalledProcessError) as exc:
+            record["status"] = "interrupted" if isinstance(exc, KeyboardInterrupt) else record.get("status", "failed")
+            if record["status"] == "running":
+                record["status"] = "failed"
+            if record["phases"] and record["phases"][-1]["status"] == "running":
+                record["phases"][-1].update(status=record["status"], finished_at=now())
+            print("check: interrupted" if isinstance(exc, KeyboardInterrupt) else f"check: {exc}", file=sys.stderr)
+        finally:
+            try:
+                cleanup = subprocess.run(compose + ["down", "--volumes", "--remove-orphans", "--timeout", "10"], cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=45)
+                if cleanup.returncode:
+                    raise WorkflowError("container cleanup failed")
+            except (OSError, subprocess.TimeoutExpired, WorkflowError):
+                record["cleanup"] = "failed"
+                record["status"] = "failed"
+                print(f"check: cleanup failed; inspect Compose project {project}", file=sys.stderr)
+            else:
+                record["cleanup"] = "passed"
+            record["finished_at"] = now()
+            write_json(record_path, record)
+    print(f"Verification {record['status']}: {record_path}", flush=True)
+    return 0 if record["status"] == "passed" else 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (WorkflowError, OSError, subprocess.CalledProcessError) as exc:
+        print(f"check: {exc}", file=sys.stderr)
+        sys.exit(1)

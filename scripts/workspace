@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""Create, checkpoint, inspect and recover persistent agent worktrees."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import sys
+
+from agent_workflow import WorkflowError, git, now, roots, source_state, verification, write_json
+
+
+def location(common, name):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
+        raise WorkflowError("name must be 1-64 lowercase letters, digits, hyphens or underscores")
+    return common / ".scratch" / "runs" / name / "state.json", common / ".worktrees" / name
+
+
+def inspect(record, worktree, common):
+    result = dict(record)
+    if not worktree.exists():
+        result.update(status="missing_worktree", verification={"status": "unverified"})
+        return result
+    actual = Path(os.fsdecode(git(worktree, "rev-parse", "--show-toplevel")).strip()).resolve()
+    branch = git(worktree, "branch", "--show-current").decode().strip()
+    if actual != worktree.resolve() or branch != record["branch"]:
+        raise WorkflowError("worktree path or checked-out branch differs from the ledger; inspect manually")
+    result.update(source_state(worktree))
+    result.update(status="active", worktree=str(worktree), verification=verification(worktree, common))
+    return result
+
+
+def main():
+    os.umask(0o077)
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    create = commands.add_parser("create", help="create an isolated branch, worktree and recovery ledger")
+    create.add_argument("name")
+    create.add_argument("--ticket", required=True)
+    create.add_argument("--base", default="HEAD")
+    create.add_argument("--branch")
+    create.add_argument("--blocked-by", action="append", default=[])
+    status = commands.add_parser("status", help="inspect current source and matching verification records")
+    status.add_argument("name", nargs="?")
+    checkpoint = commands.add_parser("checkpoint", help="save current commit and source state; does not stage or commit")
+    checkpoint.add_argument("name")
+    checkpoint.add_argument("--note", default="")
+    recover = commands.add_parser("recover", help="restore a missing worktree from its preserved branch/checkpoint")
+    recover.add_argument("name")
+    args = parser.parse_args()
+    checkout, common = roots()
+    if args.command == "status" and not args.name:
+        records = []
+        for path in sorted((common / ".scratch" / "runs").glob("*/state.json")):
+            record = json.loads(path.read_text())
+            _, worktree = location(common, path.parent.name)
+            records.append(inspect(record, worktree, common))
+        print(json.dumps(records, indent=2))
+        return
+    path, worktree = location(common, args.name)
+    if args.command == "create":
+        if path.exists() or worktree.exists():
+            raise WorkflowError("workspace already exists; use status or recover")
+        branch = args.branch or "agent/" + args.name
+        if branch.startswith("-"):
+            raise WorkflowError("invalid branch")
+        git(checkout, "check-ref-format", "--branch", branch)
+        if git(common, "branch", "--list", branch).strip():
+            raise WorkflowError("branch already exists; choose a new task branch")
+        base = git(checkout, "rev-parse", "--verify", "--end-of-options", args.base + "^{commit}").decode().strip()
+        path.parent.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # Atomic reservation prevents concurrent creators from replacing the task ledger.
+        path.parent.mkdir(mode=0o700)
+        record = {"name": args.name, "ticket": args.ticket, "branch": branch, "base_commit": base,
+                  "commit": base, "blocked_by": args.blocked_by, "worktree": str(worktree),
+                  "status": "creating", "verification": {"status": "unverified"}, "updated_at": now()}
+        write_json(path, record)
+        git(common, "worktree", "add", "-b", branch, str(worktree), base)
+    else:
+        if not path.exists():
+            raise WorkflowError("workspace ledger not found")
+        record = json.loads(path.read_text())
+    if args.command == "recover" and not worktree.exists():
+        # Only stale registrations are pruned; existing worktrees/branches are preserved.
+        git(common, "worktree", "prune")
+        exists = git(common, "branch", "--list", record["branch"]).strip()
+        if not exists:
+            git(common, "branch", record["branch"], record["commit"])
+        git(common, "worktree", "add", str(worktree), record["branch"])
+    result = inspect(record, worktree, common)
+    if args.command != "status":
+        if result["status"] != "active":
+            raise WorkflowError("worktree missing; recover before checkpointing")
+        result["updated_at"] = now()
+        if args.command == "checkpoint":
+            result["note"] = args.note
+        write_json(path, result)
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (WorkflowError, OSError, ValueError) as exc:
+        print(f"workspace: {exc}", file=sys.stderr)
+        sys.exit(1)
