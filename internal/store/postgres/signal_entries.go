@@ -12,7 +12,7 @@ import (
 	"github.com/saintmili/billionaire/internal/strategy"
 )
 
-// DecideSignal atomically records a decision and, when authorized, its order.
+// DecideSignal atomically records an entry or explicit exit decision and, when authorized, its order.
 // Signals remain immutable observations. The signal identity owns exactly one decision.
 func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntryRequest, info marketdata.InstrumentInfo, enabled bool) (paper.SignalDecision, error) {
 	request = request.Normalize()
@@ -84,7 +84,7 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 		return d, safeError(ctx, ErrUnavailable)
 	}
 	switch {
-	case signal.Kind != "entry" || signal.Action == strategy.AlertOnly:
+	case (signal.Kind != "entry" && signal.Kind != "exit") || signal.Action == strategy.AlertOnly:
 		d.Status = "observed"
 		d.Reason = "signal is observation only"
 	case signal.Action == strategy.ManualPaper && !request.Approve:
@@ -100,6 +100,27 @@ func (o *PaperOwner) DecideSignal(ctx context.Context, request paper.SignalEntry
 		d.Reason = "signal source stale/unready"
 	default:
 		r := paper.OrderRequest{Liquidation: request.Liquidation, RequestID: "signal-" + signal.ID, SignalID: signal.ID, StrategyID: signal.StrategyID, AccountID: instance.Account, Instrument: signal.Instrument, Side: string(signal.Direction), Action: "open", At: request.At, Quantity: request.Quantity, Leverage: request.Leverage, FeeRate: request.FeeRate, SlippageBPS: request.SlippageBPS}
+		if signal.Kind == "exit" {
+			position, reason, e := matchingExitPosition(ctx, tx, signal, instance.Account)
+			if e != nil {
+				return d, e
+			}
+			if reason != "" {
+				d.Status, d.Reason = "rejected", reason
+				break
+			}
+			// Exit sizing never uses an entry-risk calculation. The default closes
+			// current remaining exposure; an explicit quantity requests a partial close.
+			r.Action, r.PositionID = "close", position.ID
+			r.Side, r.Leverage = position.Direction(), position.EffectiveLeverage()
+			if r.Quantity == "risk" {
+				r.Quantity = position.RemainingQuantity.String()
+			}
+			if request.Protection != nil || request.Liquidation != nil {
+				return d, errors.New("exit approval does not accept protection or liquidation overrides")
+			}
+			r.Liquidation = nil
+		}
 		if signal.Stop != nil {
 			r.StopPrice = signal.Stop.String()
 		}
@@ -213,4 +234,39 @@ func (s *Store) signalDecisions(ctx context.Context, bounded bool) ([]paper.Sign
 		return nil, safeError(ctx, ErrUnavailable)
 	}
 	return result, nil
+}
+
+// matchingExitPosition proves ownership from the opening fill/order/signal chain.
+// Legacy/manual positions without this provenance are deliberately ineligible.
+// The decision schema supports one close intent: pyramided exposure is rejected
+// explicitly rather than choosing an arbitrary position or silently closing a subset.
+func matchingExitPosition(ctx context.Context, tx pgx.Tx, signal strategy.Signal, account string) (paper.Position, string, error) {
+	rows, err := tx.Query(ctx, `SELECT p.payload FROM billionaire.paper_positions p
+ JOIN billionaire.paper_fills f ON f.position_id=p.id
+ JOIN billionaire.paper_orders o ON o.id=f.order_id
+ JOIN billionaire.strategy_signals s ON s.id=o.payload->'request'->>'signal_id'
+ WHERE p.account_id=$1 AND p.status='open'
+ AND p.payload->'instrument'=$2::jsonb
+ AND p.payload->>'strategy_id'=$3
+ AND o.status='filled' AND o.payload->'request'->>'action'='open'
+ AND s.payload->>'instance_id'=$4 AND s.payload->>'version_id'=$5
+ AND s.payload->>'strategy_id'=$3 AND s.payload->'instrument'=$2::jsonb
+ AND s.payload->>'kind'='entry' LIMIT 2`, account, jsonInstrument(signal.Instrument), signal.StrategyID, signal.InstanceID, signal.VersionID)
+	if err != nil {
+		return paper.Position{}, "", safeError(ctx, ErrUnavailable)
+	}
+	positions, err := decodePaperRows[paper.Position](rows)
+	if err != nil {
+		return paper.Position{}, "", safeError(ctx, ErrSchema)
+	}
+	if len(positions) == 0 {
+		return paper.Position{}, "no matching strategy exposure", nil
+	}
+	if len(positions) > 1 {
+		return paper.Position{}, "multiple matching positions unsupported; close explicitly by position", nil
+	}
+	if positions[0].Direction() != string(signal.Direction) {
+		return paper.Position{}, "exit direction does not match strategy exposure", nil
+	}
+	return positions[0], "", nil
 }

@@ -23,7 +23,7 @@ func (o *options) addSignalEntryCommands(group *cobra.Command) {
 			use = "approve <signal-id>"
 			args = cobra.ExactArgs(1)
 		}
-		cmd := &cobra.Command{Use: use, Short: "Decide persisted fixture signals; entries wait for a later paper observe", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
+		cmd := &cobra.Command{Use: use, Short: "Decide persisted signals; entry and exit intents wait for a later observation", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
 			if !approve && !o.offline {
 				return errors.New("paper consume requires explicit --offline; running owner owns automatic decisions")
 			}
@@ -106,7 +106,7 @@ func (o *options) addSignalEntryCommands(group *cobra.Command) {
 		cmd.Flags().StringVar(&requestID, "request-id", "", "stable owner control request identity")
 		cmd.Flags().StringVar(&path, "fixture", "", "offline instrument metadata JSON")
 		cmd.Flags().StringVar(&at, "at", "", "explicit RFC3339 decision timestamp; reuse on approval retry")
-		cmd.Flags().StringVar(&request.Quantity, "quantity", "risk", "base quantity or risk for execution-time policy sizing")
+		cmd.Flags().StringVar(&request.Quantity, "quantity", "risk", "base quantity; risk sizes entries by policy and closes full remaining exposure for exits")
 		cmd.Flags().IntVar(&request.Leverage, "leverage", 1, "isolated linear leverage; spot requires 1")
 		cmd.Flags().StringVar(&request.FeeRate, "fee-rate", "0.001", "frozen simulated taker fee fraction")
 		cmd.Flags().StringVar(&request.SlippageBPS, "slippage-bps", "0", "frozen adverse slippage basis points")
