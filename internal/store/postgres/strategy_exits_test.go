@@ -330,6 +330,19 @@ func TestStrategyExitsCompeteWithManualProtectionAndLiquidation(t *testing.T) {
 			if err != nil || len(fills) != 2 {
 				t.Fatalf("competing fills: %+v %v", fills, err)
 			}
+			if competitor != "manual" {
+				expected := "stop_loss"
+				if competitor == "liquidation" {
+					expected = "liquidation_approximate"
+				}
+				found := false
+				for _, fill := range fills {
+					found = found || fill.ExitReason == expected
+				}
+				if !found {
+					t.Fatalf("competing %s did not settle: %+v", competitor, fills)
+				}
+			}
 			p, err = store.PaperPosition(ctx, p.ID)
 			if err != nil || p.Status != "closed" || !p.RemainingQuantity.IsZero() {
 				t.Fatalf("closed: %+v %v", p, err)
@@ -513,5 +526,42 @@ func TestStrategyExitOppositeEntryNeverClosesExistingPosition(t *testing.T) {
 	fills, err := store.PaperFills(ctx, account.ID)
 	if err != nil || len(fills) != 1 {
 		t.Fatalf("implicit exit: %+v %v", fills, err)
+	}
+}
+
+func TestStrategyExitLinearShortUsesPositionDirectionAndLeverage(t *testing.T) {
+	ctx := context.Background()
+	store, owner, account, _ := newSpotTest(t)
+	info := spotInfo()
+	info.Instrument.Market = domain.Linear
+	entry := cycleDirectionSignal(t, store, account.ID, "short", strategy.AutoPaper, 0, "100", strategy.Short, info)
+	d, err := owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: entry.ID, At: entry.ObservedAt, Quantity: "1", Leverage: 5}, info, true)
+	if err != nil || d.Order == nil {
+		t.Fatalf("short: %+v %v", d, err)
+	}
+	obs, gate := spotObservation(1)
+	obs.Instrument = info.Instrument
+	result, err := owner.Observe(ctx, obs, gate)
+	if err != nil || len(result.Orders) != 1 || result.Orders[0].Status != "filled" {
+		t.Fatalf("entry: %+v %v", result, err)
+	}
+	exit := cycleDirectionSignal(t, store, account.ID, "short", strategy.AutoPaper, 2, "80", strategy.Short, info)
+	d, err = owner.DecideSignal(ctx, paper.SignalEntryRequest{SignalID: exit.ID, At: exit.ObservedAt}, info, false)
+	if err != nil || d.Order == nil || d.Order.Request.Side != "short" || d.Order.Request.Leverage != 5 || d.Order.Request.Action != "close" {
+		t.Fatalf("short close: %+v %v", d, err)
+	}
+	obs, gate = spotObservation(3)
+	obs.Instrument = info.Instrument
+	gate.Enabled = false
+	if _, err = owner.Observe(ctx, obs, gate); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.PaperAccount(ctx, account.ID)
+	if err != nil || saved.Balance.String() != "999.8" {
+		t.Fatalf("short settlement: %+v %v", saved, err)
+	}
+	positions, err := store.PaperPositions(ctx, account.ID)
+	if err != nil || len(positions) != 1 || positions[0].Status != "closed" || !positions[0].ReservedMargin.IsZero() {
+		t.Fatalf("short exposure: %+v %v", positions, err)
 	}
 }

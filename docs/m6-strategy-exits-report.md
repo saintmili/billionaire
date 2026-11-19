@@ -58,7 +58,7 @@ with `kill-switch off` when appropriate.
 Tests use the pre-agreed CLI and application-service seams backed by disposable
 real PostgreSQL databases. The first action-mode test failed with exit signals
 incorrectly returning `observed`, then passed after implementation. Coverage includes
-all action modes, next-observation timing, restart/duplicate processing, pause,
+all action modes, long/short linear settlement, next-observation timing, restart/duplicate processing, pause,
 opening-instance provenance, standalone positions lacking provenance, explicit
 partial quantities, full remaining exposure after an earlier manual partial close,
 multiple-match rejection, excessive sizing, stale observations, historical consumed
@@ -74,7 +74,19 @@ With `BILLIONAIRE_TEST_DATABASE_URL` pointing to the disposable loopback test Po
 - `go test ./internal/cli -run TestSignalEntryFixtureCLI -count=1` — passed.
 - `go test -race ./internal/store/postgres -run TestStrategyExit -count=1` — passed.
 
-The final integration-tip checks are recorded after merging the current branch.
+After merging integration tip `5f43e15`, `go test ./...` passed again, as did
+`go vet ./...`, `go build ./cmd/billionaire` and the following practical race checks:
+
+```sh
+go test -race ./internal/store/postgres ./internal/cli ./internal/app ./internal/control \
+  -run 'TestStrategyExit|TestSignalEntryFixtureCLI|TestControl' -count=1
+go test -race ./internal/store/postgres -run TestStrategyExit -count=1
+go test -race ./internal/control
+```
+
+The final exit race run includes an additional linear-short settlement test and
+asserts that the competing stop/liquidation path supplied the actual exit reason.
+Network delivery was never exercised against live recipients.
 
 ## Limits
 
