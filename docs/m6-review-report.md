@@ -62,3 +62,22 @@ loopback PostgreSQL instance:
 - Built binary `paper --help` and `notifications status --help` smoke checks.
 
 The root integration workflow records the final full-suite validation separately.
+
+### Worker clock follow-up
+
+Independent confirmation found that the foreground worker forwarded a buffered
+ticker timestamp after a slow batch. Although Dispatch included elapsed send time,
+the stale starting timestamp could still shorten or expire the next response's
+cooldown. `Run` now uses ticks only to wake up and reads the current UTC time
+immediately before calling Dispatch; explicit caller clocks remain supported.
+
+A public `notify.Run`/store regression with real PostgreSQL queues a later event
+while two local sends each take 1.2 seconds. The next batch returns a one-second
+rate limit. Before the fix its durable deadline preceded the actual response by
+roughly half a second. After the fix the response retains the full delay and a
+fresh concurrent dispatcher cannot bypass it. No live requests are made.
+
+Follow-up checks passed with the disposable PostgreSQL instance:
+`go test ./internal/store/postgres -run 'Notification|Telegram' -count=1 -timeout=60s`
+and `go test -race ./internal/notify ./internal/store/postgres -run
+'Notification|Telegram' -count=1 -timeout=90s`.

@@ -135,8 +135,9 @@ func Run(ctx context.Context, q Queue, senders map[string]Sender, diagnostics io
 		select {
 		case <-ctx.Done():
 			return
-		case now := <-ticker.C:
-			if _, err := Dispatch(ctx, q, senders, now.UTC(), 16); err != nil && diagnostics != nil {
+		case <-ticker.C:
+			// Buffered tick timestamps can predate the completion of a slow batch.
+			if _, err := Dispatch(ctx, q, senders, time.Now().UTC(), 16); err != nil && diagnostics != nil {
 				io.WriteString(diagnostics, "notification worker unavailable\n")
 			}
 		}
