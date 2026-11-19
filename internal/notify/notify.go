@@ -98,7 +98,7 @@ func Dispatch(ctx context.Context, q Queue, senders map[string]Sender, now time.
 					state = "failed"
 				}
 				if classified.RetryAfter > 0 {
-					next = now.Add(min(classified.RetryAfter, time.Hour))
+					next = now.Add(classified.RetryAfter)
 				}
 			}
 			if d.Attempts >= 5 {

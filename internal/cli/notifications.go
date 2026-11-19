@@ -7,6 +7,7 @@ import (
 	"github.com/saintmili/billionaire/internal/notify"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"github.com/spf13/cobra"
+	"os"
 	"time"
 )
 
@@ -44,5 +45,11 @@ func (o *options) addNotificationCommands(root *cobra.Command) {
 }
 
 func (o *options) notificationSenders(cfg config.Config) map[string]notify.Sender {
-	return map[string]notify.Sender{"terminal": notify.Terminal{Writer: o.diagnostics}}
+	senders := map[string]notify.Sender{"terminal": notify.Terminal{Writer: o.diagnostics}, "desktop": notify.Desktop{}}
+	for _, target := range cfg.Notifications.Targets {
+		if target == "telegram" {
+			senders["telegram"] = notify.NewTelegram(os.Getenv(cfg.Notifications.Telegram.TokenEnv), os.Getenv(cfg.Notifications.Telegram.ChatIDEnv), nil)
+		}
+	}
+	return senders
 }
