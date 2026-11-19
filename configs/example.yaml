@@ -29,3 +29,7 @@ notifications:
   # Optional desktop target uses notify-send in the logged-in user session.
   targets: [terminal]
   cooldown: 0s
+  # Opt in by adding telegram to targets; only environment names belong here.
+  telegram:
+    token_env: BILLIONAIRE_TELEGRAM_BOT_TOKEN
+    chat_id_env: BILLIONAIRE_TELEGRAM_CHAT_ID

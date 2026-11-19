@@ -61,6 +61,66 @@ func TestNotificationsKeepCommandJSONSeparateFromTerminalAlerts(t *testing.T) {
 	}
 }
 
+func TestTelegramAbsentCredentialsDoNotBlockTerminal(t *testing.T) {
+	ctx := context.Background()
+	dsn := testdb.New(t)
+	t.Setenv("BILLIONAIRE_DATABASE_URL", dsn)
+	// Empty credentials guarantee the adapter returns before constructing any request.
+	t.Setenv("BILLIONAIRE_TELEGRAM_BOT_TOKEN", "")
+	t.Setenv("BILLIONAIRE_TELEGRAM_CHAT_ID", "")
+	s, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-time.Minute)
+	if err = s.RecordNotification(ctx, notify.Event{ID: "optional", Kind: "engine_failure", At: at}, notify.Policy{Targets: []string{"terminal", "telegram"}}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	text := strings.Replace(configs.Example, "targets: [terminal]", "targets: [terminal, telegram]", 1)
+	if err = os.WriteFile(path, []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diagnostics bytes.Buffer
+	if err = cli.Execute(ctx, []string{"notifications", "dispatch", "--config", path, "--output", "json"}, &out, &diagnostics); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.Notifications(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		if r.Target == "terminal" && r.State != "delivered" {
+			t.Fatal(r)
+		}
+		if r.Target == "telegram" && (r.State != "failed" || r.Error != "telegram_unavailable") {
+			t.Fatal(r)
+		}
+	}
+}
+func TestTelegramConfigValidationDoesNotExposeEnvironmentSecrets(t *testing.T) {
+	// Offline validation never constructs a sender or sends a request.
+	t.Setenv("BILLIONAIRE_TELEGRAM_BOT_TOKEN", "sensitive-token")
+	t.Setenv("BILLIONAIRE_TELEGRAM_CHAT_ID", "sensitive-chat")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diagnostics bytes.Buffer
+	if err := cli.Execute(context.Background(), []string{"config", "validate", "--config", path, "--output", "json"}, &out, &diagnostics); err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"sensitive-token", "sensitive-chat"} {
+		if strings.Contains(out.String()+diagnostics.String(), secret) {
+			t.Fatal("CLI leaked credential")
+		}
+	}
+}
+
 func TestDesktopNotificationsUseCLIAndDurableStatus(t *testing.T) {
 	ctx := context.Background()
 	dsn := testdb.New(t)

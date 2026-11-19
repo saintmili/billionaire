@@ -14,6 +14,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 
 - [M6 Linux desktop notifications](m6-desktop-report.md): optional notify-send delivery, safe invocation and headless failure behavior.
 - [M6 owner control slice](m6-control-report.md): private Unix requests, durable receipts, explicit offline setup and recovery.
+- [M6 optional Telegram notifications](m6-telegram-report.md): protected environment references, bounded HTTPS delivery and local-only evidence.
 - [M6 durable terminal notifications](m6-notifications-report.md): transactional sources, cooldown, bounded delivery and status commands.
 - [M6 foreground runtime slice](m6-runtime-report.md): fixture start, configured subscriptions, single-session ownership, recovery and operating limits.
 
