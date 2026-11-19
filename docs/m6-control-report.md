@@ -1,5 +1,7 @@
 # M6 owner control slice (#26)
 
+**Current operation (2026-11-19):** This dated slice report retains its original gates and test evidence. The accepted local-host decision and subsequent funding, live recovery/health and systemd implementation supersede earlier startup restrictions; see the [combined M6 report](m6-report.md) for current scope, verification and limits.
+
 This fixture-only slice adds private CLI control of the held foreground owner.
 It does not enable live monitoring, complete M6 acceptance, implement balance
 adjustments/strategy exits, or waive the pending M2 actual-host gate.

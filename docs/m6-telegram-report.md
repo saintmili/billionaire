@@ -1,5 +1,7 @@
 # M6 optional Telegram delivery (#32)
 
+**Current operation (2026-11-19):** This dated slice report retains its original gates and test evidence. The accepted local-host decision and subsequent funding, live recovery/health and systemd implementation supersede earlier startup restrictions; see the [combined M6 report](m6-report.md) for current scope, verification and limits.
+
 Telegram is available through the same durable queue and Sender boundary as terminal
 alerts. This slice uses local protocol fixtures and real PostgreSQL only. No live
 Telegram messages were sent. Live monitoring remains disabled; M6 acceptance and

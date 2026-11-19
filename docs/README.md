@@ -10,8 +10,10 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 | [Glossary](../GLOSSARY.md) | Established domain terms |
 | [Agent configuration](../AGENTS.md) | When to read tracker, triage, domain, and project instructions |
 
-**Current milestone:** M5 offline acceptance is complete. The seven authorized unblocked M6 tickets are implemented and reviewed; see the [offline implementation report](m6-offline-report.md). M2 actual-host validation is accepted for the local workstation as of 2026-11-19; funding #29 and recovery/health #33 are implemented, including explicit `start --live` on the validated local host. Systemd #34, combined M6 acceptance #35 and later milestones remain pending.
+**Current milestone:** M5 offline acceptance is complete. The seven authorized unblocked M6 tickets are implemented and reviewed; see the [offline implementation report](m6-offline-report.md). M2 actual-host validation is accepted for the local workstation as of 2026-11-19; funding #29 and recovery/health #33 are implemented, including explicit `start --live` on the validated local host. Systemd #34 is implemented with actual temporary user-service evidence. Combined M6 scenarios #35 are implemented; assembled verification/review remains the final gate. Later milestones remain unstarted. See the [M6 acceptance report](m6-report.md).
 
+- [M6 combined acceptance](m6-report.md): runtime/control journey, exact reconciliation, failure evidence, verification gate and operating limits.
+- [M6 systemd operation](m6-systemd-report.md): shipped unit, subprocess/user-manager lifecycle and [deployment runbook](deployment.md).
 - [M6 recovery and operational health](m6-recovery-report.md): explicit source selection, current-clock entry gates, authoritative owner status and restart evidence.
 - [M6 monitored public funding](m6-funding-report.md): public schedule/rate/mark retrieval, settlement ordering, durable coverage and recovery.
 - [M6 offline implementation report](m6-offline-report.md): completed unblocked scope, independent review, verification and remaining gates.

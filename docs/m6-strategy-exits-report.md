@@ -1,5 +1,7 @@
 # M6 configured strategy exits — ticket #28
 
+**Current operation (2026-11-19):** This dated slice report retains its original gates and test evidence. The accepted local-host decision and subsequent funding, live recovery/health and systemd implementation supersede earlier startup restrictions; see the [combined M6 report](m6-report.md) for current scope, verification and limits.
+
 Explicit `exit` signals now use the existing signal-decision, paper close-order,
 observation and financial-owner services. No separate execution engine, migration,
 exchange access or additional configuration is introduced. The foreground owner

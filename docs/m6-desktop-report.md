@@ -1,5 +1,7 @@
 # M6 Linux desktop notification slice (#31)
 
+**Current operation (2026-11-19):** This dated slice report retains its original gates and test evidence. The accepted local-host decision and subsequent funding, live recovery/health and systemd implementation supersede earlier startup restrictions; see the [combined M6 report](m6-report.md) for current scope, verification and limits.
+
 Desktop delivery extends the shared durable notification worker and CLI. No
 migration or additional service is required. This is offline fixture evidence;
 M2 actual-host acceptance remains pending, live monitoring stays disabled and M6

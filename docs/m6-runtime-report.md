@@ -1,5 +1,7 @@
 # M6 foreground runtime slice (#25)
 
+**Current operation (2026-11-19):** This dated slice report retains its original gates and test evidence. The accepted local-host decision and subsequent funding, live recovery/health and systemd implementation supersede earlier startup restrictions; see the [combined M6 report](m6-report.md) for current scope, verification and limits.
+
 The foreground engine runs configured subscriptions through the existing market
 synchronizer, immutable strategy evaluation, signal decisions, risk gate and paper
 execution services. This is offline fixture acceptance only. M2 actual-host
