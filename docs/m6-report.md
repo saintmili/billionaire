@@ -3,14 +3,10 @@
 The M6 scenarios are implemented against real PostgreSQL and the public runtime,
 private owner control, CLI, notification and service boundaries. All native #35
 blockers (#34, #27, #31) were confirmed closed on 2026-11-19. Private-web entry #9
-remains natively blocked by #35. This slice stops at M6; it changes no production
+retains #35 as its native acceptance prerequisite. This slice stops at M6; it changes no production
 financial service, database migration, exchange access or ADR.
 
-Final assembled acceptance requires the integration owner's full `./scripts/check`
-and two-axis review. Those results must be recorded before closing #35 or marking
-M6 complete. Use `./scripts/check --status` for the current source fingerprint,
-commit, toolchain and retained `.scratch/checks/<run>/` evidence. The targeted
-results below do not substitute for that assembled-source gate.
+M6 acceptance includes the integration owner's full `./scripts/check` and two-axis review. Both Standards findings and the Spec finding are resolved with PostgreSQL regressions; see the [review evidence](m6-integration-review.md). Use `./scripts/check --status` for the source-matched verification result and retained `.scratch/checks/<run>/` evidence, including source commit/fingerprint, toolchain, PostgreSQL image, full race suite, vet and build. The targeted results below supplement that assembled-source gate.
 
 The local workstation's M2 provider evidence was accepted on 2026-11-19;
 [host acceptance](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19)
@@ -115,9 +111,7 @@ combined-journey race run passed (2.381s), covering the final notification-sourc
 replay assertion; see `journey-race.log` in that same evidence directory. Shared entry-gate
 race tests passed (9.077s; `entry-gates-race.log`), and app vet and
 `git diff --check` passed on the final slice source.
-`./scripts/check --status` currently reports no matching assembled-source record.
-Final full integration verification and review are pending; the integration owner
-records their assembled-source result before acceptance.
+The first assembled full check passed at `3583218` in `.scratch/checks/20261119T181628Z-137cfdc54259/result.json`. Review then found two clock/health correctness issues and duplicated funding-health derivation; all three were addressed. The final integration gate reruns the full check after those fixes and the final acceptance documentation. Its source-matched retained result is available through `./scripts/check --status`; this command must report `passed` for the accepted checkout.
 
 [Systemd slice evidence](m6-systemd-report.md) records both static unit verification
 and an actual temporary systemd 262 user-manager start/stop/restart journey on this

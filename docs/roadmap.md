@@ -1,6 +1,6 @@
 # Billionaire roadmap
 
-**Current state:** M0–M5 implementation and offline acceptance are complete. On 2026-11-19 the user selected the local workstation as the intended runtime and accepted the successful [local host evidence](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19), completing M2 actual-host acceptance for that machine. Seven offline M6 tickets are implemented and reviewed; funding #29 and recovery/health #33 are implemented. Explicit `start --live` selects public monitoring on that validated host; systemd #34 and combined scenarios #35 are implemented. Assembled verification/review remains the final M6 gate; see the [acceptance report](m6-report.md). M6W and later milestones remain gated on M6 acceptance. A future VPS deployment requires validation on that host.
+**Current state:** M0–M6 implementation and acceptance are complete for the local workstation. The user accepted the [local M2 host evidence](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19) on 2026-11-19. M6 adds monitored funding, explicit `start --live`, authoritative recovery/health, private systemd operation and combined acceptance; see the [M6 report](m6-report.md) and [resolved integration review](m6-integration-review.md). All trading remains simulated. Stop at M6: M6W and later milestones are not started. A future VPS requires its own host validation.
 
 Read [the specification](spec.md) for requirements and [technical design](design.md) for the proposed baseline. Track implementation tickets and their dependencies in GitHub Issues using [the tracker conventions](agents/issue-tracker.md).
 
@@ -14,7 +14,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
 | M4 — Paper accounts, orders, risk, and position lifecycle | Complete under offline sequencing exception — [combined acceptance evidence](m4-report.md); M2 local-host gate subsequently accepted on 2026-11-19 |
 | M5 — First-class backtesting and analytics | Complete under offline sequencing exception — [combined acceptance and operating guide](m5-report.md), including #17–#22 slices; M2 local-host gate subsequently accepted on 2026-11-19; stop at M5 |
-| M6 — Notifications and process operation | Seven unblocked offline tickets complete — [implementation/review evidence](m6-offline-report.md); #29 funding and #33 recovery/health are implemented — [recovery evidence](m6-recovery-report.md); #34 and #35 scenarios implemented — [combined evidence](m6-report.md); final assembled verification/review pending |
+| M6 — Notifications and process operation | Complete — [combined acceptance and verification](m6-report.md), [resolved integration review](m6-integration-review.md), [deployment guide](deployment.md); stop at M6 |
 | M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
 | M7 — StopLore journaling | Not started |
 | M8 — Production hardening and MVP release | Not started |
@@ -140,7 +140,7 @@ before beginning M6W.
 
 **Acceptance:** Terminal works in foreground; desktop failure on headless server is nonfatal; Telegram retry is bounded; duplicate event does not spam; engine restart restores state and continues after backfill; control socket restricted to current user.
 
-**Offline outcome (2026-11-19):** #25, #26, #27, #28, #30, #31 and optional #32 are implemented, reviewed and closed. Full PostgreSQL/race tests, vet and build passed; see the [offline implementation report](m6-offline-report.md). After the local runtime decision above, funding #29 and recovery/health #33 are implemented; see the [recovery/health report](m6-recovery-report.md). Explicit `start --live` is available on the validated local host. Systemd #34 is implemented, including actual temporary user-service evidence; [combined #35 scenarios](m6-report.md) now compose runtime/control, financial and notification behavior. Final assembled verification/review remains the M6 acceptance gate. M6W is not started.
+**Outcome (2026-11-19):** All M6 slices and combined acceptance are complete. The [M6 report](m6-report.md) records runtime/control, exact financial, funding, recovery, notification and deployment evidence; the [integration review](m6-integration-review.md) records two Standards findings and one Spec finding, all resolved with regressions. Full disposable PostgreSQL/race tests, vet and build use the source-matched `./scripts/check` record. Explicit `start --live` is available on the validated local host; [systemd evidence](m6-systemd-report.md) retains the limits of the temporary user-service journey. M6W is not started. Stop at M6.
 
 ### M6W — Private operational web app
 

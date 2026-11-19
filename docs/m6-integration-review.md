@@ -3,8 +3,7 @@
 All three findings from the assembled review of `integration/m6-operation` at
 `3583218` are addressed. This report supplements the historical
 [M6 review report](m6-review-report.md); it does not replace its offline evidence.
-The final assembled `./scripts/check` after these fixes remains the integration
-owner's separate gate. No claim of that final rerun is made here.
+Final assembled verification after these fixes uses the source-matched `./scripts/check --status` record; see the [acceptance report](m6-report.md).
 
 ## Standards
 
@@ -91,5 +90,4 @@ Passed:
 - `go vet ./internal/app ./internal/store/postgres ./internal/paper ./internal/backtest`
 - `git diff --check`
 
-Status: both Standards findings and the Spec finding are addressed. Final full
-assembled verification remains pending outside this worktree report.
+Status: both Standards findings and the Spec finding are addressed. Final assembled verification is recorded separately by `./scripts/check --status` for the accepted source.
