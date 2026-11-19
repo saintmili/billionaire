@@ -55,8 +55,8 @@ type Observation struct {
 }
 
 type ExecutionGate struct {
-	// Refresh samples runtime readiness after acquiring the financial owner and
-	// reading durable ordering clocks. Pure planners use the supplied Now.
+	// Refresh samples runtime readiness after blocking preparation for each
+	// execution/protection decision. Pure planners use the supplied Now.
 	Refresh func() (time.Time, bool, error)
 	// EntriesBlocked holds new exposure while monitoring recovers; exits still use valid prices.
 	EntriesBlocked bool
@@ -127,6 +127,9 @@ type Execution struct {
 }
 
 type ObservationResult struct {
+	// PriceAccepted is true only for a newly processed, ordered, eligible price.
+	// Duplicate delivery returns false even when the original price was accepted.
+	PriceAccepted bool    `json:"price_accepted"`
 	ObservationID string  `json:"observation_id"`
 	Orders        []Order `json:"orders"`
 	Reason        string  `json:"reason,omitempty"`

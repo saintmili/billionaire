@@ -5,15 +5,20 @@ import (
 	"fmt"
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
+	"github.com/saintmili/billionaire/internal/paper"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 	"sync"
 	"time"
 )
 
-type FeedHealth struct {
+type FundingHealth struct {
 	FundingMissingIntervals int64      `json:"funding_missing_intervals,omitempty"`
 	FundingCoverage         string     `json:"funding_coverage,omitempty"`
 	FundingThrough          *time.Time `json:"funding_through,omitempty"`
+}
+
+type FeedHealth struct {
+	FundingHealth
 	marketdata.FeedState
 	Clock                string    `json:"clock"`
 	Status               string    `json:"status"`
@@ -22,13 +27,11 @@ type FeedHealth struct {
 	EntriesReady         bool      `json:"entries_ready"`
 }
 type ExposureHealth struct {
-	PositionID              string            `json:"position_id"`
-	Instrument              domain.Instrument `json:"instrument"`
-	Monitoring              string            `json:"monitoring"`
-	Limitation              string            `json:"limitation,omitempty"`
-	FundingMissingIntervals int64             `json:"funding_missing_intervals,omitempty"`
-	FundingCoverage         string            `json:"funding_coverage,omitempty"`
-	FundingThrough          *time.Time        `json:"funding_through,omitempty"`
+	PositionID string            `json:"position_id"`
+	Instrument domain.Instrument `json:"instrument"`
+	Monitoring string            `json:"monitoring"`
+	Limitation string            `json:"limitation,omitempty"`
+	FundingHealth
 }
 type HealthSnapshot struct {
 	ObservedAt      time.Time                   `json:"observed_at"`
@@ -58,7 +61,10 @@ func feedKey(i domain.Instrument, f domain.Timeframe) string { return fmt.Sprint
 func NewHealth(s *postgres.Store, o *postgres.PaperOwner, feeds []Subscription, ttl time.Duration) *Health {
 	return &Health{store: s, owner: o, feeds: append([]Subscription(nil), feeds...), ttl: ttl, session: fmt.Sprint(time.Now().UTC().UnixNano()), processed: map[string]FeedHealth{}}
 }
-func (h *Health) Processed(e marketdata.Event, at time.Time) {
+
+// Processed records completed candle deliveries, including skipped and duplicate
+// prices. Only the financial owner's accepted outcome advances price coverage.
+func (h *Health) Processed(e marketdata.Event, at time.Time, outcome *paper.ObservationResult) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	key := feedKey(e.Feed.Instrument, e.Feed.Timeframe)
@@ -66,7 +72,7 @@ func (h *Health) Processed(e marketdata.Event, at time.Time) {
 	old.FeedState = e.Feed
 	if e.Candle != nil {
 		old.LastProcessed = at.UTC()
-		if e.Kind != "recovered_candle" && !e.AvailableAt.After(at) && validPrice(e.Feed, at, h.ttl) {
+		if outcome != nil && outcome.PriceAccepted && e.Kind != "recovered_candle" && !e.AvailableAt.After(at) && validPrice(e.Feed, at, h.ttl) {
 			old.LastValidObservation = e.Candle.ObservedAt.UTC()
 		}
 	}
@@ -171,33 +177,29 @@ func (h *Health) Snapshot(ctx context.Context) (HealthSnapshot, error) {
 		r.EntriesReady = false
 		return r, err
 	}
+	// A snapshot derives each instrument's funding coverage once, so feeds and
+	// exposure use the same observed funding state even during new settlements.
+	fundingByInstrument := map[domain.Instrument]FundingHealth{}
+	fundingFor := func(i domain.Instrument) (FundingHealth, error) {
+		if i.Market != domain.Linear {
+			return FundingHealth{}, nil
+		}
+		if v, ok := fundingByInstrument[i]; ok {
+			return v, nil
+		}
+		v, err := h.instrumentFundingHealth(ctx, i)
+		if err == nil {
+			fundingByInstrument[i] = v
+		}
+		return v, err
+	}
 	for index := range r.Feeds {
-		f := &r.Feeds[index]
-		if f.Instrument.Market != domain.Linear {
-			continue
-		}
-		f.FundingCoverage = "unknown"
-		funding, e := h.store.LatestMonitoringFunding(ctx, f.Instrument)
-		if e != nil {
+		r.Feeds[index].FundingHealth, err = fundingFor(r.Feeds[index].Instrument)
+		if err != nil {
 			r.Database = "unavailable"
 			r.Counts = nil
 			r.EntriesReady = false
-			return r, e
-		}
-		f.FundingMissingIntervals, e = h.store.MissingFundingIntervals(ctx, f.Instrument)
-		if e != nil {
-			r.Database = "unavailable"
-			r.Counts = nil
-			r.EntriesReady = false
-			return r, e
-		}
-		if funding != nil {
-			at := funding.Event.EffectiveAt
-			f.FundingThrough = &at
-			f.FundingCoverage = "supplied"
-			if funding.Warning != "" || f.FundingMissingIntervals > 0 {
-				f.FundingCoverage = "missing"
-			}
+			return r, err
 		}
 	}
 	positions, err := h.store.PaperPositions(ctx, "")
@@ -213,31 +215,14 @@ func (h *Health) Snapshot(ctx context.Context) (HealthSnapshot, error) {
 		}
 		v := ExposureHealth{PositionID: p.ID, Instrument: p.Instrument, Monitoring: "unmonitored", Limitation: "no current valid price: protection and pending closes wait for an eligible observation"}
 
-		if p.Instrument.Market == domain.Linear {
-			v.FundingCoverage = "unknown"
-			funding, e := h.store.LatestMonitoringFunding(ctx, p.Instrument)
-			if e != nil {
-				r.Database = "unavailable"
-				r.Counts = nil
-				r.EntriesReady = false
-				return r, e
-			}
-			v.FundingMissingIntervals, e = h.store.MissingFundingIntervals(ctx, p.Instrument)
-			if e != nil {
-				r.Database = "unavailable"
-				r.Counts = nil
-				r.EntriesReady = false
-				return r, e
-			}
-			if funding != nil {
-				at := funding.Event.EffectiveAt
-				v.FundingThrough = &at
-				v.FundingCoverage = "supplied"
-				if funding.Warning != "" || v.FundingMissingIntervals > 0 {
-					v.FundingCoverage = "missing"
-				}
-			}
+		v.FundingHealth, err = fundingFor(p.Instrument)
+		if err != nil {
+			r.Database = "unavailable"
+			r.Counts = nil
+			r.EntriesReady = false
+			return r, err
 		}
+
 		r.Exposure = append(r.Exposure, v)
 	}
 	// Funding/position reads can block. Sample readiness again after all I/O,
@@ -291,4 +276,25 @@ func (h *Health) Snapshot(ctx context.Context) (HealthSnapshot, error) {
 		}
 	}
 	return r, nil
+}
+
+func (h *Health) instrumentFundingHealth(ctx context.Context, i domain.Instrument) (FundingHealth, error) {
+	v := FundingHealth{FundingCoverage: "unknown"}
+	funding, err := h.store.LatestMonitoringFunding(ctx, i)
+	if err != nil {
+		return v, err
+	}
+	v.FundingMissingIntervals, err = h.store.MissingFundingIntervals(ctx, i)
+	if err != nil {
+		return v, err
+	}
+	if funding != nil {
+		at := funding.Event.EffectiveAt
+		v.FundingThrough = &at
+		v.FundingCoverage = "supplied"
+		if funding.Warning != "" || v.FundingMissingIntervals > 0 {
+			v.FundingCoverage = "missing"
+		}
+	}
+	return v, nil
 }

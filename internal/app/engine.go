@@ -34,10 +34,11 @@ type Options struct {
 	OwnerHealthReady func(*postgres.PaperOwner, *Health) (func(), error)
 }
 type Result struct {
-	Funding         []paper.FundingResult `json:"funding,omitempty"`
-	FundingCoverage string                `json:"funding_coverage,omitempty"`
-	Event           marketdata.Event      `json:"event"`
-	Signals         []strategy.Signal     `json:"signals"`
+	Observation     *paper.ObservationResult `json:"observation,omitempty"`
+	Funding         []paper.FundingResult    `json:"funding,omitempty"`
+	FundingCoverage string                   `json:"funding_coverage,omitempty"`
+	Event           marketdata.Event         `json:"event"`
+	Signals         []strategy.Signal        `json:"signals"`
 }
 type delivery struct {
 	event        marketdata.Event
@@ -184,7 +185,7 @@ func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts 
 			}
 			result, err := process(running, store, owner, d, opts, registry, health)
 			if err == nil {
-				health.Processed(result.Event, d.subscription.Now())
+				health.Processed(result.Event, d.subscription.Now(), result.Observation)
 			}
 			if err == nil && report != nil {
 				err = report(result)
@@ -310,12 +311,14 @@ func process(ctx context.Context, store *postgres.Store, owner *postgres.PaperOw
 	if observation.AvailableAt.After(executionAt) {
 		executionAt = observation.AvailableAt
 	}
-	if _, err := owner.Observe(ctx, observation, paper.ExecutionGate{Now: executionAt, StaleAfter: opts.StaleAfter, Enabled: true, EntriesBlocked: !e.AllowsEntries, Refresh: func() (time.Time, bool, error) {
+	outcome, err := owner.Observe(ctx, observation, paper.ExecutionGate{Now: executionAt, StaleAfter: opts.StaleAfter, Enabled: true, EntriesBlocked: !e.AllowsEntries, Refresh: func() (time.Time, bool, error) {
 		_, ready, err := health.readiness(ctx, &e)
 		return d.subscription.Now().UTC(), ready, err
-	}}); err != nil {
+	}})
+	if err != nil {
 		return result, err
 	}
+	result.Observation = &outcome
 	// The owner may have waited for a DB write or lock. Refresh the strategy
 	// source gate as well; preserved observation identity is never rewritten.
 	_, readyForEvaluation, err := health.readiness(ctx, &e)

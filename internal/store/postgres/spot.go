@@ -161,6 +161,7 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 		if string(canonical) != string(payload) {
 			return result, errors.New("observation ID conflicts with previously recorded content")
 		}
+		result.PriceAccepted = false
 		return result, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -180,17 +181,9 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 	if fundingErr == nil && (observation.ObservedAt.Before(fundingClock.EffectiveAt) || observation.AvailableAt.Before(fundingClock.AvailableAt)) {
 		accepted = false
 	}
-	if gate.Refresh != nil {
-		current, ready, e := gate.Refresh()
-		if e != nil {
-			return result, e
-		}
-		if current.IsZero() {
-			return result, errors.New("runtime execution clock unavailable")
-		}
-		gate.Now = current.UTC()
-		gate.EntriesBlocked = gate.EntriesBlocked || !ready
-
+	gate, err = refreshExecutionGate(gate)
+	if err != nil {
+		return result, err
 	}
 	if !accepted {
 		result.Reason = "out-of-order observation skipped"
@@ -234,6 +227,10 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 				}
 				position = &p
 			}
+			gate, err = refreshExecutionGate(gate)
+			if err != nil {
+				return result, err
+			}
 			orderGate := gate
 			riskReason := ""
 			eligible, _ := paper.ObservationEligibility(order, observation, gate)
@@ -244,8 +241,13 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 					return result, safeError(ctx, ErrUnavailable)
 				}
 			}
+			// Risk preparation can itself wait on policy/control locks and queries.
+			orderGate, err = refreshExecutionGate(orderGate)
+			if err != nil {
+				return result, err
+			}
 			plan, err := paper.PlanFill(order, observation, orderGate, balance, position)
-			if riskReason != "" {
+			if eligible, _ := paper.ObservationEligibility(order, observation, orderGate); eligible && riskReason != "" {
 				plan = paper.Execution{Order: order}
 				plan.Order.Status = "rejected"
 				plan.Order.Reason = riskReason
@@ -263,6 +265,11 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 			result.Orders = append(result.Orders, plan.Order)
 		}
 	}
+	gate, err = refreshExecutionGate(gate)
+	if err != nil {
+		return result, err
+	}
+	result.PriceAccepted = accepted && observation.Ready && !observation.AvailableAt.After(gate.Now) && !gate.Now.Before(observation.ObservedAt) && gate.Now.Sub(observation.ObservedAt) <= gate.StaleAfter
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		return result, errors.New("invalid observation result")
@@ -372,4 +379,22 @@ func (s *Store) PaperFills(ctx context.Context, accountID string) ([]paper.Fill,
 		result = []paper.Fill{}
 	}
 	return result, nil
+}
+
+// Runtime callers refresh after blocking preparation at each decision. Replay
+// callers omit Refresh and retain their explicit virtual execution clock.
+func refreshExecutionGate(gate paper.ExecutionGate) (paper.ExecutionGate, error) {
+	if gate.Refresh == nil {
+		return gate, nil
+	}
+	current, ready, err := gate.Refresh()
+	if err != nil {
+		return gate, err
+	}
+	if current.IsZero() {
+		return gate, errors.New("runtime execution clock unavailable")
+	}
+	gate.Now = current.UTC()
+	gate.EntriesBlocked = gate.EntriesBlocked || !ready
+	return gate, nil
 }

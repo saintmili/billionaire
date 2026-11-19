@@ -151,3 +151,12 @@ its separately built deployment CLI subprocess is an ordinary Go build.
   cancellation is not guaranteed.
 - Journal outbox records remain local pending work; external StopLore delivery is
   M7. M6W, M7 and M8 implementation is not started or authorized by this report.
+
+## Assembled review follow-up
+
+The assembled review's two Standards findings (execution clocks after financial
+waits and duplicated funding-health derivation) and one Spec finding (valid-price
+monitoring after a funding-ordered skip) are addressed in the
+[integration review evidence](m6-integration-review.md). Exact-clock PostgreSQL
+regressions, targeted race tests and vet passed. The final assembled
+`./scripts/check` after these fixes remains a separate pending gate.

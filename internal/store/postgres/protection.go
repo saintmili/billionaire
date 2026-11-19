@@ -26,6 +26,26 @@ func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observa
 	}
 	orders := []paper.Order{}
 	for _, p := range positions {
+		if p.Instrument != observation.Instrument {
+			continue
+		}
+		var balanceText string
+		if err := tx.QueryRow(ctx, `SELECT balance::text FROM billionaire.paper_accounts WHERE id=$1 FOR UPDATE`, p.AccountID).Scan(&balanceText); err != nil {
+			return nil, err
+		}
+		balance, err := domain.ParseDecimal(balanceText)
+		if err != nil {
+			return nil, err
+		}
+
+		gate, err = refreshExecutionGate(gate)
+		if err != nil {
+			return nil, err
+		}
+		if observation.AvailableAt.After(gate.Now) || !observation.Ready || gate.Now.Before(observation.ObservedAt) || gate.Now.Sub(observation.ObservedAt) > gate.StaleAfter {
+			continue
+		}
+
 		decision, err := paper.EvaluateProtection(p, observation)
 		if err != nil {
 			return nil, err
@@ -74,26 +94,18 @@ func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observa
 		if err != nil {
 			return nil, err
 		}
-		payload, err := json.Marshal(order)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_orders(id,account_id,instrument_key,intent_at,status,payload) VALUES($1,$2,$3,$4,$5,$6)`, order.ID, p.AccountID, instrumentKey(p.Instrument), request.At, order.Status, payload); err != nil {
-			return nil, err
-		}
-		var balanceText string
-		if err := tx.QueryRow(ctx, `SELECT balance::text FROM billionaire.paper_accounts WHERE id=$1 FOR UPDATE`, p.AccountID).Scan(&balanceText); err != nil {
-			return nil, err
-		}
-		balance, err := domain.ParseDecimal(balanceText)
-		if err != nil {
-			return nil, err
-		}
 		executable := observation
 		executable.Bar = nil
 		executable.Price = decision.Price
 		plan, err := paper.PlanFill(order, executable, gate, balance, &p)
 		if err != nil {
+			return nil, err
+		}
+		payload, err := json.Marshal(order)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO billionaire.paper_orders(id,account_id,instrument_key,intent_at,status,payload) VALUES($1,$2,$3,$4,$5,$6)`, order.ID, p.AccountID, instrumentKey(p.Instrument), request.At, order.Status, payload); err != nil {
 			return nil, err
 		}
 		if plan.Fill != nil {

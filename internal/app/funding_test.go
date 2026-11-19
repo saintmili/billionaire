@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,5 +126,160 @@ func TestForegroundFundingPrecedesPriceAndRecoversAfterCommittedConsumerFailure(
 	account, err := s.PaperAccount(ctx, a.ID)
 	if err != nil || sum.String() != "960" || !sum.Equal(account.Balance) {
 		t.Fatalf("cash reconciliation %s %+v %v", sum, account, err)
+	}
+}
+
+// The public funding adapter can receive a settlement after the price's
+// availability. A connected, fresh feed alone must not certify that price as
+// financially monitored when the owner rejects it behind the funding clock.
+type delayedFundingProvider struct {
+	marketdata.Provider
+	event    paper.FundingEvent
+	received func()
+}
+
+func (p delayedFundingProvider) Funding(_ context.Context, _ domain.Instrument, from, through time.Time) ([]paper.FundingEvent, error) {
+	if p.event.EffectiveAt.Before(from) || p.event.EffectiveAt.After(through) {
+		return nil, nil
+	}
+	if p.received != nil {
+		p.received()
+	}
+	return []paper.FundingEvent{p.event}, nil
+}
+
+func TestForegroundHealthWaitsForPriceAcceptedAfterDelayedFunding(t *testing.T) {
+	ctx := context.Background()
+	s, err := postgres.Open(ctx, testdb.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	dec := func(v string) domain.Decimal {
+		d, e := domain.ParseDecimal(v)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return d
+	}
+	at := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	i := domain.Instrument{Provider: "fixture", Market: domain.Linear, Base: "BTC", Quote: "USDT", ID: "BTCUSDT"}
+	info := marketdata.InstrumentInfo{Instrument: i, PriceStep: dec("0.01"), QuantityStep: dec("0.001"), MinNotional: dec("1")}
+	a, err := s.CreatePaperAccount(ctx, paper.CreateAccount{RequestID: "health-funding", Name: "Health funding", Currency: "USDT", InitialBalance: "1000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := s.AcquirePaperOwner(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = owner.SubmitOrder(ctx, paper.OrderRequest{RequestID: "entry", AccountID: a.ID, Action: "open", Instrument: i, Side: "long", Quantity: "1", Leverage: 5, At: at.Add(-3 * time.Minute), FeeRate: "0", SlippageBPS: "0", StopPrice: "90"}, info, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = owner.Observe(ctx, paper.Observation{ID: "seed", Instrument: i, Source: "fixture", Price: dec("100"), ObservedAt: at.Add(-2 * time.Minute), AvailableAt: at.Add(-2 * time.Minute), Ready: true}, paper.ExecutionGate{Now: at.Add(-2 * time.Minute), StaleAfter: time.Minute, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	owner.Close()
+	bar := func(n int) domain.Candle {
+		return domain.Candle{Instrument: i, Timeframe: "1m", Source: "fixture", OpenTime: at.Add(time.Duration(n-1) * time.Minute), EndTime: at.Add(time.Duration(n) * time.Minute), ObservedAt: at.Add(time.Duration(n) * time.Minute), Open: dec("100"), High: dec("100"), Low: dec("100"), Close: dec("100"), BaseVolume: dec("1"), Closed: true}
+	}
+	raw, _ := json.Marshal(fixture.Dataset{Version: 1, Instruments: []marketdata.InstrumentInfo{info}, Candles: []domain.Candle{bar(-1)}, Updates: []domain.Candle{bar(0), bar(1)}})
+	path := filepath.Join(t.TempDir(), "health-funding.json")
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := fixture.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rate := "0.01"
+	var receiptOffset atomic.Int64
+	provider := delayedFundingProvider{Provider: p, received: func() { receiptOffset.Store(int64(30 * time.Second)) }, event: paper.FundingEvent{ID: "delayed-settlement", Instrument: i, Source: "fixture", Provenance: "delayed public funding response", EffectiveAt: at, AvailableAt: at.Add(30 * time.Second), Price: dec("100"), Rate: &rate, IntervalMinutes: 1}}
+	clock := func() time.Time { return p.Now().Add(time.Duration(receiptOffset.Load())) }
+	var service *app.Control
+	// Health is the same public owner/control view read by the running CLI.
+	seenSkipped, seenAccepted := false, false
+	lostAcknowledgment := errors.New("injected after accepted price commit before feed acknowledgment")
+	err = app.Run(ctx, s, []app.Subscription{{Provider: provider, Now: clock, Query: marketdata.Query{Instrument: i, Timeframe: "1m", From: at.Add(-2 * time.Minute), To: at.Add(-time.Minute)}}}, app.Options{QueueCapacity: 1, StaleAfter: time.Minute, OwnerHealthReady: func(o *postgres.PaperOwner, h *app.Health) (func(), error) {
+		service = app.NewControl(o, []marketdata.InstrumentInfo{info}, time.Minute, h)
+		return func() {}, nil
+	}}, func(r app.Result) error {
+		if r.Event.Candle == nil || r.Event.Kind == "recovered_candle" {
+			return nil
+		}
+		snapshot, e := service.Health(ctx)
+		if e != nil {
+			return e
+		}
+		if len(snapshot.Exposure) != 1 || len(snapshot.Feeds) != 1 {
+			t.Fatalf("missing health: %+v", snapshot)
+		}
+		f, x := snapshot.Feeds[0], snapshot.Exposure[0]
+		if r.Event.Candle.ObservedAt.Equal(at) {
+			seenSkipped = true
+			if r.Observation == nil || r.Observation.PriceAccepted || r.Observation.Reason != "out-of-order observation skipped" {
+				t.Errorf("owner did not skip old price: %+v", r.Observation)
+			}
+			if !f.LastValidObservation.IsZero() || x.Monitoring != "awaiting_valid_observation" || x.Limitation == "" {
+				t.Errorf("skipped price certified exposure: %+v %+v", f, x)
+			}
+			if !f.LastProcessed.Equal(at.Add(30 * time.Second)) {
+				t.Errorf("processed clock lost skipped delivery: %v", f.LastProcessed)
+			}
+		} else if r.Event.Candle.ObservedAt.Equal(at.Add(time.Minute)) {
+			seenAccepted = true
+			if r.Observation == nil || !r.Observation.PriceAccepted {
+				t.Errorf("owner did not accept later price: %+v", r.Observation)
+			}
+			if !f.LastValidObservation.Equal(at.Add(time.Minute)) || x.Monitoring != "monitored" {
+				t.Errorf("accepted later price not monitored: %+v %+v", f, x)
+			}
+		}
+		if f.FundingCoverage != "supplied" || x.FundingCoverage != "supplied" || f.FundingThrough == nil || x.FundingThrough == nil || !f.FundingThrough.Equal(*x.FundingThrough) {
+			t.Errorf("inconsistent funding health: %+v %+v", f, x)
+		}
+		if seenAccepted {
+			return lostAcknowledgment
+		}
+		return nil
+	})
+	if !errors.Is(err, lostAcknowledgment) || !seenSkipped || !seenAccepted {
+		t.Fatalf("health journey: %v skipped=%v accepted=%v", err, seenSkipped, seenAccepted)
+	}
+
+	// Restart replays stored prices but cannot claim they were accepted by this
+	// monitoring session, even when their original stored outcome was accepted.
+	p, err = fixture.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.Provider = p
+	receiptOffset.Store(0)
+	duplicates := 0
+	err = app.Run(ctx, s, []app.Subscription{{Provider: provider, Now: clock, Query: marketdata.Query{Instrument: i, Timeframe: "1m", From: at.Add(-2 * time.Minute), To: at.Add(-time.Minute)}}}, app.Options{QueueCapacity: 1, StaleAfter: time.Minute, OwnerHealthReady: func(o *postgres.PaperOwner, h *app.Health) (func(), error) {
+		service = app.NewControl(o, []marketdata.InstrumentInfo{info}, time.Minute, h)
+		return func() {}, nil
+	}}, func(r app.Result) error {
+		if r.Event.Candle == nil {
+			return nil
+		}
+		if r.Observation == nil || r.Observation.PriceAccepted {
+			t.Errorf("replayed price certified as newly accepted: %+v", r.Observation)
+		}
+		snapshot, e := service.Health(ctx)
+		if e != nil {
+			return e
+		}
+		if !snapshot.Feeds[0].LastValidObservation.IsZero() || snapshot.Exposure[0].Monitoring == "monitored" || snapshot.Exposure[0].Limitation == "" {
+			t.Errorf("replay certified current-session monitoring: %+v", snapshot)
+		}
+		duplicates++
+		return nil
+	})
+	if err != nil || duplicates == 0 {
+		t.Fatalf("duplicate health journey: %v duplicates=%d", err, duplicates)
 	}
 }

@@ -50,7 +50,7 @@ func TestOwnerHealthRecomputesFreshnessAndNeverTrustsAnEarlierSession(t *testing
 		t.Fatalf("startup trusted persisted readiness: %+v", snapshot)
 	}
 	// Only the current runtime's processed event can establish readiness.
-	h.Processed(marketdata.Event{Feed: marketdata.FeedState{Instrument: info.Instrument, Timeframe: "1m", Connected: true, LastEvent: now, LastClosed: to}}, now)
+	h.Processed(marketdata.Event{Feed: marketdata.FeedState{Instrument: info.Instrument, Timeframe: "1m", Connected: true, LastEvent: now, LastClosed: to}}, now, nil)
 	snapshot, err = h.Snapshot(ctx)
 	if err != nil || !snapshot.EntriesReady {
 		t.Fatalf("ready: %+v %v", snapshot, err)
@@ -106,7 +106,7 @@ func TestHealthGatesNewExposureButReportsValidPriceManagementDuringRecovery(t *t
 		t.Fatalf("startup entry was admitted: %+v %v", original, err)
 	}
 	state := marketdata.FeedState{Instrument: info.Instrument, Timeframe: "1m", Connected: true, LastEvent: now, LastClosed: to}
-	h.Processed(marketdata.Event{Feed: state}, now)
+	h.Processed(marketdata.Event{Feed: state}, now, nil)
 	order.RequestID = "ready-order"
 	payload, _ = json.Marshal(order)
 	command.ID = "ready-control"
@@ -116,12 +116,13 @@ func TestHealthGatesNewExposureButReportsValidPriceManagementDuringRecovery(t *t
 		t.Fatalf("fresh entry rejected: %+v %v", outcome, err)
 	}
 	observation := paper.Observation{ID: "health-price", Instrument: info.Instrument, Source: "fixture", Price: info.MinNotional, ObservedAt: now, AvailableAt: now, Ready: true}
-	if _, err = owner.Observe(ctx, observation, paper.ExecutionGate{Now: now, StaleAfter: time.Minute, Enabled: true}); err != nil {
+	accepted, err := owner.Observe(ctx, observation, paper.ExecutionGate{Now: now, StaleAfter: time.Minute, Enabled: true})
+	if err != nil {
 		t.Fatal(err)
 	}
 	state.Gaps = 1
 	candle := domain.Candle{ObservedAt: now}
-	h.Processed(marketdata.Event{Feed: state, Candle: &candle, AvailableAt: now}, now)
+	h.Processed(marketdata.Event{Feed: state, Candle: &candle, AvailableAt: now}, now, &accepted)
 	snapshot, err := service.Health(ctx)
 	if err != nil || snapshot.EntriesReady || len(snapshot.Exposure) != 1 || snapshot.Exposure[0].Monitoring != "monitored" || snapshot.Counts.OpenPositions != 1 {
 		t.Fatalf("gap health conflated entries/protection: %+v %v", snapshot, err)
