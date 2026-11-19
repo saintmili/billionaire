@@ -72,6 +72,9 @@ type Trade struct {
 	ExcursionBasis  string            `json:"excursion_basis"`
 }
 type Report struct {
+	CapitalDeposits         domain.Decimal  `json:"capital_deposits"`
+	CapitalWithdrawals      domain.Decimal  `json:"capital_withdrawals"`
+	ReturnStatus            string          `json:"return_status"`
 	RunID                   string          `json:"run_id,omitempty"`
 	CashBalance             *domain.Decimal `json:"cash_balance"`
 	LedgerCashReconciled    *bool           `json:"ledger_cash_reconciled"`
@@ -247,6 +250,12 @@ func Trades(in Input, f Filter) (Report, error) {
 	}
 	for _, l := range in.Ledger {
 		r.LedgerTotal = r.LedgerTotal.Add(l.Amount)
+		if l.Kind == "capital_deposit" {
+			r.CapitalDeposits = r.CapitalDeposits.Add(l.Amount)
+		}
+		if l.Kind == "capital_withdraw" {
+			r.CapitalWithdrawals = r.CapitalWithdrawals.Sub(l.Amount)
+		}
 		if l.Kind == "fee" {
 			r.LedgerFees = r.LedgerFees.Sub(l.Amount)
 		}
@@ -264,6 +273,17 @@ func Trades(in Input, f Filter) (Report, error) {
 	} else {
 		r.Equity = append(r.Equity, in.Equity...)
 		equityMetrics(&r, in.InitialCapital)
+	}
+	r.ReturnStatus = "available_without_external_flows"
+	if r.Return == nil {
+		r.ReturnStatus = "unavailable"
+	}
+	if !r.CapitalDeposits.IsZero() || !r.CapitalWithdrawals.IsZero() {
+		r.Return = nil
+		r.MaximumDrawdown = nil
+		r.MaximumDrawdownFraction = nil
+		r.ReturnStatus = "unavailable_external_capital_flows"
+		r.Warnings = append(r.Warnings, "External simulated capital flows are reported separately from trading P&L; return and drawdown are unavailable without cash-flow-timed equity history")
 	}
 	r.Warnings = append(r.Warnings, "Gross/net totals include realized portions and charged entry costs of open positions; outcome rates and expectancy use closed lifecycles only", "Ledger totals are account-wide cash movements including opening capital and collateral, not trade P&L")
 	return r, nil

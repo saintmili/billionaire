@@ -169,7 +169,7 @@ func (s *Store) PaperAccounts(ctx context.Context) ([]paper.Account, error) {
 }
 
 func (s *Store) PaperLedger(ctx context.Context, id string) ([]paper.LedgerEntry, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id,account_id,kind,amount::text,created_at FROM billionaire.paper_ledger_entries WHERE account_id=$1 ORDER BY created_at,id`, id)
+	rows, err := s.pool.Query(ctx, `SELECT id,account_id,kind,amount::text,created_at,reason,request_id,occurred_at FROM billionaire.paper_ledger_entries WHERE account_id=$1 ORDER BY created_at,id`, id)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -178,7 +178,7 @@ func (s *Store) PaperLedger(ctx context.Context, id string) ([]paper.LedgerEntry
 	for rows.Next() {
 		var e paper.LedgerEntry
 		var amount string
-		if err := rows.Scan(&e.ID, &e.AccountID, &e.Kind, &amount, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.AccountID, &e.Kind, &amount, &e.CreatedAt, &e.Reason, &e.RequestID, &e.OccurredAt); err != nil {
 			return nil, safeError(ctx, ErrSchema)
 		}
 		e.Amount, err = domain.ParseDecimal(amount)
