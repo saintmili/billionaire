@@ -93,3 +93,19 @@ func TestTelegramTimeoutAndAbsentCredentialsStaySafe(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTelegramRequestHasStandaloneTwoSecondDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(3 * time.Second):
+		}
+	}))
+	defer server.Close()
+	start := time.Now()
+	err := notify.NewTelegram("123:fixture", "-123456", fixtureTransport{server}).Send(context.Background(), notify.Event{})
+	elapsed := time.Since(start)
+	if err == nil || err.Error() != "telegram_transport" || elapsed > 2800*time.Millisecond {
+		t.Fatalf("unbounded request elapsed=%v err=%v", elapsed, err)
+	}
+}

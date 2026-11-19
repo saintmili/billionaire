@@ -69,3 +69,16 @@ transient failures, rate limits and overflow. Real PostgreSQL exercises duplicat
 queue insertion, per-target independence, delays beyond one hour, restart before
 retry, and final exhaustion. CLI fixtures verify offline validation secrecy and
 missing-credential terminal delivery. No migration or dependency was added.
+
+Verification completed:
+
+- `BILLIONAIRE_TEST_DATABASE_URL=... go test ./...` passed with real PostgreSQL.
+- After merging desktop #31, `go test -race ./internal/notify ./internal/cli ./internal/store/postgres -run 'Telegram|Desktop|Notification' -count=1` passed with real PostgreSQL.
+- `go vet ./...` and `go build ./cmd/billionaire` passed after that merge.
+- The standalone adapter deadline was also exercised with no caller timeout against a slow local server.
+
+One proposed CLI test was rejected by automatic approval review because it would
+construct a real Telegram HTTP client while dispatching. The final CLI dispatch
+test explicitly clears both credential variables and returns before constructing
+an HTTP request. Offline validation alone uses sentinel secret values. All API
+requests in tests go through local protocol transports; no live send was attempted.
