@@ -1,5 +1,7 @@
 # M6 unblocked offline implementation report
 
+**Status update (2026-11-19):** The user selected the local workstation as the intended runtime. Its successful provider run is now [accepted for M2](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19), unblocking #29. Live startup still awaits remaining M6 implementation. The report below preserves the earlier VPS-only acceptance boundary as historical context.
+
 Implemented on `integration/m6-process-notifications` on 2026-11-18–19 under the
 user-approved offline sequencing exception. This report covers the seven unblocked
 tickets, not combined M6 acceptance. All trading remains simulated. Live monitoring

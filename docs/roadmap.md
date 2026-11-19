@@ -1,6 +1,6 @@
 # Billionaire roadmap
 
-**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending on the intended VPS. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. M4 offline paper lifecycle and combined acceptance are complete under its approved sequencing exception; see the [M4 report](m4-report.md). M5 offline backtesting/analytics and combined acceptance are complete under the approved sequencing exception; see the [M5 report](m5-report.md). The seven authorized unblocked offline M6 tickets are implemented and reviewed under the exception below; see the [offline report](m6-offline-report.md). M6 funding and downstream acceptance remain blocked by the pending M2 actual-host gate. Live monitoring remains disabled. See [M0 evidence and limitations](m0-report.md), the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
+**Current state:** M0–M5 implementation and offline acceptance are complete. On 2026-11-19 the user selected the local workstation as the intended runtime and accepted the successful [local host evidence](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19), completing M2 actual-host acceptance for that machine. Seven offline M6 tickets are implemented and reviewed; #29 is now eligible, followed by #33, #34 and #35 in dependency order. Live monitoring remains disabled pending the M6 live startup implementation and acceptance. M6W and later milestones remain gated on M6 acceptance. A future VPS deployment requires validation on that host.
 
 Read [the specification](spec.md) for requirements and [technical design](design.md) for the proposed baseline. Track implementation tickets and their dependencies in GitHub Issues using [the tracker conventions](agents/issue-tracker.md).
 
@@ -10,11 +10,11 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | --- | --- |
 | M0 — Repository reconnaissance and technical design | Complete — [evidence](m0-report.md), [StopLore map](stoplore-integration.md) |
 | M1 — Project scaffolding and durable storage | Complete — [evidence](m1-report.md) |
-| M2 — Market data and historical synchronization | Implemented; offline checks pass; [live-host gate pending](m2-report.md) |
+| M2 — Market data and historical synchronization | Complete for the local runtime — [accepted host evidence](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19) |
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
-| M4 — Paper accounts, orders, risk, and position lifecycle | Complete under offline sequencing exception — [combined acceptance evidence](m4-report.md); M2 live-host gate remains pending |
-| M5 — First-class backtesting and analytics | Complete under offline sequencing exception — [combined acceptance and operating guide](m5-report.md), including #17–#22 slices; M2 live-host gate remains pending; stop at M5 |
-| M6 — Notifications and process operation | Seven unblocked offline tickets complete — [implementation/review evidence](m6-offline-report.md); #29 and downstream acceptance remain blocked by M2 actual-host validation |
+| M4 — Paper accounts, orders, risk, and position lifecycle | Complete under offline sequencing exception — [combined acceptance evidence](m4-report.md); M2 local-host gate subsequently accepted on 2026-11-19 |
+| M5 — First-class backtesting and analytics | Complete under offline sequencing exception — [combined acceptance and operating guide](m5-report.md), including #17–#22 slices; M2 local-host gate subsequently accepted on 2026-11-19; stop at M5 |
+| M6 — Notifications and process operation | Seven unblocked offline tickets complete — [implementation/review evidence](m6-offline-report.md); #29 is eligible after local-host acceptance; remaining tickets follow dependency order |
 | M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
 | M7 — StopLore journaling | Not started |
 | M8 — Production hardening and MVP release | Not started |
@@ -81,10 +81,7 @@ monitoring is enabled. This exception does not waive that gate. Stop at M4.
 
 **Acceptance:** Fetch and persist BTC/USDT and ETH/USDT candles in spot/linear categories, including 2 timeframes; reconnect+gap test; duplicates don't double insert; stale source prevents new auto entries (integrated later). Offline fixtures run without network.
 
-**Local validation follow-up (2026-11-18):** Ticket #24 now provides a repeatable
-opt-in host check and preliminary [local evidence](m2-local-validation-report.md).
-The intended runtime is a separate VPS; its actual-host acceptance remains pending
-and live monitoring stays disabled. See the [VPS/local procedure](m2-host-validation.md).
+**Local runtime acceptance (2026-11-19):** The user selected the workstation as the intended runtime. The successful 2026-11-18 [local evidence](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19) satisfies #24 for this host. Original evidence retains its historical pending flag; this reviewed acceptance supersedes that status. See the [host procedure](m2-host-validation.md). Live startup remains disabled until its M6 implementation is complete.
 
 ### M3 — Strategy runtime and reference strategies
 
@@ -115,7 +112,7 @@ monitoring is enabled. This exception does not waive that gate. Stop at M5.
 
 **Outcome (2026-11-18):** Offline gate passed against fixtures and real PostgreSQL, including complete forward-state isolation, CLI spot/linear analytics/export, frozen determinism, changed assumptions, compatible normal-paper economic agreement, cancellation/failure/restart and separate chronological sample reports. Full tests, practical race checks, vet and build passed; see [evidence and limitations](m5-report.md). M2 actual-host validation remains pending; live monitoring remains disabled and no later milestone is started.
 
-### Sequencing exception: unblocked offline M6 work
+### Sequencing exception: unblocked offline M6 work (historical; superseded below)
 
 On 2026-11-18, the user invoked `/implement-spec` after M5 acceptance and
 confirmed completing the unblocked M6 work while the intended VPS is unavailable.
@@ -125,13 +122,25 @@ actual-host gate #24 remains authoritative: do not start #29, its downstream
 recovery/health ticket #33, systemd ticket #34 or combined acceptance #35.
 Live monitoring remains disabled. Do not claim M6 acceptance or begin M6W.
 
+### Local runtime decision (2026-11-19)
+
+The user chose to proceed on the local workstation rather than wait for a VPS.
+Accept the reviewed eight-check local provider run as M2 actual-host evidence for
+that workstation. This supersedes the VPS-only blocker and the preceding M6
+restriction: #29 may proceed, with #33, #34 and #35 following their native
+blocking edges. Retain systemd/deployment documentation scope; no VPS provisioning
+is required for local acceptance. Future VPS operation requires a host check there.
+M6 must implement explicit live startup acceptance and ongoing freshness controls;
+this documentation decision does not enable monitoring or accept M6. Stop at M6
+before beginning M6W.
+
 ### M6 — Notifications and process operation
 
 **Tasks:** Terminal, Linux desktop and optional Telegram channels, outbox/retry/suppression, application daemon lifecycle, Unix control socket, safe CLI commands, graceful shutdown, single-engine ownership, systemd deployment unit and VPS runbook.
 
 **Acceptance:** Terminal works in foreground; desktop failure on headless server is nonfatal; Telegram retry is bounded; duplicate event does not spam; engine restart restores state and continues after backfill; control socket restricted to current user.
 
-**Offline outcome (2026-11-19):** #25, #26, #27, #28, #30, #31 and optional #32 are implemented, reviewed and closed. Full PostgreSQL/race tests, vet and build passed; see the [offline implementation report](m6-offline-report.md). Funding #29, recovery/health #33, systemd #34 and combined acceptance #35 remain blocked by actual-host validation #24. Live monitoring remains disabled; M6 is not accepted and M6W is not started.
+**Offline outcome (2026-11-19):** #25, #26, #27, #28, #30, #31 and optional #32 are implemented, reviewed and closed. Full PostgreSQL/race tests, vet and build passed; see the [offline implementation report](m6-offline-report.md). After the local runtime decision above, funding #29 is eligible; recovery/health #33, systemd #34 and combined acceptance #35 follow dependency order. Live monitoring remains disabled; M6 is not accepted and M6W is not started.
 
 ### M6W — Private operational web app
 

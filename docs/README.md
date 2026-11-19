@@ -10,7 +10,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 | [Glossary](../GLOSSARY.md) | Established domain terms |
 | [Agent configuration](../AGENTS.md) | When to read tracker, triage, domain, and project instructions |
 
-**Current milestone:** M5 offline acceptance is complete. The seven authorized unblocked M6 tickets are implemented and reviewed; see the [offline implementation report](m6-offline-report.md). M2 actual-host validation remains pending, live monitoring remains disabled, and M6 combined acceptance and later milestones remain blocked.
+**Current milestone:** M5 offline acceptance is complete. The seven authorized unblocked M6 tickets are implemented and reviewed; see the [offline implementation report](m6-offline-report.md). M2 actual-host validation is accepted for the local workstation as of 2026-11-19; #29 is eligible, followed by #33–#35 in dependency order. Live startup remains disabled pending M6 implementation; M6 combined acceptance and later milestones remain pending.
 
 - [M6 offline implementation report](m6-offline-report.md): completed unblocked scope, independent review, verification and remaining gates.
 - [M6 review evidence](m6-review-report.md): notification cooldown/pagination corrections and shared risk-policy persistence.
@@ -28,7 +28,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 - [M0 report](m0-report.md): bootstrap, provider evidence, commands and remaining gates.
 - [M1 report](m1-report.md): CLI/configuration, PostgreSQL migrations, verification and limitations.
 - [M2 report](m2-report.md): public market data, offline fixtures, candle persistence, synchronization and freshness.
-- [M2 local validation report](m2-local-validation-report.md): ticket #24 local checks and host-discovered stream fix; [repeatable procedure](m2-host-validation.md). VPS acceptance remains pending.
+- [M2 local validation report](m2-local-validation-report.md): ticket #24 local checks and host-discovered stream fix; [repeatable procedure](m2-host-validation.md). Local runtime acceptance is recorded in the report; a future VPS needs its own host validation.
 - [M3 report](m3-report.md): immutable strategies, rules, snapshots, emission policies and signal persistence.
 - [M4 acceptance report](m4-report.md): combined offline lifecycle, CLI/JSON, exact reconciliation, failure/replay/concurrency evidence and operating limits.
 - [M4 account slice report](m4-accounts-report.md): ticket #1 account/ledger, offline ownership and verification.

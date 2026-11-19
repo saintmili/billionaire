@@ -1,11 +1,13 @@
 # M2 opt-in host validation
 
-Ticket #24 adds a bounded evidence command. This workstation is local; the intended
-runtime is a separate VPS. Local checks cannot accept the actual-host gate. M2
-acceptance and #24 remain pending, live monitoring remains disabled, and M6 has
-not started.
+Ticket #24 provides a bounded evidence command. On 2026-11-19 the user selected
+the local workstation as the intended runtime, and the successful 2026-11-18 run
+was [reviewed and accepted](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19)
+for that host. A separate VPS is no longer a prerequisite for local progress.
+A future VPS deployment requires its own host validation. Live engine startup
+remains disabled pending the remaining M6 implementation and acceptance.
 
-## Run locally, then repeat on the intended VPS
+## Run on the intended runtime host
 
 Use a dedicated disposable PostgreSQL database, with the normal configuration's
 `storage.dsn_env` naming its secret environment variable. Do not run another
@@ -23,7 +25,7 @@ umask 077
   > host-validation.json 2> host-validation.log
 ```
 
-On the VPS, repeat with `--host-role intended-runtime`. Keep the command's exit
+For a future VPS or another intended runtime, repeat there with `--host-role intended-runtime`. Keep the command's exit
 status alongside stdout and diagnostics; record the checkout's `git rev-parse HEAD`
 and `go version` separately. The evidence includes UTC start/end, machine hostname,
 role, effective public endpoints, reproducible validation flags, and eight separate
@@ -85,7 +87,7 @@ milestone acceptance; the flag is a provenance label, not approval.
 
 M6 must add an explicit, fail-closed startup prerequisite against reviewed,
 successful evidence for the intended runtime host and provider/endpoints. Merely
-finding candles, a healthy feed, a local report, or passing `--host-role
+finding candles, a healthy feed, an unreviewed local report, or passing `--host-role
 intended-runtime` must not enable live monitoring. It must retain a distinct runtime
 freshness gate after actual-host acceptance: `FeedState.AllowsEntries` blocks stale,
 gapped and disconnected feeds. This ticket does not implement the M6 engine,

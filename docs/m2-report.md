@@ -1,5 +1,7 @@
 # M2 market data and historical synchronization
 
+**Status update (2026-11-19):** The user selected the local workstation as the intended runtime. Its successful provider run is now [accepted for M2](m2-local-validation-report.md#local-runtime-acceptance-2026-11-19), unblocking #29. Live startup still awaits remaining M6 implementation. The report below preserves the earlier VPS-only acceptance boundary as historical context.
+
 Implemented 2026-11-12 against baseline `d54b0c8`. M2 adds read-only market
 observations and durable candles. No strategies, paper entries, daemon, or
 StopLore integration were implemented.

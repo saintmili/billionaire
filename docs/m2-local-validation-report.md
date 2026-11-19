@@ -1,5 +1,7 @@
 # M2 local host validation — ticket #24
 
+**Current status:** Local runtime accepted on 2026-11-19; see the [acceptance addendum](#local-runtime-acceptance-2026-11-19). The original report below records the earlier VPS plan.
+
 Date: 2026-11-18. This workstation is the user's local system; Billionaire's
 intended runtime is a separate VPS. This report records preliminary local evidence,
 not M2 actual-host acceptance. Ticket #24 remains open and live monitoring remains
@@ -116,3 +118,23 @@ the checkout/toolchain and sanitized evidence, and review all eight results befo
 accepting M2 or closing #24. Local connectivity does not establish VPS connectivity.
 No report or host-role flag automatically enables monitoring. M6 must implement
 the documented fail-closed startup prerequisite and ongoing freshness checks.
+
+## Local runtime acceptance (2026-11-19)
+
+The user selected this local workstation as the intended runtime instead of waiting
+for the separate VPS. The reviewed 2026-11-18 run on host `arch`, from
+14:49:49Z to 14:54:09Z, passed all eight BTC/ETH × spot/linear × 1m/3m checks.
+The structured evidence was rechecked for complete stages, passed checks, unchanged
+duplicate writes, persisted stream closes, forced disconnect/recovery and stale,
+gap and disconnected entry rejection. M2 actual-host acceptance is complete for
+this local machine and the recorded public Bybit endpoints; #24 can close.
+
+The original JSON and its `host_role: local`, pending gate and disabled-monitoring
+flags remain unchanged as historical evidence. This addendum records the later
+reviewed acceptance; no new network run or VPS success is claimed. Stale/gap
+probes remain synthetic. A future VPS deployment needs validation on that host.
+
+This acceptance unblocks #29. Live engine startup remains disabled in the current
+implementation; M6 must enforce explicit accepted-host/provider evidence and
+runtime freshness, complete funding/recovery/operation and combined acceptance.
+M6W and later milestones remain gated on M6 acceptance.
