@@ -6,12 +6,13 @@ strategies and recorded signals. M4 now adds durable paper accounts and an openi
 ledger, offline spot/linear orders, risk controls, signal approval, protective exits,
 funding and approximate isolated liquidation. M5 adds isolated spot/linear historical
 replay, frozen manifests, trade/signal analytics, comparison and JSON/CSV exports.
-[M5 offline acceptance is complete](docs/m5-report.md); M2 actual-host validation
-remains pending and live monitoring remains disabled. The [unblocked offline M6
-slices](docs/m6-offline-report.md) add the foreground fixture engine, private owner
-controls, capital adjustments, strategy exits and durable terminal/desktop/Telegram
-notifications. Funding, recovery/health, systemd and combined M6 acceptance remain
-blocked; later milestones remain unstarted.
+[M5 offline acceptance is complete](docs/m5-report.md), and M2 public-provider
+validation is [accepted for the local workstation](docs/m2-local-validation-report.md#local-runtime-acceptance-2026-11-19).
+The [offline M6 slices](docs/m6-offline-report.md), [monitored funding](docs/m6-funding-report.md)
+and [recovery/health slice](docs/m6-recovery-report.md) provide private owner
+controls, paper execution and notifications. `start --live` explicitly selects
+public live data on that validated host; every order remains simulated. Systemd
+and combined M6 acceptance remain pending; later milestones remain unstarted.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -128,7 +129,8 @@ use the current user's private Unix socket. Start the fixture owner with
 `start --fixture PATH --hold` to keep it available, and use stable `--request-id`
 values for every mutation. See the [control workflow and recovery contract](docs/m6-control-report.md)
 and [runtime configuration](docs/m6-runtime-report.md), including the shipped
-M2 fixture's required `engine.lookback: 1`. Live monitoring remains disabled.
+M2 fixture's required `engine.lookback: 1`. Use explicit `start --live` for public
+monitoring on the validated local host; see the [startup/health contract](docs/m6-recovery-report.md).
 
 The standalone fixture/setup commands below explicitly select `--offline`.
 Stop the foreground owner before using them: ownership conflicts fail and never
@@ -177,7 +179,8 @@ you to retry with the same request ID.
 An `account_opened` financial outbox event is recorded locally; it does not call
 StopLore or imply that StopLore supports an account event. Mapping/reconciliation
 and delivery belong to M7. M4 remains fixture-driven under its approved sequencing
-exception; M2 actual-host validation is still required before live monitoring.
+exception; the current local-host acceptance and explicit startup contract are
+recorded in the [recovery/health guide](docs/m6-recovery-report.md).
 
 ## Manual spot execution (M4, ticket #2)
 
@@ -254,8 +257,8 @@ events cannot fill a newly submitted intent. Both original clocks retain nanosec
 precision in durable JSON, independent of PostgreSQL's timestamp precision.
 Restart restores pending intents; retry an uncertain commit with the same request
 or observation identity. `storage.timeout` bounds each offline invocation, and the
-existing dedicated-session ownership excludes competing processes. M2 live-host
-validation remains pending; this command never enables live monitoring.
+existing dedicated-session ownership excludes competing processes. These offline
+commands do not start monitoring; the foreground source is selected explicitly.
 
 ## Protective spot exits
 
@@ -710,7 +713,7 @@ atomic replay behavior. No StopLore delivery occurs in M4.
 For isolated historical replay, frozen-input reruns, comparison/export, recovery
 and separate train/test examples, see the [M5 operating guide](docs/m5-report.md)
 and [historical selection details](docs/m5-historical-replay-report.md). Start with
-`billionaire backtest run --help`; live monitoring remains disabled.
+`billionaire backtest run --help`; backtests remain isolated from monitoring.
 
 Trade performance is available through `billionaire backtest trades RUN-ID
 --output json` or `billionaire report trades --scope forward-paper --account
@@ -730,15 +733,24 @@ Linear historical runs add `--market linear --leverage 2 --funding-file testdata
 spot/linear and 1m/3m. Run against a dedicated initialized disposable database.
 It deliberately interrupts streams to exercise backfill; default CI stays offline.
 See the [host validation procedure](docs/m2-host-validation.md) before running or
-sharing evidence. Repeat on the intended VPS; local results leave M2 acceptance
-pending and live monitoring disabled.
+sharing evidence. The local workstation evidence was accepted on 2026-11-19.
+A future VPS requires its own host validation before using `start --live` there.
 
-## Foreground fixture engine
+## Foreground paper engine
 
 `billionaire start --fixture testdata/market/m2.json` supervises configured
 subscriptions, strategies and paper execution under a single PostgreSQL owner.
 See [runtime configuration, commands, recovery and verification](docs/m6-runtime-report.md).
-M2 actual-host acceptance remains pending; live start is disabled.
+The validated local host can intentionally select `billionaire start --live`.
+Choose exactly one source; missing selection or mixing `--live` and `--fixture`
+fails before network/database access. Live mode keeps the owner running until
+interrupted; fixtures finish unless `--hold` is set. Public access is read-only.
+
+`billionaire status --output json` refreshes the owner through its private socket
+and reports connectivity, database/ownership, per-feed recovery/freshness, valid
+exposure monitoring and operational counts. Disconnected, stale and unmonitored
+feeds block new exposure; a valid observed price can still manage protection.
+See [commands, status fields and recovery limits](docs/m6-recovery-report.md).
 
 Optional Telegram delivery is configured with environment references under
 `notifications.telegram`; select `telegram` in `notifications.targets`. See the

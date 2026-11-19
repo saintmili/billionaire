@@ -18,7 +18,7 @@ func TestStartDocumentsOfflineGateAndRejectsLiveBeforeDatabase(t *testing.T) {
 	if err := executeOffline(context.Background(), []string{"start", "--help"}, &out, &logs); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "--fixture") {
+	if !strings.Contains(out.String(), "--fixture") || !strings.Contains(out.String(), "--live") {
 		t.Fatalf("help missing fixture mode: %s", &out)
 	}
 }
@@ -36,7 +36,7 @@ func TestStartConfiguredFixtureSubscriptionsThroughCLI(t *testing.T) {
 	}
 	out.Reset()
 	logs.Reset()
-	if err := executeOffline(context.Background(), []string{"start", "--config", path, "--output", "json"}, &out, &logs); err == nil || !strings.Contains(err.Error(), "actual-host") {
+	if err := executeOffline(context.Background(), []string{"start", "--config", path, "--output", "json"}, &out, &logs); err == nil || !strings.Contains(err.Error(), "select exactly one") {
 		t.Fatalf("live gate: %v", err)
 	}
 	out.Reset()

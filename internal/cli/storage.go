@@ -11,7 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/saintmili/billionaire/configs"
+	"github.com/saintmili/billionaire/internal/app"
 	"github.com/saintmili/billionaire/internal/config"
+	"github.com/saintmili/billionaire/internal/control"
+	"github.com/saintmili/billionaire/internal/marketdata"
 	"github.com/saintmili/billionaire/internal/store/postgres"
 )
 
@@ -43,17 +46,32 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 		}
 		result := struct {
 			postgres.Status
-			Mode       string `json:"mode"`
-			Database   string `json:"database"`
-			Engine     string `json:"engine"`
-			KillSwitch bool   `json:"kill_switch"`
+			Mode               string              `json:"mode"`
+			Database           string              `json:"database"`
+			Engine             string              `json:"engine"`
+			KillSwitch         bool                `json:"kill_switch"`
+			ObservedAt         time.Time           `json:"observed_at"`
+			EngineConnectivity string              `json:"engine_connectivity"`
+			Health             *app.HealthSnapshot `json:"health"`
 		}{Status: postgres.Status{RequiredVersion: postgres.LatestVersion}, Mode: "paper", Database: "unavailable", Engine: "unavailable"}
+		result.ObservedAt = time.Now().UTC()
+		result.EngineConnectivity = "unavailable"
+		if snapshot, e := control.ReadHealth(cmd.Context(), o.controlSocket); snapshot != nil {
+			result.Health = snapshot
+			if e == nil {
+				result.EngineConnectivity = "connected"
+			}
+		}
 		err = o.database(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
 			state, err := store.Status(ctx)
 			if err != nil {
 				return err
 			}
 			result.Status = state
+			if !state.Initialized {
+				result.Health = nil
+				result.EngineConnectivity = "unavailable"
+			}
 			result.Database = "uninitialized"
 			if state.Initialized {
 				result.Database = "ready"
@@ -70,13 +88,51 @@ func (o *options) addStorageCommands(root *cobra.Command) {
 					return err
 				}
 				result.KillSwitch = on
+				counts, e := store.OperationalCounts(ctx)
+				if e != nil {
+					return e
+				}
+				if result.Health != nil && (!running || result.Health.Counts == nil || result.Health.Counts.DatabaseIdentity != counts.DatabaseIdentity) {
+					result.Health = nil
+					result.EngineConnectivity = "unavailable_or_configuration_mismatch"
+				}
+				if result.Health == nil {
+					result.Health = &app.HealthSnapshot{ObservedAt: time.Now().UTC(), Database: "ready", Ownership: "none", Counts: counts, Feeds: []app.FeedHealth{}, Exposure: []app.ExposureHealth{}, JournalDelivery: "not_implemented_pending_M7"}
+					if running {
+						result.Health.Ownership = "held_health_unavailable"
+					}
+					for _, instrument := range cfg.MarketData.Instruments {
+						for _, frame := range instrument.Timeframes {
+							f := marketFlags{market: instrument.Market, symbol: instrument.Symbol, frame: frame}
+							i, tf, e := f.identity("bybit")
+							if e != nil {
+								return e
+							}
+							result.Health.Feeds = append(result.Health.Feeds, app.FeedHealth{FeedState: marketdata.FeedState{Instrument: i, Timeframe: tf}, Status: "unmonitored"})
+						}
+					}
+					positions, e := store.PaperPositions(ctx, "")
+					if e != nil {
+						return e
+					}
+					for _, p := range positions {
+						if p.Status == "open" {
+							result.Health.Exposure = append(result.Health.Exposure, app.ExposureHealth{PositionID: p.ID, Instrument: p.Instrument, Monitoring: "unmonitored", Limitation: "no authoritative owner health; valid ongoing observations are unconfirmed"})
+						}
+					}
+				}
 			}
 			return nil
 		})
+		if err != nil && result.Health != nil {
+			result.Health.Database = "unavailable"
+			result.Health.Counts = nil
+			result.Health.EntriesReady = false
+		}
 		if errors.Is(err, postgres.ErrSchema) {
 			result.Database = "incompatible"
 		}
-		if outputErr := o.write(result, fmt.Sprintf("Mode: paper\nDatabase: %s (schema %d/%d)\nEngine: %s\nKill switch: %t", result.Database, result.Version, result.RequiredVersion, result.Engine, result.KillSwitch)); outputErr != nil {
+		if outputErr := o.write(result, fmt.Sprintf("Mode: paper\nDatabase: %s (schema %d/%d)\nEngine: %s\nKill switch: %t\nOwner health: %s\nEntries ready: %t", result.Database, result.Version, result.RequiredVersion, result.Engine, result.KillSwitch, result.EngineConnectivity, result.Health != nil && result.Health.EntriesReady)+healthText(result.Health)); outputErr != nil {
 			return outputErr
 		}
 		if err != nil {
@@ -154,4 +210,23 @@ func createConfig(path string) (bool, error) {
 		return false, errors.New("config: cannot finish writing file")
 	}
 	return true, nil
+}
+
+func healthText(h *app.HealthSnapshot) string {
+	if h == nil {
+		return "\nOperational aggregates: unknown"
+	}
+	text := fmt.Sprintf("\nHealth observed: %s; ownership: %s", h.ObservedAt.Format(time.RFC3339Nano), h.Ownership)
+	for _, f := range h.Feeds {
+		text += fmt.Sprintf("\n%s %s %s: %s, connected=%t gaps=%d last_processed=%s", f.Instrument.Market, f.Instrument.ID, f.Timeframe, f.Status, f.Connected, f.Gaps, f.LastProcessed.Format(time.RFC3339Nano))
+	}
+	for _, p := range h.Exposure {
+		text += fmt.Sprintf("\nPosition %s: %s — %s", p.PositionID, p.Monitoring, p.Limitation)
+	}
+	if c := h.Counts; c != nil {
+		text += fmt.Sprintf("\nActive instances: %d; signals: %d; open positions: %d; pending orders: %d\nBacktests running/completed/failed/cancelled: %d/%d/%d/%d\nNotification failures: %d; pending/inflight: %d\nJournal pending: %d (delivery pending M7)", c.ActiveInstances, c.Signals, c.OpenPositions, c.PendingOrders, c.BacktestsRunning, c.BacktestsCompleted, c.BacktestsFailed, c.BacktestsCancelled, c.NotificationFailures, c.NotificationsPending, c.JournalPending)
+	} else {
+		text += "\nOperational aggregates: unknown"
+	}
+	return text
 }

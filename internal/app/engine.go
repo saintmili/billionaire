@@ -26,11 +26,12 @@ type Subscription struct {
 	Query    marketdata.Query
 }
 type Options struct {
-	KeepAlive     bool
-	QueueCapacity int
-	StaleAfter    time.Duration
-	Quantity      string
-	OwnerReady    func(*postgres.PaperOwner) (func(), error)
+	KeepAlive        bool
+	QueueCapacity    int
+	StaleAfter       time.Duration
+	Quantity         string
+	OwnerReady       func(*postgres.PaperOwner) (func(), error)
+	OwnerHealthReady func(*postgres.PaperOwner, *Health) (func(), error)
 }
 type Result struct {
 	Funding         []paper.FundingResult `json:"funding,omitempty"`
@@ -78,6 +79,14 @@ func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts 
 		return err
 	}
 	defer owner.Close()
+	health := NewHealth(store, owner, feeds, opts.StaleAfter)
+	if opts.OwnerHealthReady != nil {
+		stop, err := opts.OwnerHealthReady(owner, health)
+		if err != nil {
+			return err
+		}
+		defer stop()
+	}
 	if opts.OwnerReady != nil {
 		stop, err := opts.OwnerReady(owner)
 		if err != nil {
@@ -173,7 +182,10 @@ func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts 
 			if err := running.Err(); err != nil {
 				return nil
 			}
-			result, err := process(running, store, owner, d, opts, registry)
+			result, err := process(running, store, owner, d, opts, registry, health)
+			if err == nil {
+				health.Processed(result.Event, d.subscription.Now())
+			}
 			if err == nil && report != nil {
 				err = report(result)
 			}
@@ -189,23 +201,25 @@ func Run(ctx context.Context, store *postgres.Store, feeds []Subscription, opts 
 	return nil
 }
 
-func process(ctx context.Context, store *postgres.Store, owner *postgres.PaperOwner, d delivery, opts Options, registry *strategy.Registry) (Result, error) {
+func process(ctx context.Context, store *postgres.Store, owner *postgres.PaperOwner, d delivery, opts Options, registry *strategy.Registry, health *Health) (Result, error) {
 	e := d.event
 	result := Result{Event: e, Signals: []strategy.Signal{}}
 	if err := owner.Check(ctx); err != nil {
 		return result, err
 	}
-	atFresh := e.AvailableAt
-	if atFresh.IsZero() {
-		atFresh = d.subscription.Now().UTC()
-	}
-	if !e.Feed.LastEvent.IsZero() {
-		key := fmt.Sprint(e.Feed.Instrument, e.Feed.Timeframe)
-		if err := store.ObserveFreshness(ctx, key, fmt.Sprintf("%s:%s:%s", e.Feed.Instrument.Provider, e.Feed.Instrument.Market, e.Feed.Instrument.ID), string(e.Feed.Timeframe), e.AllowsEntries, atFresh, "feed readiness changed"); err != nil {
+	if e.Candle == nil {
+		_, ready, err := health.readiness(ctx, &e)
+		if err != nil {
 			return result, err
 		}
-	}
-	if e.Candle == nil {
+		now := d.subscription.Now().UTC()
+		e.AllowsEntries = e.AllowsEntries && e.Feed.AllowsEntries(now, opts.StaleAfter) && ready
+		result.Event = e
+		if !e.Feed.LastEvent.IsZero() {
+			if err := store.ObserveFreshness(ctx, feedKey(e.Feed.Instrument, e.Feed.Timeframe), fmt.Sprintf("%s:%s:%s", e.Feed.Instrument.Provider, e.Feed.Instrument.Market, e.Feed.Instrument.ID), string(e.Feed.Timeframe), e.AllowsEntries, now, "feed readiness changed"); err != nil {
+				return result, err
+			}
+		}
 		return result, nil
 	}
 	at, err := strategy.EventTime(e)
@@ -268,8 +282,21 @@ func process(ctx context.Context, store *postgres.Store, owner *postgres.PaperOw
 			}
 		}
 	}
+	// Revalidate after potentially slow warm-up, metadata and funding retrieval.
+	// Availability is immutable event identity; the execution clock is current.
+	_, entriesReady, err := health.readiness(ctx, &e)
+	if err != nil {
+		return result, err
+	}
+	now := d.subscription.Now().UTC()
+	e.AllowsEntries = !at.After(now) && e.AllowsEntries && e.Feed.AllowsEntries(now, opts.StaleAfter) && entriesReady && e.Kind != "recovered_candle"
+	result.Event = e
+	key := feedKey(e.Feed.Instrument, e.Feed.Timeframe)
+	if err := store.ObserveFreshness(ctx, key, fmt.Sprintf("%s:%s:%s", e.Feed.Instrument.Provider, e.Feed.Instrument.Market, e.Feed.Instrument.ID), string(e.Feed.Timeframe), e.AllowsEntries, now, "feed readiness changed"); err != nil {
+		return result, err
+	}
 	// Consume only earlier intents. Recovered prices never open new positions.
-	observation := paper.Observation{ID: marketdata.EventID(*e.Candle), Instrument: e.Candle.Instrument, Source: e.Candle.Source, Price: e.Candle.Close, ObservedAt: e.Candle.ObservedAt, AvailableAt: at, Ready: e.AllowsEntries && e.Kind != "recovered_candle"}
+	observation := paper.Observation{ID: marketdata.EventID(*e.Candle), Instrument: e.Candle.Instrument, Source: e.Candle.Source, Price: e.Candle.Close, ObservedAt: e.Candle.ObservedAt, AvailableAt: at, Ready: !at.After(now) && validPrice(e.Feed, now, opts.StaleAfter) && e.Kind != "recovered_candle"}
 	prior, err := store.RecordedPaperObservation(ctx, observation)
 	if err != nil {
 		return result, err
@@ -277,9 +304,27 @@ func process(ctx context.Context, store *postgres.Store, owner *postgres.PaperOw
 	if prior != nil {
 		observation = *prior
 	}
-	if _, err := owner.Observe(ctx, observation, paper.ExecutionGate{Now: at, StaleAfter: opts.StaleAfter, Enabled: true}); err != nil {
+	// A restarted fixture clock can precede an immutable pending availability.
+	// Record/replay it without execution eligibility; never backdate its identity.
+	executionAt := now
+	if observation.AvailableAt.After(executionAt) {
+		executionAt = observation.AvailableAt
+	}
+	if _, err := owner.Observe(ctx, observation, paper.ExecutionGate{Now: executionAt, StaleAfter: opts.StaleAfter, Enabled: true, EntriesBlocked: !e.AllowsEntries, Refresh: func() (time.Time, bool, error) {
+		_, ready, err := health.readiness(ctx, &e)
+		return d.subscription.Now().UTC(), ready, err
+	}}); err != nil {
 		return result, err
 	}
+	// The owner may have waited for a DB write or lock. Refresh the strategy
+	// source gate as well; preserved observation identity is never rewritten.
+	_, readyForEvaluation, err := health.readiness(ctx, &e)
+	if err != nil {
+		return result, err
+	}
+	evaluationNow := d.subscription.Now().UTC()
+	e.AllowsEntries = e.AllowsEntries && readyForEvaluation && e.Feed.AllowsEntries(evaluationNow, opts.StaleAfter) && !at.After(evaluationNow)
+	result.Event = e
 	instances, err := store.StrategyInstances(ctx)
 	if err != nil {
 		return result, err
