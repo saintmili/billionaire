@@ -13,6 +13,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 **Current milestone:** M5 offline acceptance is complete; see the [combined report and operating guide](m5-report.md). Unblocked offline M6 work is in progress under the [roadmap exception](roadmap.md#sequencing-exception-unblocked-offline-m6-work), beginning with the [foreground runtime](m6-runtime-report.md). M2 actual-host validation remains pending and live monitoring remains disabled. M6 acceptance and later milestones remain blocked.
 
 - [M6 Linux desktop notifications](m6-desktop-report.md): optional notify-send delivery, safe invocation and headless failure behavior.
+- [M6 capital adjustments](m6-capital-report.md): exact audited deposits/withdrawals, owner receipts and cash-flow-aware report limitations.
 - [M6 owner control slice](m6-control-report.md): private Unix requests, durable receipts, explicit offline setup and recovery.
 - [M6 optional Telegram notifications](m6-telegram-report.md): protected environment references, bounded HTTPS delivery and local-only evidence.
 - [M6 durable terminal notifications](m6-notifications-report.md): transactional sources, cooldown, bounded delivery and status commands.

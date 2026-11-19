@@ -729,3 +729,5 @@ Optional Telegram delivery is configured with environment references under
 [Telegram configuration and delivery contract](docs/m6-telegram-report.md).
 
 Optional Linux desktop alerts use `notifications.targets: [terminal, desktop]`; see the [desktop setup and failure guide](docs/m6-desktop-report.md).
+
+Simulated capital adjustments: `billionaire paper account adjust ACCOUNT-ID --direction deposit --amount 100 --reason fixture --at 2026-11-19T12:00:00Z --request-id capital-1`. Use `withdraw` to reduce available capital; see the [capital operating guide](docs/m6-capital-report.md) for ownership, mark freshness, retries and reporting semantics.

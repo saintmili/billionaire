@@ -52,9 +52,12 @@ type Account struct {
 }
 
 type LedgerEntry struct {
-	ID        string         `json:"id"`
-	AccountID string         `json:"account_id"`
-	Kind      string         `json:"kind"`
-	Amount    domain.Decimal `json:"amount"`
-	CreatedAt time.Time      `json:"created_at"`
+	Reason     string         `json:"reason,omitempty"`
+	RequestID  *string        `json:"request_id,omitempty"`
+	OccurredAt *time.Time     `json:"occurred_at,omitempty"`
+	ID         string         `json:"id"`
+	AccountID  string         `json:"account_id"`
+	Kind       string         `json:"kind"`
+	Amount     domain.Decimal `json:"amount"`
+	CreatedAt  time.Time      `json:"created_at"`
 }
