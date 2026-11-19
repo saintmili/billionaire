@@ -7,8 +7,11 @@ ledger, offline spot/linear orders, risk controls, signal approval, protective e
 funding and approximate isolated liquidation. M5 adds isolated spot/linear historical
 replay, frozen manifests, trade/signal analytics, comparison and JSON/CSV exports.
 [M5 offline acceptance is complete](docs/m5-report.md); M2 actual-host validation
-remains pending and live monitoring remains disabled. The daemon and later
-milestones remain unstarted.
+remains pending and live monitoring remains disabled. The [unblocked offline M6
+slices](docs/m6-offline-report.md) add the foreground fixture engine, private owner
+controls, capital adjustments, strategy exits and durable terminal/desktop/Telegram
+notifications. Funding, recovery/health, systemd and combined M6 acceptance remain
+blocked; later milestones remain unstarted.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -153,8 +156,9 @@ A creation requires `--request-id`: 1–128 ASCII letters, digits, underscores, 
 colons or hyphens, beginning with a letter or digit. Preserve that ID when retrying
 an interrupted/uncertain creation. An identical request returns the same account
 without crediting it again; reusing the ID with different name, currency or initial
-balance fails. Equivalent decimal spellings are identical. A new ID creates a new
-account even if the name matches. Account IDs are stable hashes of request IDs.
+balance fails. Keep the same decimal spelling when retrying an owner request.
+A new ID creates a new account even if the name matches. Account IDs are stable
+hashes of request IDs.
 Inspection includes the immutable opening ledger entry. The displayed balance is cash: opening funds plus trade proceeds minus purchases
 and fees. Position inspection shows holdings, remaining acquisition cost and realized P&L.
 
@@ -164,9 +168,10 @@ finishes. Read-only inspection remains available. The owner uses its dedicated
 connection for every mutation and closes it on completion. PostgreSQL releases
 the lock on disconnect/process death (network failure detection may take longer);
 a lost owner cannot silently reconnect and continue writing. Application users
-must call `Close` on acquired owners. M6 will hold this ownership for the engine's
-lifetime and route CLI mutations through its private control socket. Account
-creation uses `storage.timeout`; errors are sanitized and uncertain commits instruct
+must call `Close` on acquired owners. The foreground engine holds this ownership
+for its lifetime and routes CLI mutations through its private control socket.
+Offline account creation uses `storage.timeout`; owner requests use bounded control
+deadlines. Errors are sanitized and uncertain commits instruct
 you to retry with the same request ID.
 
 An `account_opened` financial outbox event is recorded locally; it does not call
@@ -384,10 +389,11 @@ apply backpressure without an unbounded or silently dropping queue. A storage or
 consumer failure stops watch for explicit restart and recovery.
 
 `market status` reports connection, last event/close, gaps and
-`allows_auto_entries`. This flag is a source-health prerequisite for the future
-risk gate; no M2 command submits an order. It expires dynamically when data stalls,
-a close is missing, or the source disconnects. Root `status` still checks storage.
-M6 will add the single-owner daemon and control interface.
+`allows_auto_entries`. This flag is a source-health prerequisite for paper entry.
+It expires dynamically when data stalls, a close is missing, or the source
+disconnects. Root `status` checks storage and engine ownership. See the
+[foreground engine](docs/m6-runtime-report.md) and [private control guide](docs/m6-control-report.md);
+combined recovery/health acceptance remains pending.
 
 Native intervals are preferred. Supported whole minute/hour/day intervals up to
 30d (for example `2m`, `90m`), `1w` (Monday UTC), and `1M` (calendar month) can be
@@ -442,7 +448,9 @@ and evaluates matching updates before acknowledging source delivery. It checks
 closed-candle versus update mode, distinct event identity, emission policy and
 signal cooldown. Entry/exit state and signals commit together; source replay
 cannot duplicate a committed signal. Watch JSON includes `signals` when emitted.
-Only one watcher per instrument/timeframe should run until M6 adds ownership.
+Run only one standalone offline watcher per instrument/timeframe. Foreground
+`start` coordinates configured subscriptions under its single owner and excludes
+standalone evaluators while running.
 
 For explicit offline evaluation, seed history and use a fresh enabled instance:
 
@@ -472,8 +480,8 @@ backtest/fill model is not implemented by `strategy evaluate`.
 See [strategy examples](examples/strategies/), [exact algorithms and rule limits](docs/m3-report.md),
 and [availability-clock ADR](docs/adr/0004-preserve-event-availability-clock.md).
 `signals list` applies `--instance`/`--strategy` filters before returning at most
-10000 results. Separate notification/execution cooldowns arrive in M6/M4;
-`signal_cooldown` only controls signal emission. S/R defaults need 50 bars, and
+10000 results. Notification cooldown and paper-entry policy are separate from
+`signal_cooldown`, which only controls signal emission. S/R defaults need 50 bars, and
 the higher-timeframe example needs its stated SMA history; the small breakout
 fixture is not claimed to satisfy every example's warm-up.
 

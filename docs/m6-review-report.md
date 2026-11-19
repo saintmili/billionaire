@@ -63,6 +63,13 @@ loopback PostgreSQL instance:
 
 The root integration workflow records the final full-suite validation separately.
 
+Independent confirmation found no remaining actionable Standards or Spec findings
+after `d2ec04d`. The shared risk-policy operation preserves both transaction
+boundaries; durable cooldown, response/worker clocks, retry quota and status
+pagination satisfy the original findings. The full final PostgreSQL race suite,
+vet and build passed on integration `19c6079`; see the
+[combined offline report](m6-offline-report.md).
+
 ### Worker clock follow-up
 
 Independent confirmation found that the foreground worker forwarded a buffered

@@ -1,6 +1,6 @@
 # Billionaire roadmap
 
-**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending because access is geographically blocked here. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. M4 offline paper lifecycle and combined acceptance are complete under its approved sequencing exception; see the [M4 report](m4-report.md). M5 offline backtesting/analytics and combined acceptance are complete under the approved sequencing exception; see the [M5 report](m5-report.md). Unblocked offline M6 work is in progress under the exception below; M6 funding and downstream acceptance remain blocked by the pending M2 actual-host gate. Live monitoring remains disabled. See [M0 evidence and limitations](m0-report.md), the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
+**Current state:** M0 completed through the documented connectivity-limitation/offline-fixture path. M1 is complete with CLI/configuration and verified PostgreSQL migration/status behavior. M2 implementation and offline protocol/fixture/PostgreSQL checks are complete; its actual-host live validation gate remains pending on the intended VPS. M3 offline strategy implementation and acceptance checks are complete under the sequencing exception below. M4 offline paper lifecycle and combined acceptance are complete under its approved sequencing exception; see the [M4 report](m4-report.md). M5 offline backtesting/analytics and combined acceptance are complete under the approved sequencing exception; see the [M5 report](m5-report.md). The seven authorized unblocked offline M6 tickets are implemented and reviewed under the exception below; see the [offline report](m6-offline-report.md). M6 funding and downstream acceptance remain blocked by the pending M2 actual-host gate. Live monitoring remains disabled. See [M0 evidence and limitations](m0-report.md), the [M1 report](m1-report.md), [M2 evidence/limitations](m2-report.md), and the [M3 report](m3-report.md).
 
 Read [the specification](spec.md) for requirements and [technical design](design.md) for the proposed baseline. Track implementation tickets and their dependencies in GitHub Issues using [the tracker conventions](agents/issue-tracker.md).
 
@@ -14,7 +14,7 @@ Read [the specification](spec.md) for requirements and [technical design](design
 | M3 — Strategy runtime and reference strategies | Complete under offline sequencing exception — [evidence](m3-report.md) |
 | M4 — Paper accounts, orders, risk, and position lifecycle | Complete under offline sequencing exception — [combined acceptance evidence](m4-report.md); M2 live-host gate remains pending |
 | M5 — First-class backtesting and analytics | Complete under offline sequencing exception — [combined acceptance and operating guide](m5-report.md), including #17–#22 slices; M2 live-host gate remains pending; stop at M5 |
-| M6 — Notifications and process operation | Unblocked offline work in progress — [runtime #25](m6-runtime-report.md); #29 and downstream acceptance remain blocked by M2 actual-host validation |
+| M6 — Notifications and process operation | Seven unblocked offline tickets complete — [implementation/review evidence](m6-offline-report.md); #29 and downstream acceptance remain blocked by M2 actual-host validation |
 | M6W — Private operational web app | Not started — approved MVP scope addition; after M6 |
 | M7 — StopLore journaling | Not started |
 | M8 — Production hardening and MVP release | Not started |
@@ -130,6 +130,8 @@ Live monitoring remains disabled. Do not claim M6 acceptance or begin M6W.
 **Tasks:** Terminal, Linux desktop and optional Telegram channels, outbox/retry/suppression, application daemon lifecycle, Unix control socket, safe CLI commands, graceful shutdown, single-engine ownership, systemd deployment unit and VPS runbook.
 
 **Acceptance:** Terminal works in foreground; desktop failure on headless server is nonfatal; Telegram retry is bounded; duplicate event does not spam; engine restart restores state and continues after backfill; control socket restricted to current user.
+
+**Offline outcome (2026-11-19):** #25, #26, #27, #28, #30, #31 and optional #32 are implemented, reviewed and closed. Full PostgreSQL/race tests, vet and build passed; see the [offline implementation report](m6-offline-report.md). Funding #29, recovery/health #33, systemd #34 and combined acceptance #35 remain blocked by actual-host validation #24. Live monitoring remains disabled; M6 is not accepted and M6W is not started.
 
 ### M6W — Private operational web app
 
