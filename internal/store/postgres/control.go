@@ -143,23 +143,9 @@ func (o *PaperOwner) SetControl(ctx context.Context, kind, id, strategyID string
 			return nil, errors.New("strategy instance not found")
 		}
 	case "risk.set":
-		if err = policy.Validate(); err != nil {
+		if err = setRiskPolicy(ctx, tx, id, strategyID, policy); err != nil {
 			return nil, err
 		}
-		var found string
-		if err = tx.QueryRow(ctx, "SELECT id FROM billionaire.paper_accounts WHERE id=$1 FOR UPDATE", id).Scan(&found); err != nil {
-			return nil, errors.New("paper account unavailable")
-		}
-		if strategyID != "" {
-			if err = tx.QueryRow(ctx, "SELECT id FROM billionaire.strategy_definitions WHERE id=$1", strategyID).Scan(&found); err != nil {
-				return nil, errors.New("strategy definition unavailable")
-			}
-		}
-		raw, e := json.Marshal(policy)
-		if e != nil {
-			return nil, e
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO billionaire.paper_risk_policies(account_id,strategy_id,policy) VALUES($1,$2,$3) ON CONFLICT(account_id,strategy_id) DO UPDATE SET policy=EXCLUDED.policy`, id, strategyID, raw)
 	default:
 		return nil, errors.New("unsupported owner control")
 	}

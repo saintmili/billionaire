@@ -14,7 +14,7 @@ import (
 )
 
 func (o *options) addPaperCommands(root *cobra.Command) {
-	group := &cobra.Command{Use: "paper", Short: "Manage offline paper accounts", Args: cobra.NoArgs}
+	group := &cobra.Command{Use: "paper", Short: "Manage paper accounts through the owner or explicit offline setup", Args: cobra.NoArgs}
 	account := &cobra.Command{Use: "account", Short: "Create and inspect paper accounts", Args: cobra.NoArgs}
 	var request paper.CreateAccount
 	create := &cobra.Command{Use: "create", Short: "Create an account; reuse request ID for safe retries", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {

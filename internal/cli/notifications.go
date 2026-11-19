@@ -13,21 +13,23 @@ import (
 
 func (o *options) addNotificationCommands(root *cobra.Command) {
 	parent := &cobra.Command{Use: "notifications", Short: "Inspect durable alert deliveries or dispatch one bounded batch", Args: cobra.NoArgs}
-	var limit int
+	var limit, offset int
 	parent.PersistentFlags().IntVar(&limit, "limit", 100, "maximum deliveries (dispatch 1-100, status 1-1000)")
-	parent.AddCommand(&cobra.Command{Use: "status", Short: "List delivery outcomes including failures and suppression", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	status := &cobra.Command{Use: "status", Short: "List delivery outcomes including failures and suppression", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := o.load()
 		if err != nil {
 			return err
 		}
 		return o.withDatabase(cmd.Context(), cfg, func(ctx context.Context, s *postgres.Store) error {
-			rows, err := s.Notifications(ctx, limit)
+			rows, err := s.NotificationPage(ctx, limit, offset)
 			if err != nil {
 				return err
 			}
 			return o.write(rows, fmt.Sprintf("%d notification deliveries", len(rows)))
 		})
-	}})
+	}}
+	status.Flags().IntVar(&offset, "offset", 0, "deliveries to skip in creation order; increase to inspect later history")
+	parent.AddCommand(status)
 	parent.AddCommand(&cobra.Command{Use: "dispatch", Short: "Dispatch one bounded batch; terminal alerts go to stderr", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := o.load()
 		if err != nil {
