@@ -14,6 +14,7 @@ Start with [the roadmap](roadmap.md) to find the next milestone, then read the r
 
 - [M6 configured strategy exits](m6-strategy-exits-report.md): action modes, explicit approval, proven exposure ownership and competing close safety.
 - [M6 Linux desktop notifications](m6-desktop-report.md): optional notify-send delivery, safe invocation and headless failure behavior.
+- [M6 capital adjustments](m6-capital-report.md): exact audited deposits/withdrawals, owner receipts and cash-flow-aware report limitations.
 - [M6 owner control slice](m6-control-report.md): private Unix requests, durable receipts, explicit offline setup and recovery.
 - [M6 optional Telegram notifications](m6-telegram-report.md): protected environment references, bounded HTTPS delivery and local-only evidence.
 - [M6 durable terminal notifications](m6-notifications-report.md): transactional sources, cooldown, bounded delivery and status commands.

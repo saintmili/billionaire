@@ -57,6 +57,7 @@ func (o *options) addPaperCommands(root *cobra.Command) {
 	_ = create.MarkFlagRequired("name")
 	_ = create.MarkFlagRequired("request-id")
 	account.AddCommand(create)
+	o.addCapitalCommand(account)
 	var valuationAt string
 	show := &cobra.Command{Use: "show <account-id>", Short: "Inspect balance and immutable ledger", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		now := time.Now().UTC()

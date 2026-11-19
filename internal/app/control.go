@@ -53,6 +53,12 @@ func (c *Control) Execute(ctx context.Context, command Command) (paper.ControlOu
 	}
 	return c.owner.Control(ctx, command.ID, payload, func(owner *postgres.PaperOwner) (any, error) {
 		switch command.Kind {
+		case "account.adjust":
+			var r paper.CapitalAdjustment
+			if err := DecodeControl(command.Payload, &r); err != nil {
+				return nil, err
+			}
+			return owner.AdjustCapital(ctx, command.ID, r, c.staleAfter)
 		case "account.create":
 			var r paper.CreateAccount
 			if err := DecodeControl(command.Payload, &r); err != nil {
