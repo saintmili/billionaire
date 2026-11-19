@@ -89,10 +89,18 @@ func (s *Store) RecordNotification(ctx context.Context, e notify.Event, p notify
 	return nil
 }
 func (s *Store) Notifications(ctx context.Context, limit int) ([]notify.Delivery, error) {
+	return s.NotificationPage(ctx, limit, 0)
+}
+
+// NotificationPage lists retained outcomes in stable creation order, without a history cap.
+func (s *Store) NotificationPage(ctx context.Context, limit, offset int) ([]notify.Delivery, error) {
+	if offset < 0 {
+		return nil, errors.New("notification offset must be nonnegative")
+	}
 	if limit < 1 || limit > 1000 {
 		return nil, errors.New("notification limit must be 1-1000")
 	}
-	rows, err := s.pool.Query(ctx, `SELECT o.payload,d.target,d.state,d.attempts,d.error,d.next_attempt_at,d.delivered_at,d.lease_until FROM billionaire.notification_deliveries d JOIN billionaire.notification_outbox o ON o.id=d.event_id ORDER BY o.created_at,o.id,d.target LIMIT $1`, limit)
+	rows, err := s.pool.Query(ctx, `SELECT o.payload,d.target,d.state,d.attempts,d.error,d.next_attempt_at,d.delivered_at,d.lease_until FROM billionaire.notification_deliveries d JOIN billionaire.notification_outbox o ON o.id=d.event_id ORDER BY o.created_at,o.id,d.target LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -120,7 +128,7 @@ func (s *Store) ClaimNotifications(ctx context.Context, now time.Time, limit int
 		return nil, safeError(ctx, ErrUnavailable)
 	}
 	defer rollback(tx)
-	rows, err := tx.Query(ctx, `WITH selected AS (SELECT event_id,target FROM billionaire.notification_deliveries WHERE (state='pending' AND next_attempt_at<=$1) OR (state='inflight' AND lease_until<=$1) ORDER BY next_attempt_at,event_id,target LIMIT $2 FOR UPDATE SKIP LOCKED) UPDATE billionaire.notification_deliveries d SET state='inflight',attempts=d.attempts+1,lease_until=$1+interval '5 minutes',claim_token=md5(random()::text || clock_timestamp()::text) FROM selected s,billionaire.notification_outbox o WHERE d.event_id=s.event_id AND d.target=s.target AND o.id=d.event_id RETURNING o.payload,d.target,d.attempts,d.claim_token`, now, limit)
+	rows, err := tx.Query(ctx, `WITH selected AS (SELECT event_id,target FROM billionaire.notification_deliveries WHERE ((state='pending' AND next_attempt_at<=$1) OR (state='inflight' AND lease_until<=$1)) AND NOT EXISTS (SELECT 1 FROM billionaire.notification_target_cooldowns c WHERE c.target=notification_deliveries.target AND c.until_at>$1) ORDER BY next_attempt_at,event_id,target LIMIT $2 FOR UPDATE SKIP LOCKED) UPDATE billionaire.notification_deliveries d SET state='inflight',attempts=d.attempts+1,lease_until=$1+interval '5 minutes',claim_token=md5(random()::text || clock_timestamp()::text) FROM selected s,billionaire.notification_outbox o WHERE d.event_id=s.event_id AND d.target=s.target AND o.id=d.event_id RETURNING o.payload,d.target,d.attempts,d.claim_token`, now, limit)
 	if err != nil {
 		return nil, safeError(ctx, ErrUnavailable)
 	}
@@ -147,6 +155,41 @@ func (s *Store) ClaimNotifications(ctx context.Context, now time.Time, limit int
 	}
 	return result, nil
 }
+
+// PrepareNotification admits a claimed send or returns it without consuming retry quota.
+// Requests admitted before a rate-limit acknowledgement may already be in flight;
+// the durable gate prevents subsequent admissions, including other workers/restarts.
+func (s *Store) PrepareNotification(ctx context.Context, d notify.Delivery, now time.Time) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, safeError(ctx, ErrUnavailable)
+	}
+	defer rollback(tx)
+	if _, err = tx.Exec(ctx, `INSERT INTO billionaire.notification_target_cooldowns(target,until_at) VALUES($1,'1970-01-01') ON CONFLICT DO NOTHING`, d.Target); err != nil {
+		return false, safeError(ctx, ErrUnavailable)
+	}
+	var until time.Time
+	if err = tx.QueryRow(ctx, `SELECT until_at FROM billionaire.notification_target_cooldowns WHERE target=$1 FOR UPDATE`, d.Target).Scan(&until); err != nil {
+		return false, safeError(ctx, ErrUnavailable)
+	}
+	ready := !until.After(now)
+	if !ready {
+		_, err = tx.Exec(ctx, `UPDATE billionaire.notification_deliveries SET state='pending',attempts=attempts-1,next_attempt_at=$4,lease_until=NULL,claim_token=NULL WHERE event_id=$1 AND target=$2 AND claim_token=$3 AND state='inflight'`, d.Event.ID, d.Target, d.Token, until)
+		if err != nil {
+			return false, safeError(ctx, ErrUnavailable)
+		}
+	} else {
+		var valid bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM billionaire.notification_deliveries WHERE event_id=$1 AND target=$2 AND claim_token=$3 AND state='inflight' AND lease_until>$4)`, d.Event.ID, d.Target, d.Token, now).Scan(&valid); err != nil {
+			return false, safeError(ctx, ErrUnavailable)
+		}
+		ready = valid
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return false, safeError(ctx, ErrUnavailable)
+	}
+	return ready, nil
+}
 func (s *Store) FinishNotification(ctx context.Context, d notify.Delivery, state, category string, next time.Time) error {
 	// Store only a finite, safe category: never persist external error messages/URLs.
 	switch category {
@@ -154,8 +197,29 @@ func (s *Store) FinishNotification(ctx context.Context, d notify.Delivery, state
 	default:
 		category = "delivery_failed"
 	}
-	_, err := s.pool.Exec(ctx, `UPDATE billionaire.notification_deliveries SET state=$4,error=$5,next_attempt_at=$6,lease_until=NULL,claim_token=NULL,delivered_at=CASE WHEN $4='delivered' THEN $6::timestamptz ELSE NULL END WHERE event_id=$1 AND target=$2 AND claim_token=$3 AND state='inflight'`, d.Event.ID, d.Target, d.Token, state, category, next)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
+		return safeError(ctx, ErrUnavailable)
+	}
+	defer rollback(tx)
+	// The gate lock serializes send admission with a rate-limit acknowledgement.
+	if _, err = tx.Exec(ctx, `INSERT INTO billionaire.notification_target_cooldowns(target,until_at) VALUES($1,'1970-01-01') ON CONFLICT DO NOTHING`, d.Target); err != nil {
+		return safeError(ctx, ErrUnavailable)
+	}
+	var until time.Time
+	if err = tx.QueryRow(ctx, `SELECT until_at FROM billionaire.notification_target_cooldowns WHERE target=$1 FOR UPDATE`, d.Target).Scan(&until); err != nil {
+		return safeError(ctx, ErrUnavailable)
+	}
+	tag, err := tx.Exec(ctx, `UPDATE billionaire.notification_deliveries SET state=$4,error=$5,next_attempt_at=$6,lease_until=NULL,claim_token=NULL,delivered_at=CASE WHEN $4='delivered' THEN $6::timestamptz ELSE NULL END WHERE event_id=$1 AND target=$2 AND claim_token=$3 AND state='inflight'`, d.Event.ID, d.Target, d.Token, state, category, next)
+	if err != nil {
+		return safeError(ctx, ErrUnavailable)
+	}
+	if d.RetryAfter > 0 && tag.RowsAffected() == 1 {
+		if _, err = tx.Exec(ctx, `UPDATE billionaire.notification_target_cooldowns SET until_at=GREATEST(until_at,$2) WHERE target=$1`, d.Target, next); err != nil {
+			return safeError(ctx, ErrUnavailable)
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
 		return safeError(ctx, ErrUnavailable)
 	}
 	return nil

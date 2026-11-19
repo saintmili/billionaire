@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/saintmili/billionaire/configs"
 	"github.com/saintmili/billionaire/internal/cli"
 	"github.com/saintmili/billionaire/internal/notify"
@@ -192,5 +193,44 @@ func TestDesktopNotificationsUseCLIAndDurableStatus(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `desktop_session_unavailable`) {
 		t.Fatalf("headless status %q", out.String())
+	}
+}
+
+func TestNotificationStatusPaginatesBeyondThousandHistoricalDeliveries(t *testing.T) {
+	ctx := context.Background()
+	dsn := testdb.New(t)
+	t.Setenv("BILLIONAIRE_DATABASE_URL", dsn)
+	s, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-time.Hour)
+	for i := 0; i < 1001; i++ {
+		policy := notify.Policy{Targets: []string{"desktop"}, Key: "history", Cooldown: 24 * time.Hour}
+		if i == 1000 {
+			policy = notify.Policy{Targets: []string{"desktop"}}
+		}
+		if err = s.RecordNotification(ctx, notify.Event{ID: fmt.Sprintf("history-%04d", i), Kind: "engine_failure", At: at.Add(time.Duration(i) * time.Millisecond)}, policy); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = notify.Dispatch(ctx, s, nil, time.Now(), 100); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err = os.WriteFile(path, []byte(configs.Example), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diagnostics bytes.Buffer
+	if err = cli.Execute(ctx, []string{"notifications", "status", "--config", path, "--output", "json", "--offset", "1000", "--limit", "1"}, &out, &diagnostics); err != nil {
+		t.Fatal(err)
+	}
+	var rows []notify.Delivery
+	if err = json.Unmarshal(out.Bytes(), &rows); err != nil || len(rows) != 1 || rows[0].Event.ID != "history-1000" || rows[0].State != "failed" {
+		t.Fatalf("later failure inaccessible: %s %v", out.String(), err)
 	}
 }

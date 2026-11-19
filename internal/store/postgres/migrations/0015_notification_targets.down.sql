@@ -1,0 +1,1 @@
+DROP TABLE billionaire.notification_target_cooldowns;

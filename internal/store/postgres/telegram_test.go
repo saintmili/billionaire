@@ -57,7 +57,7 @@ func TestTelegramDurableRateLimitRestartAndExhaustion(t *testing.T) {
 		t.Fatal(rows)
 	}
 	for _, r := range rows {
-		if r.Target == "telegram" && (r.State != "pending" || !r.NextAttemptAt.Equal(at.Add(2*time.Hour)) || r.Error != "telegram_rate_limited") {
+		if r.Target == "telegram" && (r.State != "pending" || r.NextAttemptAt.Before(at.Add(2*time.Hour)) || r.Error != "telegram_rate_limited") {
 			t.Fatalf("rate limit %+v", r)
 		}
 	}
@@ -71,7 +71,7 @@ func TestTelegramDurableRateLimitRestartAndExhaustion(t *testing.T) {
 		t.Fatalf("early retry %d %v", n, err)
 	}
 	for i := 1; i <= 4; i++ {
-		if _, err = notify.Dispatch(ctx, s, senders, at.Add(time.Duration(i)*2*time.Hour), 10); err != nil {
+		if _, err = notify.Dispatch(ctx, s, senders, at.Add(time.Duration(i)*3*time.Hour), 10); err != nil {
 			t.Fatal(err)
 		}
 	}

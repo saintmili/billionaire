@@ -40,14 +40,25 @@ func (s *Store) RiskPolicy(ctx context.Context, accountID, strategyID string) (p
 	return p, nil
 }
 func (s *Store) SetRiskPolicy(ctx context.Context, accountID, strategyID string, p paper.RiskPolicy) error {
-	if err := p.Validate(); err != nil {
-		return err
-	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return safeError(ctx, ErrUnavailable)
 	}
 	defer rollback(tx)
+	if err = setRiskPolicy(ctx, tx, accountID, strategyID, p); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return safeError(ctx, ErrUnavailable)
+	}
+	return nil
+}
+
+// setRiskPolicy persists within the caller's pooled transaction or pinned owner savepoint.
+func setRiskPolicy(ctx context.Context, tx pgx.Tx, accountID, strategyID string, p paper.RiskPolicy) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
 	var id string
 	if err := tx.QueryRow(ctx, "SELECT id FROM billionaire.paper_accounts WHERE id=$1 FOR UPDATE", accountID).Scan(&id); err != nil {
 		return errors.New("paper account unavailable")
@@ -62,9 +73,6 @@ func (s *Store) SetRiskPolicy(ctx context.Context, accountID, strategyID string,
 		return err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO billionaire.paper_risk_policies(account_id,strategy_id,policy) VALUES($1,$2,$3) ON CONFLICT(account_id,strategy_id) DO UPDATE SET policy=EXCLUDED.policy`, accountID, strategyID, data); err != nil {
-		return safeError(ctx, ErrUnavailable)
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return safeError(ctx, ErrUnavailable)
 	}
 	return nil

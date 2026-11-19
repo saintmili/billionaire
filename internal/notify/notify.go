@@ -51,31 +51,43 @@ type DeliveryError struct {
 func (e *DeliveryError) Error() string { return e.Category }
 
 type Delivery struct {
-	Event         Event      `json:"event"`
-	Target        string     `json:"target"`
-	State         string     `json:"state"`
-	Attempts      int        `json:"attempts"`
-	Error         string     `json:"error,omitempty"`
-	Token         string     `json:"-"`
-	NextAttemptAt time.Time  `json:"next_attempt_at,omitzero"`
-	DeliveredAt   *time.Time `json:"delivered_at,omitempty"`
-	LeaseUntil    *time.Time `json:"lease_until,omitempty"`
+	Event         Event         `json:"event"`
+	Target        string        `json:"target"`
+	State         string        `json:"state"`
+	Attempts      int           `json:"attempts"`
+	Error         string        `json:"error,omitempty"`
+	Token         string        `json:"-"`
+	RetryAfter    time.Duration `json:"-"`
+	NextAttemptAt time.Time     `json:"next_attempt_at,omitzero"`
+	DeliveredAt   *time.Time    `json:"delivered_at,omitempty"`
+	LeaseUntil    *time.Time    `json:"lease_until,omitempty"`
 }
 type Queue interface {
 	ClaimNotifications(context.Context, time.Time, int) ([]Delivery, error)
+	PrepareNotification(context.Context, Delivery, time.Time) (bool, error)
 	FinishNotification(context.Context, Delivery, string, string, time.Time) error
 }
 
 // Dispatch claims a bounded batch. Sends occur after the claim transaction commits.
 // A crashed sender can repeat display after lease expiry; acknowledgement is guarded.
 func Dispatch(ctx context.Context, q Queue, senders map[string]Sender, now time.Time, limit int) (int, error) {
+	// Preserve the caller's dispatch clock while including claim and preceding-send time.
+	started := time.Now()
 	rows, err := q.ClaimNotifications(ctx, now, limit)
 	if err != nil {
 		return 0, err
 	}
+	attempted := 0
 	for _, d := range rows {
+		ready, prepareErr := q.PrepareNotification(ctx, d, now.Add(time.Since(started)))
+		if prepareErr != nil {
+			return attempted, prepareErr
+		}
+		if !ready {
+			continue
+		}
+		attempted++
 		state, category := "delivered", ""
-		next := now
 		sender := senders[d.Target]
 		var sendErr error
 		if d.Attempts > 5 {
@@ -87,10 +99,12 @@ func Dispatch(ctx context.Context, q Queue, senders map[string]Sender, now time.
 			sendErr = sender.Send(c, d.Event)
 			cancel()
 		}
+		responded := now.Add(time.Since(started))
+		next := responded
 		if sendErr != nil {
 			state = "pending"
 			category = "delivery_failed"
-			next = now.Add(time.Duration(1<<min(d.Attempts, 8)) * time.Second)
+			next = responded.Add(time.Duration(1<<min(d.Attempts, 8)) * time.Second)
 			var classified *DeliveryError
 			if errors.As(sendErr, &classified) {
 				category = classified.Category
@@ -98,7 +112,8 @@ func Dispatch(ctx context.Context, q Queue, senders map[string]Sender, now time.
 					state = "failed"
 				}
 				if classified.RetryAfter > 0 {
-					next = now.Add(classified.RetryAfter)
+					next = responded.Add(classified.RetryAfter)
+					d.RetryAfter = classified.RetryAfter
 				}
 			}
 			if d.Attempts >= 5 {
@@ -106,10 +121,10 @@ func Dispatch(ctx context.Context, q Queue, senders map[string]Sender, now time.
 			}
 		}
 		if err = q.FinishNotification(ctx, d, state, category, next); err != nil {
-			return len(rows), err
+			return attempted, err
 		}
 	}
-	return len(rows), nil
+	return attempted, nil
 }
 
 // Run is a cancellation-aware worker with bounded batches and no in-memory backlog.

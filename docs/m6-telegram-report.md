@@ -77,8 +77,4 @@ Verification completed:
 - `go vet ./...` and `go build ./cmd/billionaire` passed after that merge.
 - The standalone adapter deadline was also exercised with no caller timeout against a slow local server.
 
-One proposed CLI test was rejected by automatic approval review because it would
-construct a real Telegram HTTP client while dispatching. The final CLI dispatch
-test explicitly clears both credential variables and returns before constructing
-an HTTP request. Offline validation alone uses sentinel secret values. All API
-requests in tests go through local protocol transports; no live send was attempted.
+All API requests in tests use local protocol transports; no live send was attempted.

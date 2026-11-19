@@ -77,3 +77,20 @@ from financial admission. CLI fixtures verify parseable command JSON with escape
 terminal alerts on diagnostics. Migration up/down checks include the new head.
 Full Go tests, vet/build and practical notification/application/CLI race checks are
 run before committing; results are reported with the ticket handoff.
+
+## Review follow-up
+
+Status supports `--offset` (zero by default) and `--limit` (1–1000 per page).
+For example, `billionaire notifications status --offset 1000 --limit 1000
+--output json` reads the second page in creation/event/target order. Increase the
+offset by the page size until an empty array is returned; all retained failures
+are reachable and the JSON remains an array of delivery records.
+
+Migration 0015 persists rate-limit deadlines per captured target. Dispatch checks
+the durable target gate before each claimed delivery and restores the attempt
+quota of unsent deliveries deferred by a cooldown. Retry deadlines include elapsed
+claim/send time through receipt of the response, rather than starting at batch
+claim time. Target acknowledgement and subsequent send admission serialize through
+the same row across workers and restart. Requests admitted before a rate-limit
+acknowledgement may already be in flight and cannot be recalled; their later
+acknowledgement cannot clear or shorten the cooldown. Other channels proceed.
