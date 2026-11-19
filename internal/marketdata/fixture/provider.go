@@ -13,9 +13,11 @@ import (
 
 	"github.com/saintmili/billionaire/internal/domain"
 	"github.com/saintmili/billionaire/internal/marketdata"
+	"github.com/saintmili/billionaire/internal/paper"
 )
 
 type Dataset struct {
+	Funding     []paper.FundingEvent        `json:"funding,omitempty"`
 	Version     int                         `json:"version"`
 	Instruments []marketdata.InstrumentInfo `json:"instruments"`
 	Candles     []domain.Candle             `json:"candles"`
@@ -40,6 +42,14 @@ func Open(path string) (*Provider, error) {
 	var data Dataset
 	if json.Unmarshal(bytes, &data) != nil || data.Version != 1 || len(data.Instruments) == 0 || len(data.Candles) == 0 {
 		return nil, errors.New("invalid market fixture dataset")
+	}
+	for _, e := range data.Funding {
+		if e.Instrument.Provider != "fixture" || e.Source != "fixture" {
+			return nil, errors.New("fixture funding requires fixture provenance")
+		}
+		if err := e.Validate(); err != nil {
+			return nil, err
+		}
 	}
 	p := &Provider{data: data}
 	for _, info := range data.Instruments {
@@ -134,4 +144,26 @@ func (p *Provider) Stream(ctx context.Context, q marketdata.Query, consume func(
 		}
 	}
 	return io.EOF
+}
+
+// Funding supplies explicit expected fixture intervals, including missing rates.
+// An empty fixture funding list declares unknown coverage, never a zero rate.
+func (p *Provider) Funding(ctx context.Context, i domain.Instrument, from, through time.Time) ([]paper.FundingEvent, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	events := []paper.FundingEvent{}
+	for _, e := range p.data.Funding {
+		if e.Instrument == i && !e.EffectiveAt.Before(from) && !e.EffectiveAt.After(through) {
+			if e.AvailableAt.After(p.Now()) {
+				e.Rate = nil
+				e.Price = domain.Decimal{}
+				e.AvailableAt = p.Now()
+				e.MissingReason = "fixture funding not yet available"
+			}
+			events = append(events, e)
+		}
+	}
+	sort.Slice(events, func(i, j int) bool { return events[i].EffectiveAt.Before(events[j].EffectiveAt) })
+	return events, nil
 }

@@ -47,15 +47,20 @@ func FundingPayment(p Position, rate string, mark domain.Decimal) (domain.Decima
 // FundingEvent explicitly records one expected interval, including missing data.
 // Price is a public/fixture valuation at EffectiveAt, not a future candle close.
 type FundingEvent struct {
-	ID            string            `json:"id"`
-	Instrument    domain.Instrument `json:"instrument"`
-	EffectiveAt   time.Time         `json:"effective_at"`
-	AvailableAt   time.Time         `json:"available_at"`
-	Source        string            `json:"source"`
-	Provenance    string            `json:"provenance"`
-	Rate          *string           `json:"rate"`
-	Price         domain.Decimal    `json:"price"`
-	MissingReason string            `json:"missing_reason,omitempty"`
+	ID              string            `json:"id"`
+	Monitoring      bool              `json:"monitoring,omitempty"`
+	CoverageOnly    bool              `json:"coverage_only,omitempty"`
+	ReportedRate    *string           `json:"reported_rate,omitempty"`
+	IntervalMinutes int               `json:"interval_minutes,omitempty"`
+	ScheduleAnchor  time.Time         `json:"schedule_anchor,omitempty"`
+	Instrument      domain.Instrument `json:"instrument"`
+	EffectiveAt     time.Time         `json:"effective_at"`
+	AvailableAt     time.Time         `json:"available_at"`
+	Source          string            `json:"source"`
+	Provenance      string            `json:"provenance"`
+	Rate            *string           `json:"rate"`
+	Price           domain.Decimal    `json:"price"`
+	MissingReason   string            `json:"missing_reason,omitempty"`
 }
 type FundingApplication struct {
 	CollateralDelta domain.Decimal `json:"collateral_delta"`
@@ -73,6 +78,9 @@ type FundingResult struct {
 func (e FundingEvent) Validate() error {
 	if !requestID.MatchString(e.ID) || e.Instrument.Validate() != nil || e.Instrument.Market != domain.Linear || e.EffectiveAt.IsZero() || e.AvailableAt.Before(e.EffectiveAt) || e.Source == "" || e.Provenance == "" {
 		return errors.New("funding requires linear instrument, identity, ordered clocks and explicit public/fixture provenance")
+	}
+	if e.CoverageOnly && e.Rate != nil {
+		return errors.New("coverage-only funding cannot move money")
 	}
 	if e.Rate == nil {
 		if e.MissingReason == "" {

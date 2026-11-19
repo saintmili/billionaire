@@ -14,7 +14,7 @@ import (
 // ApplyFunding consumes an explicit interval before later price observations.
 // The owner lock, financial ledger and outcome commit together, including gaps.
 func (o *PaperOwner) ApplyFunding(ctx context.Context, e paper.FundingEvent) (paper.FundingResult, error) {
-	return o.applyFunding(ctx, e, false)
+	return o.applyFunding(ctx, e, false, false)
 }
 
 // ApplyReplayFunding permits the funding point after a completed interval phase
@@ -23,9 +23,16 @@ func (o *PaperOwner) ApplyReplayFunding(ctx context.Context, e paper.FundingEven
 	if o.namespace == "" {
 		return paper.FundingResult{}, errors.New("replay funding requires an isolated backtest execution context")
 	}
-	return o.applyFunding(ctx, e, true)
+	return o.applyFunding(ctx, e, true, false)
 }
-func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, replay bool) (paper.FundingResult, error) {
+
+// ApplyMonitoringFunding preserves the first observed interval outcome. Delayed
+// rates never rewrite advanced exposure; they become explicit coverage records.
+func (o *PaperOwner) ApplyMonitoringFunding(ctx context.Context, e paper.FundingEvent) (paper.FundingResult, error) {
+	e.Monitoring = true
+	return o.applyFunding(ctx, e, false, true)
+}
+func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, replay, monitoring bool) (paper.FundingResult, error) {
 	result := paper.FundingResult{Event: e, Applications: []paper.FundingApplication{}, Orders: []paper.Order{}}
 	if err := e.Validate(); err != nil {
 		return result, err
@@ -52,6 +59,9 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 		if json.Unmarshal(prior, &old) != nil || json.Unmarshal(recorded, &replay) != nil {
 			return result, ErrSchema
 		}
+		if monitoring && old.Monitoring && old.Instrument == e.Instrument && old.EffectiveAt.Equal(e.EffectiveAt) && old.Source == e.Source {
+			return replay, nil
+		}
 		canonical, _ := json.Marshal(old)
 		if string(canonical) != string(payload) {
 			return result, errors.New("funding identity conflicts with recorded inputs")
@@ -67,7 +77,14 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 		return result, safeError(ctx, ErrUnavailable)
 	}
 	if err == nil && !e.EffectiveAt.After(last.AvailableAt) && !(replay && last.Phase == "completed_interval" && last.Bar != nil && last.Bar.End.Equal(e.EffectiveAt) && last.AvailableAt.Equal(e.EffectiveAt)) {
-		return result, errors.New("funding must precede price observations at or after its effective time; retroactive funding is unsupported")
+		if !monitoring {
+			return result, errors.New("funding must precede price observations at or after its effective time; retroactive funding is unsupported")
+		}
+		if e.Rate != nil {
+			e.ReportedRate = e.Rate
+			e.Rate = nil
+			e.MissingReason = "delayed funding: exposure already advanced; no retroactive correction"
+		}
 	}
 	previous, err := decodePaperRow[paper.FundingEvent](tx.QueryRow(ctx, `SELECT payload FROM billionaire.paper_funding_events WHERE instrument_key=$1 ORDER BY effective_at DESC LIMIT 1`, key))
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -76,6 +93,29 @@ func (o *PaperOwner) applyFunding(ctx context.Context, e paper.FundingEvent, rep
 	if err == nil && (!e.EffectiveAt.After(previous.EffectiveAt) || e.AvailableAt.Before(previous.AvailableAt)) {
 		return result, errors.New("funding intervals must have increasing effective and availability clocks")
 	}
+	if monitoring {
+		rows, err := tx.Query(ctx, `SELECT payload FROM billionaire.paper_positions WHERE status='open'`)
+		if err != nil {
+			return result, safeError(ctx, ErrUnavailable)
+		}
+		positions, err := decodePaperRows[paper.Position](rows)
+		if err != nil {
+			return result, safeError(ctx, ErrSchema)
+		}
+		for _, p := range positions {
+			if e.Rate != nil && p.Instrument == e.Instrument && p.Protection != nil && !e.EffectiveAt.After(p.Protection.UpdatedAt) {
+				e.ReportedRate = e.Rate
+				e.Rate = nil
+				e.MissingReason = "delayed funding: position management already advanced; no retroactive correction"
+				break
+			}
+		}
+		if e.Rate == nil {
+			e.CoverageOnly = true
+		}
+	}
+	result.Event = e
+	payload, _ = json.Marshal(e)
 	if e.Rate == nil {
 		result.Warning = "missing funding data: " + e.MissingReason + "; results are approximate"
 	} else {
@@ -167,4 +207,17 @@ func (s *Store) PaperFunding(ctx context.Context) ([]paper.FundingResult, error)
 		return nil, safeError(ctx, ErrSchema)
 	}
 	return results, nil
+}
+
+// LatestMonitoringFunding is the durable per-instrument settlement checkpoint,
+// including intervals already consumed explicitly before the owner started.
+func (s *Store) LatestMonitoringFunding(ctx context.Context, i domain.Instrument) (*paper.FundingResult, error) {
+	result, err := decodePaperRow[paper.FundingResult](s.pool.QueryRow(ctx, `SELECT result FROM billionaire.paper_funding_events WHERE instrument_key=$1 ORDER BY effective_at DESC LIMIT 1`, instrumentKey(i)))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, safeError(ctx, ErrUnavailable)
+	}
+	return &result, nil
 }

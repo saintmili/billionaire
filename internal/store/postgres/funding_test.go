@@ -432,3 +432,53 @@ func TestLiquidationClosesExhaustedCollateralBelowEntryMinimumNotional(t *testin
 		t.Fatalf("dust exposure %+v", p)
 	}
 }
+
+func TestMonitoringDelayedFundingIsImmutableMissingCoverageWithoutPriceRegression(t *testing.T) {
+	ctx := context.Background()
+	store, owner, account, _ := newSpotTest(t)
+	info := spotInfo()
+	info.Instrument.Market = domain.Linear
+	r := spotRequest(account.ID, "monitor-entry")
+	r.Instrument = info.Instrument
+	r.Leverage = 5
+	order, err := owner.SubmitOrder(ctx, r, info, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs, gate := spotObservation(1)
+	obs.Instrument = info.Instrument
+	if _, err = owner.Observe(ctx, obs, gate); err != nil {
+		t.Fatal(err)
+	}
+	rate := "0.01"
+	event := paper.FundingEvent{ID: "delayed-monitor", Instrument: info.Instrument, EffectiveAt: obs.AvailableAt, AvailableAt: obs.AvailableAt.Add(time.Hour), Source: "fixture", Provenance: "delayed public history fixture", Rate: &rate, Price: spotDecimal("100")}
+	result, err := owner.ApplyMonitoringFunding(ctx, event)
+	if err != nil || result.Event.Rate != nil || result.Warning == "" || result.Event.ReportedRate == nil {
+		t.Fatalf("delayed coverage %+v %v", result, err)
+	}
+	owner.Close()
+	owner, err = store.AcquireEngineOwner(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	event.AvailableAt = event.AvailableAt.Add(time.Hour)
+	again, err := owner.ApplyMonitoringFunding(ctx, event)
+	if err != nil || !again.Event.AvailableAt.Equal(result.Event.AvailableAt) {
+		t.Fatalf("immutable outcome %+v %v", again, err)
+	}
+	obs, gate = spotObservation(2)
+	obs.Instrument = info.Instrument
+	next, err := owner.Observe(ctx, obs, gate)
+	if err != nil || next.Reason != "" {
+		t.Fatalf("missing coverage blocked protection %+v %v", next, err)
+	}
+	p, err := store.PaperPosition(ctx, paper.Identity("position", order.ID))
+	if err != nil || !p.FundingPnL.IsZero() || p.ReservedMargin.String() != "40" {
+		t.Fatalf("retroactive charge %+v %v", p, err)
+	}
+	history, err := store.PaperFunding(ctx)
+	if err != nil || len(history) != 1 {
+		t.Fatalf("duplicate coverage %+v %v", history, err)
+	}
+}

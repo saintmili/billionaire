@@ -16,7 +16,7 @@ import (
 )
 
 func (o *options) addFundingCommands(parent *cobra.Command) {
-	group := &cobra.Command{Use: "funding", Short: "Apply and inspect explicit offline funding intervals and missing coverage"}
+	group := &cobra.Command{Use: "funding", Short: "Inspect monitored funding coverage or apply explicit offline intervals"}
 	var path string
 	apply := &cobra.Command{Use: "apply", Short: "Apply one deterministic funding fixture before later prices", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if !o.offline {

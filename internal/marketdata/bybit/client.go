@@ -27,11 +27,16 @@ type Options struct {
 	PageSize                                int
 	RequestInterval, Heartbeat, ReadTimeout time.Duration
 }
+type fundingSchedule struct {
+	anchor   time.Time
+	interval time.Duration
+}
 type Client struct {
-	opts Options
-	http *http.Client
-	mu   sync.Mutex
-	next time.Time
+	fundingSchedules map[string]fundingSchedule
+	opts             Options
+	http             *http.Client
+	mu               sync.Mutex
+	next             time.Time
 }
 
 func New(opts Options) (*Client, error) {
