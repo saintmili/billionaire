@@ -158,7 +158,8 @@ func TestControlCannotReconnectAfterOwningSessionIsKilled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer owner.Close()
-	service := app.NewControl(owner, nil, time.Minute)
+	health := app.NewHealth(store, owner, nil, time.Minute)
+	service := app.NewControl(owner, nil, time.Minute, health)
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -167,6 +168,10 @@ func TestControlCannotReconnectAfterOwningSessionIsKilled(t *testing.T) {
 	_, err = conn.Exec(ctx, `SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype='advisory' AND classid=(7341928602::bigint>>32)::oid AND objid=(7341928602::bigint&4294967295)::oid AND database=(SELECT oid FROM pg_database WHERE datname=current_database())`)
 	if err != nil {
 		t.Fatal(err)
+	}
+	snapshot, healthErr := service.Health(ctx)
+	if healthErr == nil || snapshot.Ownership != "lost" || snapshot.Database != "ready" || snapshot.EntriesReady {
+		t.Fatalf("health did not distinguish ownership loss from DB availability: %+v %v", snapshot, healthErr)
 	}
 	payload, _ := json.Marshal(paper.CreateAccount{RequestID: "killed-account", Name: "Killed", Currency: "USDT", InitialBalance: "1000"})
 	cmd := app.Command{ID: "killed-control", Kind: "account.create", Payload: payload}

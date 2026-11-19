@@ -23,10 +23,14 @@ type Control struct {
 	owner       *postgres.PaperOwner
 	instruments map[string]marketdata.InstrumentInfo
 	staleAfter  time.Duration
+	health      *Health
 }
 
-func NewControl(owner *postgres.PaperOwner, instruments []marketdata.InstrumentInfo, staleAfter time.Duration) *Control {
+func NewControl(owner *postgres.PaperOwner, instruments []marketdata.InstrumentInfo, staleAfter time.Duration, health ...*Health) *Control {
 	c := &Control{owner: owner, instruments: map[string]marketdata.InstrumentInfo{}, staleAfter: staleAfter}
+	if len(health) > 0 {
+		c.health = health[0]
+	}
 	for _, info := range instruments {
 		c.instruments[info.Instrument.ID+":"+string(info.Instrument.Market)] = info
 	}
@@ -85,6 +89,9 @@ func (c *Control) Execute(ctx context.Context, command Command) (paper.ControlOu
 			if !ok || info.Instrument != r.Instrument {
 				return nil, errors.New("instrument is not configured by owner")
 			}
+			if err := c.requireEntries(ctx); err != nil {
+				return nil, err
+			}
 			return owner.SubmitOrder(ctx, r, info, true)
 		case "position.adjust":
 			var r paper.ProtectionAdjustment
@@ -106,6 +113,9 @@ func (c *Control) Execute(ctx context.Context, command Command) (paper.ControlOu
 			if !ok || info.Instrument != instrument {
 				return nil, errors.New("signal instrument is not configured by owner")
 			}
+			if err := c.requireEntries(ctx); err != nil {
+				return nil, err
+			}
 			r.Approve = true
 			return owner.DecideSignal(ctx, r, info, true)
 		case "kill-switch", "strategy.enabled", "risk.set":
@@ -123,4 +133,24 @@ func (c *Control) Execute(ctx context.Context, command Command) (paper.ControlOu
 			return nil, errors.New("unsupported control command")
 		}
 	})
+}
+
+func (c *Control) requireEntries(ctx context.Context) error {
+	if c.health == nil {
+		return nil
+	} // Explicit offline setup retains its own execution gates.
+	_, ready, err := c.health.readiness(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if !ready {
+		return errors.New("entries blocked: required feeds recovering, disconnected, stale or unmonitored")
+	}
+	return nil
+}
+func (c *Control) Health(ctx context.Context) (HealthSnapshot, error) {
+	if c.health == nil {
+		return HealthSnapshot{}, errors.New("runtime health unavailable in offline setup")
+	}
+	return c.health.Snapshot(ctx)
 }

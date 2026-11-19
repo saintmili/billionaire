@@ -19,10 +19,12 @@ import (
 const maxFrame = 1 << 20
 
 type Request struct {
+	Health  bool         `json:"health,omitempty"`
 	Command *app.Command `json:"command,omitempty"`
 	Lookup  string       `json:"lookup,omitempty"`
 }
 type Response struct {
+	Health  *app.HealthSnapshot  `json:"health,omitempty"`
 	Outcome paper.ControlOutcome `json:"outcome"`
 	Error   string               `json:"error,omitempty"`
 }
@@ -122,8 +124,20 @@ func (s *Server) handle(conn *net.UnixConn) {
 	}
 	var request Request
 	response := Response{}
-	if err = app.DecodeControl(data, &request); err == nil && (request.Command == nil) == (request.Lookup == "") {
-		err = errors.New("provide exactly one command or outcome lookup")
+	if err = app.DecodeControl(data, &request); err == nil {
+		choices := 0
+		if request.Command != nil {
+			choices++
+		}
+		if request.Lookup != "" {
+			choices++
+		}
+		if request.Health {
+			choices++
+		}
+		if choices != 1 {
+			err = errors.New("provide exactly one command, outcome lookup or health read")
+		}
 	}
 	if err == nil && s.service == nil {
 		err = errors.New("owner unavailable")
@@ -131,7 +145,18 @@ func (s *Server) handle(conn *net.UnixConn) {
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
-		if request.Command != nil {
+		if request.Health {
+			reader, ok := s.service.(interface {
+				Health(context.Context) (app.HealthSnapshot, error)
+			})
+			if !ok {
+				err = errors.New("owner health unavailable")
+			} else {
+				snapshot, e := reader.Health(ctx)
+				response.Health = &snapshot
+				err = e
+			}
+		} else if request.Command != nil {
 			response.Outcome, err = s.service.Execute(ctx, *request.Command)
 		} else {
 			response.Outcome, err = s.service.Outcome(ctx, request.Lookup)
@@ -151,8 +176,8 @@ func (s *Server) Close() error {
 	}
 	return err
 }
-func Call(ctx context.Context, path string, request Request) (paper.ControlOutcome, error) {
-	var result paper.ControlOutcome
+func call(ctx context.Context, path string, request Request) (Response, error) {
+	var result Response
 	if err := private(filepath.Dir(path), false); err != nil {
 		return result, err
 	}
@@ -192,7 +217,19 @@ func Call(ctx context.Context, path string, request Request) (paper.ControlOutco
 		return result, errors.New("control outcome unknown; query original request ID")
 	}
 	if response.Error != "" {
-		return response.Outcome, errors.New(response.Error)
+		return response, errors.New(response.Error)
 	}
-	return response.Outcome, nil
+	return response, nil
+}
+
+func Call(ctx context.Context, path string, request Request) (paper.ControlOutcome, error) {
+	response, err := call(ctx, path, request)
+	return response.Outcome, err
+}
+
+// ReadHealth always requests a new authoritative owner snapshot. A partial
+// snapshot can accompany an error and must never be treated as ready.
+func ReadHealth(ctx context.Context, path string) (*app.HealthSnapshot, error) {
+	response, err := call(ctx, path, Request{Health: true})
+	return response.Health, err
 }

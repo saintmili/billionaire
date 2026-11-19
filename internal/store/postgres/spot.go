@@ -180,6 +180,18 @@ func (o *PaperOwner) Observe(ctx context.Context, observation paper.Observation,
 	if fundingErr == nil && (observation.ObservedAt.Before(fundingClock.EffectiveAt) || observation.AvailableAt.Before(fundingClock.AvailableAt)) {
 		accepted = false
 	}
+	if gate.Refresh != nil {
+		current, ready, e := gate.Refresh()
+		if e != nil {
+			return result, e
+		}
+		if current.IsZero() {
+			return result, errors.New("runtime execution clock unavailable")
+		}
+		gate.Now = current.UTC()
+		gate.EntriesBlocked = gate.EntriesBlocked || !ready
+
+	}
 	if !accepted {
 		result.Reason = "out-of-order observation skipped"
 	} else {

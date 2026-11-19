@@ -13,7 +13,7 @@ import (
 // observeProtection runs inside the same owner transaction as pending orders.
 // Protection runs first; manual closes subsequently recheck remaining holdings.
 func observeProtection(ctx context.Context, tx pgx.Tx, observation paper.Observation, gate paper.ExecutionGate) ([]paper.Order, error) {
-	if !observation.Ready || gate.Now.Sub(observation.ObservedAt) > gate.StaleAfter {
+	if observation.AvailableAt.After(gate.Now) || !observation.Ready || gate.Now.Sub(observation.ObservedAt) > gate.StaleAfter {
 		return nil, nil
 	}
 	rows, err := tx.Query(ctx, `SELECT payload FROM billionaire.paper_positions WHERE status='open' ORDER BY id FOR UPDATE`)

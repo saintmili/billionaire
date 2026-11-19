@@ -19,17 +19,18 @@ import (
 
 func (o *options) startCommand() *cobra.Command {
 	var path string
-	var hold bool
-	cmd := &cobra.Command{Use: "start", Short: "Run the single-owner foreground paper engine", Long: "Run configured subscriptions, strategies and paper processing. Offline --fixture is required while the M2 actual-host validation gate remains pending.", Args: cobra.NoArgs}
+	var hold, live bool
+	cmd := &cobra.Command{Use: "start", Short: "Run the single-owner foreground paper engine", Long: "Run configured subscriptions, strategies and paper processing. Select --fixture PATH for deterministic offline data or --live to intentionally monitor public market data on a host with accepted provider validation. Trading always remains paper-only.", Args: cobra.NoArgs}
+	cmd.Flags().BoolVar(&live, "live", false, "intentionally enable public live monitoring on the validated host (paper trading only)")
 	cmd.Flags().BoolVar(&hold, "hold", false, "keep the fixture owner and control socket running until interrupted")
-	cmd.Flags().StringVar(&path, "fixture", "", "offline market dataset; live monitoring remains gated")
+	cmd.Flags().StringVar(&path, "fixture", "", "offline market dataset")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cfg, err := o.load()
 		if err != nil {
 			return err
 		}
-		if path == "" {
-			return errors.New("live monitoring disabled: M2 actual-host acceptance remains pending; select --fixture PATH")
+		if (path == "") == !live {
+			return errors.New("select exactly one source: --fixture PATH or explicit --live on the validated host")
 		}
 		capacity := cfg.Engine.QueueCapacity
 		if capacity == 0 {
@@ -61,10 +62,10 @@ func (o *options) startCommand() *cobra.Command {
 			}
 		}
 		return o.withDatabase(cmd.Context(), cfg, func(ctx context.Context, store *postgres.Store) error {
-			if err := o.write(map[string]any{"engine": "starting", "fixture": true, "subscriptions": len(feeds), "queue_capacity": capacity, "live_monitoring": false}, fmt.Sprintf("Starting fixture engine with %d subscriptions", len(feeds))); err != nil {
+			if err := o.write(map[string]any{"engine": "starting", "fixture": !live, "subscriptions": len(feeds), "queue_capacity": capacity, "live_monitoring": live}, fmt.Sprintf("Starting paper engine with %d subscriptions", len(feeds))); err != nil {
 				return err
 			}
-			err := app.Run(ctx, store, feeds, app.Options{KeepAlive: hold, QueueCapacity: capacity, StaleAfter: ttl, Quantity: cfg.Engine.Quantity, OwnerReady: func(owner *postgres.PaperOwner) (func(), error) {
+			err := app.Run(ctx, store, feeds, app.Options{KeepAlive: hold || live, QueueCapacity: capacity, StaleAfter: ttl, Quantity: cfg.Engine.Quantity, OwnerHealthReady: func(owner *postgres.PaperOwner, health *app.Health) (func(), error) {
 				if err := os.MkdirAll(filepath.Dir(o.controlSocket), 0700); err != nil {
 					return nil, err
 				}
@@ -76,7 +77,7 @@ func (o *options) startCommand() *cobra.Command {
 					}
 					metadata = append(metadata, info)
 				}
-				server, err := control.Listen(o.controlSocket, app.NewControl(owner, metadata, ttl))
+				server, err := control.Listen(o.controlSocket, app.NewControl(owner, metadata, ttl, health))
 				if err != nil {
 					return nil, err
 				}
@@ -108,7 +109,7 @@ func (o *options) startCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return o.write(map[string]any{"engine": "stopped", "fixture": true, "live_monitoring": false}, "Fixture engine stopped; ownership released")
+			return o.write(map[string]any{"engine": "stopped", "fixture": !live, "live_monitoring": live}, "Paper engine stopped; ownership released")
 		})
 	}
 	return cmd

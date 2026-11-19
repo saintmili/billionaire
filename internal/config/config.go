@@ -171,7 +171,12 @@ func (c Config) Validate() error {
 		{"market_data.linear_ws_url", c.MarketData.LinearWSURL, "wss"},
 	} {
 		u, err := url.Parse(item.value)
-		if err != nil || u.Hostname() == "" || u.Scheme != item.scheme || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		localScheme := "http"
+		if item.scheme == "wss" {
+			localScheme = "ws"
+		}
+		loopback := err == nil && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1")
+		if err != nil || u.Hostname() == "" || (u.Scheme != item.scheme && !(loopback && u.Scheme == localScheme)) || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 			return fmt.Errorf("%s must be a public %s URL without credentials, query or fragment", item.field, item.scheme)
 		}
 		if item.scheme == "wss" {

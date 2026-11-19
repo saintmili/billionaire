@@ -55,6 +55,11 @@ type Observation struct {
 }
 
 type ExecutionGate struct {
+	// Refresh samples runtime readiness after acquiring the financial owner and
+	// reading durable ordering clocks. Pure planners use the supplied Now.
+	Refresh func() (time.Time, bool, error)
+	// EntriesBlocked holds new exposure while monitoring recovers; exits still use valid prices.
+	EntriesBlocked bool
 	// ReplayNextOpen permits equal-boundary actual opens and funding protective
 	// closes inside an isolated replay only.
 	ReplayNextOpen bool
@@ -391,6 +396,9 @@ func ObservationEligibility(order Order, observation Observation, gate Execution
 		afterIntent = !observation.ObservedAt.Before(order.Request.At) && !observation.AvailableAt.Before(order.Request.At)
 	}
 	if !afterIntent || observation.AvailableAt.After(gate.Now) {
+		return false, ""
+	}
+	if order.Request.Action == "open" && gate.EntriesBlocked {
 		return false, ""
 	}
 	if !observation.Ready || gate.Now.Sub(observation.ObservedAt) > gate.StaleAfter {
