@@ -1,5 +1,7 @@
 # M6 capital adjustments (#27)
 
+**Current operation (2026-11-19):** This dated slice report retains its original gates and test evidence. The accepted local-host decision and subsequent funding, live recovery/health and systemd implementation supersede earlier startup restrictions; see the [combined M6 report](m6-report.md) for current scope, verification and limits.
+
 This offline slice adds explicit simulated USDT deposits and withdrawals to an
 existing paper account. Live monitoring remains disabled; this does not complete
 M6 acceptance or waive actual-host validation.

@@ -1,5 +1,7 @@
 # M6 durable terminal notification slice (#30)
 
+**Current operation (2026-11-19):** This dated slice report retains its original gates and test evidence. The accepted local-host decision and subsequent funding, live recovery/health and systemd implementation supersede earlier startup restrictions; see the [combined M6 report](m6-report.md) for current scope, verification and limits.
+
 This slice implements terminal delivery using PostgreSQL and deterministic local
 fixtures. Live monitoring remains disabled; M2 actual-host acceptance and the
 blocked #29/#33/#34/#35 work remain pending. This is not combined M6 acceptance.

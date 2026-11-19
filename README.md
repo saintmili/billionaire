@@ -11,8 +11,10 @@ validation is [accepted for the local workstation](docs/m2-local-validation-repo
 The [offline M6 slices](docs/m6-offline-report.md), [monitored funding](docs/m6-funding-report.md)
 and [recovery/health slice](docs/m6-recovery-report.md) provide private owner
 controls, paper execution and notifications. `start --live` explicitly selects
-public live data on that validated host; every order remains simulated. Systemd
-and combined M6 acceptance remain pending; later milestones remain unstarted.
+public live data on that validated host; every order remains simulated.
+[Systemd operation](docs/m6-systemd-report.md) and the
+[combined M6 acceptance scenarios](docs/m6-report.md) are implemented. Final assembled
+verification/review is the remaining M6 gate; later milestones remain unstarted.
 
 Use Go **1.27.2** or a compatible newer supported toolchain. For the local setup,
 install Docker with Compose and OpenSSL. No exchange account or API keys are used.
@@ -403,8 +405,10 @@ consumer failure stops watch for explicit restart and recovery.
 `allows_auto_entries`. This flag is a source-health prerequisite for paper entry.
 It expires dynamically when data stalls, a close is missing, or the source
 disconnects. Root `status` checks storage and engine ownership. See the
-[foreground engine](docs/m6-runtime-report.md) and [private control guide](docs/m6-control-report.md);
-combined recovery/health acceptance remains pending.
+[foreground engine](docs/m6-runtime-report.md), [private control guide](docs/m6-control-report.md),
+[recovery/health guide](docs/m6-recovery-report.md) and
+[combined acceptance evidence](docs/m6-report.md). Status requests a fresh owner
+snapshot and distinguishes engine ownership from feed readiness.
 
 Native intervals are preferred. Supported whole minute/hour/day intervals up to
 30d (for example `2m`, `90m`), `1w` (Monday UTC), and `1M` (calendar month) can be
