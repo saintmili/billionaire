@@ -150,7 +150,7 @@ func (s *Store) ClaimNotifications(ctx context.Context, now time.Time, limit int
 func (s *Store) FinishNotification(ctx context.Context, d notify.Delivery, state, category string, next time.Time) error {
 	// Store only a finite, safe category: never persist external error messages/URLs.
 	switch category {
-	case "", "delivery_failed", "target_unavailable", "terminal_unavailable", "rate_limited", "temporary", "permanent", "timeout", "unavailable", "attempts_exhausted":
+	case "telegram_unavailable", "telegram_request", "telegram_transport", "telegram_response", "telegram_rate_limited", "telegram_redirect", "telegram_rejected", "telegram_server", "", "delivery_failed", "target_unavailable", "terminal_unavailable", "rate_limited", "temporary", "permanent", "timeout", "unavailable", "attempts_exhausted":
 	default:
 		category = "delivery_failed"
 	}

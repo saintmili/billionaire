@@ -723,3 +723,7 @@ pending and live monitoring disabled.
 subscriptions, strategies and paper execution under a single PostgreSQL owner.
 See [runtime configuration, commands, recovery and verification](docs/m6-runtime-report.md).
 M2 actual-host acceptance remains pending; live start is disabled.
+
+Optional Telegram delivery is configured with environment references under
+`notifications.telegram`; select `telegram` in `notifications.targets`. See the
+[Telegram configuration and delivery contract](docs/m6-telegram-report.md).
