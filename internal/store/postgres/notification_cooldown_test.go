@@ -137,3 +137,93 @@ func TestNotificationCooldownStopsOtherWorkersAndOutlivesExhaustion(t *testing.T
 		}
 	}
 }
+
+// slowBatchFixture keeps the first batch busy past multiple one-second worker
+// ticks, then records the actual receipt time of a later rate-limit response.
+type slowBatchFixture struct {
+	started  chan struct{}
+	response chan time.Time
+}
+
+func (f slowBatchFixture) Send(ctx context.Context, e notify.Event) error {
+	if e.ID == "slow-one" || e.ID == "slow-two" {
+		if e.ID == "slow-one" {
+			close(f.started)
+		}
+		timer := time.NewTimer(1200 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	f.response <- time.Now().UTC()
+	return &notify.DeliveryError{Category: "telegram_rate_limited", RetryAfter: time.Second}
+}
+
+func TestNotificationWorkerUsesFreshClockAfterSlowBatch(t *testing.T) {
+	ctx := context.Background()
+	dsn := testdb.New(t)
+	s, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.Migrate(ctx, postgres.Up); err != nil {
+		t.Fatal(err)
+	}
+	record := func(id string) {
+		t.Helper()
+		if err := s.RecordNotification(ctx, notify.Event{ID: id, Kind: "engine_failure", At: time.Now().Add(-time.Minute)}, notify.Policy{Targets: []string{"telegram"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record("slow-one")
+	record("slow-two")
+	fixture := slowBatchFixture{started: make(chan struct{}), response: make(chan time.Time, 4)}
+	worker, cancel := context.WithTimeout(ctx, 10*time.Second)
+	done := make(chan struct{})
+	go func() { defer close(done); notify.Run(worker, s, map[string]notify.Sender{"telegram": fixture}, nil) }()
+	defer func() { cancel(); <-done }()
+	select {
+	case <-fixture.started:
+	case <-worker.Done():
+		t.Fatal("worker did not start local fixture")
+	}
+	// This event cannot join the already claimed slow batch.
+	record("rate-limited")
+	var responded time.Time
+	select {
+	case responded = <-fixture.response:
+	case <-worker.Done():
+		t.Fatal("worker did not process next batch")
+	}
+	for {
+		rows, err := s.Notifications(ctx, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		acknowledged := false
+		for _, d := range rows {
+			if d.Event.ID == "rate-limited" && d.State == "pending" && d.Attempts > 0 {
+				acknowledged = true
+				if d.NextAttemptAt.Before(responded.Add(900 * time.Millisecond)) {
+					t.Fatalf("buffered worker tick shortened response cooldown: response %s deadline %s", responded, d.NextAttemptAt)
+				}
+			}
+		}
+		if acknowledged {
+			break
+		}
+		select {
+		case <-worker.Done():
+			t.Fatal("rate limit not acknowledged")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if n, err := notify.Dispatch(ctx, s, map[string]notify.Sender{"telegram": fixture}, time.Now().UTC(), 10); err != nil || n != 0 {
+		t.Fatalf("fresh dispatcher bypassed worker cooldown: %d %v", n, err)
+	}
+}
