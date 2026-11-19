@@ -1,0 +1,35 @@
+[Unit]
+Description=Billionaire private paper engine
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=billionaire
+Group=billionaire
+WorkingDirectory=/var/lib/billionaire
+EnvironmentFile=/etc/billionaire/billionaire.env
+RuntimeDirectory=billionaire
+RuntimeDirectoryMode=0700
+StateDirectory=billionaire
+StateDirectoryMode=0700
+UMask=0077
+ExecStartPre=/usr/local/bin/billionaire --config /etc/billionaire/config.yaml config validate
+ExecStart=/usr/local/bin/billionaire --config /etc/billionaire/config.yaml --control-socket /run/billionaire/control.sock --output json start --live
+Restart=on-failure
+RestartSec=10s
+SuccessExitStatus=130
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=30s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=billionaire
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
